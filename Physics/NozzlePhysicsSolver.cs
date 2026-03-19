@@ -110,7 +110,7 @@ public sealed class NozzlePhysicsSolver
         double lengthScale = d.ExpanderLengthMm / Math.Max(d.SwirlChamberDiameterMm, 1e-9);
         double lengthFactor = 1.0 - Math.Exp(-Math.Max(0.0, lengthScale));
 
-        double sourceDiameterMm = source.SourceOutletDiameterMm ?? AreaMath.CircleDiameterFromAreaMm2(source.SourceOutletAreaMm2);
+        double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(source.SourceOutletAreaMm2);
         double expansionRatio = d.ExitDiameterMm / Math.Max(sourceDiameterMm, 1e-9);
         double ratioMatch = Math.Exp(-Math.Pow((expansionRatio - 1.6) / 0.8, 2.0));
         double pressurePotential = Math.Clamp((source.PressureRatio - 1.0) / 2.5, 0.0, 1.2);
@@ -142,9 +142,9 @@ public sealed class NozzlePhysicsSolver
         if (d.SwirlChamberDiameterMm <= 0 || d.SwirlChamberLengthMm <= 0) throw new ArgumentOutOfRangeException("Swirl chamber dimensions must be > 0.");
         if (d.TotalInjectorAreaMm2 <= 0) throw new ArgumentOutOfRangeException(nameof(d.TotalInjectorAreaMm2));
         if (d.InjectorCount <= 0) throw new ArgumentOutOfRangeException(nameof(d.InjectorCount));
-        if (d.InjectorWidthMm <= 0 || d.InjectorHeightMm <= 0) throw new ArgumentOutOfRangeException("Injector dimensions must be > 0.");
         if (d.ExpanderLengthMm <= 0 || d.ExitDiameterMm <= 0) throw new ArgumentOutOfRangeException("Expander/exit dimensions must be > 0.");
         if (d.StatorVaneCount <= 0) throw new ArgumentOutOfRangeException(nameof(d.StatorVaneCount));
+        if (d.WallThicknessMm <= 0) throw new ArgumentOutOfRangeException(nameof(d.WallThicknessMm));
 
         if (ambient.DensityKgPerM3 <= 0) throw new ArgumentOutOfRangeException(nameof(ambient.DensityKgPerM3));
     }

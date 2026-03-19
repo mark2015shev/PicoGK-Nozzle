@@ -14,8 +14,7 @@ public static class K320Baseline
         massFlowKgPerSec: 0.80,
         sourceVelocityMps: 520.0,
         pressureRatio: 2.8,
-        exhaustTemperatureK: 950.0,
-        sourceOutletDiameterMm: 69.0);
+        exhaustTemperatureK: 950.0);
 
     public static AmbientAir CreateAmbient() => new(
         pressurePa: 101_325.0,
@@ -25,20 +24,19 @@ public static class K320Baseline
     public static NozzleDesignInputs CreateDesign() => new()
     {
         InletDiameterMm = 90.0,
-        InjectorCount = 16,
+        SwirlChamberDiameterMm = 68.0,
+        SwirlChamberLengthMm = 75.0,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
-        InjectorWidthMm = 7.0,
-        InjectorHeightMm = 6.0,
+        InjectorCount = 16,
         InjectorYawAngleDeg = 80.0,
         InjectorPitchAngleDeg = 10.0,
         InjectorRollAngleDeg = 0.0,
-        SwirlChamberDiameterMm = 68.0,
-        SwirlChamberLengthMm = 75.0,
         ExpanderLengthMm = 120.0,
         ExpanderHalfAngleDeg = 9.0,
         ExitDiameterMm = 110.0,
         StatorVaneAngleDeg = 28.0,
-        StatorVaneCount = 12
+        StatorVaneCount = 12,
+        WallThicknessMm = 3.0
     };
 
     public static RunConfiguration CreateRun() => new()

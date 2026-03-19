@@ -11,7 +11,7 @@ internal static class ResultReporter
     {
         NozzleInput input = result.Input;
         NozzleSolvedState s = result.Solved;
-        double sourceDiameterMm = input.Source.SourceOutletDiameterMm ?? AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
+        double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
         Library.Log("=== Parametric Nozzle Solver Report ===");
         Library.Log("--- Source Inputs ---");
@@ -20,7 +20,7 @@ internal static class ResultReporter
         Library.Log($"Mass Flow [kg/s]:             {input.Source.MassFlowKgPerSec:F4}");
         Library.Log($"Source Velocity [m/s]:        {input.Source.SourceVelocityMps:F2}");
         Library.Log($"Pressure Ratio [-]:           {input.Source.PressureRatio:F2}");
-        Library.Log($"Exhaust Temperature [K]:      {input.Source.ExhaustTemperatureK:F2}");
+        Library.Log($"Exhaust Temperature [K]:      {(input.Source.ExhaustTemperatureK.HasValue ? input.Source.ExhaustTemperatureK.Value.ToString("F2") : "n/a")}");
 
         Library.Log("--- Ambient Inputs ---");
         Library.Log($"Pressure [Pa]:                {input.Ambient.PressurePa:F0}");
@@ -32,13 +32,13 @@ internal static class ResultReporter
         Library.Log($"Swirl Chamber D x L [mm]:     {input.Design.SwirlChamberDiameterMm:F2} x {input.Design.SwirlChamberLengthMm:F2}");
         Library.Log($"Total Injector Area [mm2]:    {input.Design.TotalInjectorAreaMm2:F2}");
         Library.Log($"Injector Count [-]:           {input.Design.InjectorCount}");
-        Library.Log($"Injector Width x Height [mm]: {input.Design.InjectorWidthMm:F2} x {input.Design.InjectorHeightMm:F2}");
         Library.Log($"Injector Yaw/Pitch/Roll [deg]: {input.Design.InjectorYawAngleDeg:F2} / {input.Design.InjectorPitchAngleDeg:F2} / {input.Design.InjectorRollAngleDeg:F2}");
         Library.Log($"Expander Length [mm]:         {input.Design.ExpanderLengthMm:F2}");
         Library.Log($"Expander Half-Angle [deg]:    {input.Design.ExpanderHalfAngleDeg:F2}");
         Library.Log($"Exit Diameter [mm]:           {input.Design.ExitDiameterMm:F2}");
         Library.Log($"Stator Vane Angle [deg]:      {input.Design.StatorVaneAngleDeg:F2}");
         Library.Log($"Stator Vane Count [-]:        {input.Design.StatorVaneCount}");
+        Library.Log($"Wall Thickness [mm]:          {input.Design.WallThicknessMm:F2}");
 
         Library.Log("--- Derived Physics ---");
         Library.Log($"Source Area [mm2]:            {s.SourceAreaMm2:F2}");
@@ -77,12 +77,7 @@ internal static class ResultReporter
         if (i.Design.TotalInjectorAreaMm2 > i.Source.SourceOutletAreaMm2)
             Library.Log("WARNING: TotalInjectorAreaMm2 exceeds SourceOutletAreaMm2.");
 
-        double injectorAreaFromSlots = i.Design.InjectorCount * i.Design.InjectorWidthMm * i.Design.InjectorHeightMm;
-        double mismatch = Math.Abs(injectorAreaFromSlots - i.Design.TotalInjectorAreaMm2) / Math.Max(i.Design.TotalInjectorAreaMm2, 1e-9);
-        if (mismatch > 0.20)
-            Library.Log("WARNING: InjectorCount*Width*Height differs significantly from TotalInjectorAreaMm2.");
-
-        if (s.EntrainmentRatio < 0.05 && i.Design.InletDiameterMm > 1.2 * (i.Source.SourceOutletDiameterMm ?? AreaMath.CircleDiameterFromAreaMm2(i.Source.SourceOutletAreaMm2)))
+        if (s.EntrainmentRatio < 0.05 && i.Design.InletDiameterMm > 1.2 * AreaMath.CircleDiameterFromAreaMm2(i.Source.SourceOutletAreaMm2))
             Library.Log("WARNING: Large inlet with low entrainment; chamber or injector settings may be limiting mixing.");
 
         if (Math.Abs(i.Design.InjectorYawAngleDeg) > 90.0 ||

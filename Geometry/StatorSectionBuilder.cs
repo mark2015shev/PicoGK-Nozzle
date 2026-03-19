@@ -7,11 +7,10 @@ namespace PicoGK_Run.Geometry;
 
 public static class StatorSectionBuilder
 {
-    private const float WallThicknessMm = 3.0f;
-
     public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd)
     {
         float innerR = 0.5f * (float)d.ExitDiameterMm;
+        float wallThicknessMm = (float)d.WallThicknessMm;
         float length = Math.Max(10f, 0.10f * (float)d.ExitDiameterMm);
 
         Vector3 p0 = new(xStart, 0f, 0f);
@@ -19,7 +18,7 @@ public static class StatorSectionBuilder
 
         Lattice shellOuter = new();
         Lattice shellInner = new();
-        shellOuter.AddBeam(p0, p1, innerR + WallThicknessMm, innerR + WallThicknessMm, false);
+        shellOuter.AddBeam(p0, p1, innerR + wallThicknessMm, innerR + wallThicknessMm, false);
         shellInner.AddBeam(p0, p1, innerR, innerR, false);
 
         Voxels section = new(shellOuter);

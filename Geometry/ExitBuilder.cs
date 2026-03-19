@@ -7,11 +7,10 @@ namespace PicoGK_Run.Geometry;
 
 public static class ExitBuilder
 {
-    private const float WallThicknessMm = 3.0f;
-
     public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd)
     {
         float exitInnerR = 0.5f * (float)d.ExitDiameterMm;
+        float wallThicknessMm = (float)d.WallThicknessMm;
         float length = Math.Max(12f, 0.12f * (float)d.ExitDiameterMm);
 
         Vector3 p0 = new(xStart, 0f, 0f);
@@ -19,7 +18,7 @@ public static class ExitBuilder
 
         Lattice outerLat = new();
         Lattice innerLat = new();
-        outerLat.AddBeam(p0, p1, exitInnerR + WallThicknessMm, exitInnerR + WallThicknessMm, false);
+        outerLat.AddBeam(p0, p1, exitInnerR + wallThicknessMm, exitInnerR + wallThicknessMm, false);
         innerLat.AddBeam(p0, p1, exitInnerR, exitInnerR, false);
 
         Voxels outer = new(outerLat);

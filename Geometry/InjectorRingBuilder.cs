@@ -7,17 +7,18 @@ namespace PicoGK_Run.Geometry;
 
 public static class InjectorRingBuilder
 {
-    private const float WallThicknessMm = 3.0f;
-
     public static Voxels BuildReferences(NozzleDesignInputs d, float chamberStartX)
     {
         int n = Math.Max(1, d.InjectorCount);
         float x = chamberStartX + 0.5f * (float)d.SwirlChamberLengthMm;
         float chamberR = 0.5f * (float)d.SwirlChamberDiameterMm;
-        float outerR = chamberR + WallThicknessMm;
+        float wallThicknessMm = (float)d.WallThicknessMm;
+        float outerR = chamberR + wallThicknessMm;
 
-        float markerRadius = Math.Max(0.6f, 0.5f * (float)Math.Min(d.InjectorWidthMm, d.InjectorHeightMm));
-        float markerLength = Math.Max(6f, 1.5f * (float)Math.Max(d.InjectorWidthMm, d.InjectorHeightMm));
+        float areaPerInjectorMm2 = (float)(d.TotalInjectorAreaMm2 / n);
+        float equivalentDiameterMm = 2f * MathF.Sqrt(Math.Max(areaPerInjectorMm2, 1e-3f) / MathF.PI);
+        float markerRadius = Math.Max(0.6f, 0.20f * equivalentDiameterMm);
+        float markerLength = Math.Max(6f, 1.2f * equivalentDiameterMm);
 
         float yawRad = (float)(d.InjectorYawAngleDeg * Math.PI / 180.0);
         float pitchRad = (float)(d.InjectorPitchAngleDeg * Math.PI / 180.0);
