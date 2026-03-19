@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "efHwKQsz/hw=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\marks\\PicoGK_Run\\PicoGK_Run.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\marks\\.nuget\\packages\\mathnet.numerics\\5.0.0\\mathnet.numerics.5.0.0.nupkg.sha512",
+    "C:\\Users\\marks\\.nuget\\packages\\unitsnet\\5.75.0\\unitsnet.5.75.0.nupkg.sha512"
+  ],
+  "logs": []
+}
