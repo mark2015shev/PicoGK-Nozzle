@@ -5,23 +5,24 @@ namespace PicoGK_Run.Physics;
 public static class PressureLossMath
 {
     /// <summary>
-    /// Simple pressure loss coefficient-like estimate (unitless).
-    /// Penalizes area mismatch and swirl. This is a placeholder model.
+    /// Heuristic mixing/pressure loss factor (0..1). Not calibrated.
     /// </summary>
-    public static double EstimateLoss(
-        double inletAreaM2,
-        double chamberAreaM2,
-        double exitAreaM2,
+    public static double EstimateLossFraction(
+        double injectorToSourceAreaRatio,
+        double chamberResidenceRatio,
         double swirlStrength)
     {
-        if (inletAreaM2 <= 0 || chamberAreaM2 <= 0 || exitAreaM2 <= 0) return 0.0;
+        // A strong injector/source area mismatch tends to increase losses.
+        double areaMismatchPenalty = Math.Abs(Math.Log(Math.Max(injectorToSourceAreaRatio, 1e-6)));
 
-        double a1 = chamberAreaM2 / inletAreaM2;
-        double a2 = exitAreaM2 / chamberAreaM2;
+        // Longer chambers can reduce abrupt-mixing losses up to a point.
+        double residenceBenefit = Math.Clamp(chamberResidenceRatio, 0.2, 3.0);
 
-        double mismatch = Math.Abs(Math.Log(a1)) + Math.Abs(Math.Log(a2));
-        double swirlPenalty = 0.15 * swirlStrength * swirlStrength;
-        return mismatch + swirlPenalty;
+        // Excessive swirl raises dissipation.
+        double swirlPenalty = Math.Min(0.30, 0.08 * swirlStrength * swirlStrength);
+
+        double raw = 0.05 + (0.06 * areaMismatchPenalty) + swirlPenalty - (0.03 * residenceBenefit);
+        return Math.Clamp(raw, 0.02, 0.45);
     }
 }
 

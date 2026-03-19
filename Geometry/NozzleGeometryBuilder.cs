@@ -1,27 +1,39 @@
-using System.Numerics;
 using PicoGK;
 using PicoGK_Run.Core;
+using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Geometry;
 
-public static class NozzleGeometryBuilder
+public sealed class NozzleGeometryBuilder
 {
-    /// <summary>
-    /// Builds a placeholder solid based on solved values.
-    /// No physics is performed here.
-    /// </summary>
-    public static Voxels BuildPlaceholder(NozzleParameters p, NozzleSolvedState solved)
+    public NozzleGeometryResult Build(NozzleDesignInputs design, NozzleSolvedState solved)
     {
-        double lengthMM = Math.Max(1.0, p.MixerLengthMM + p.SwirlChamberLengthMM);
-        float rOuter = (float)(0.5 * p.ExitDiameterMM);
+        float x = 0f;
+        Voxels nozzle = new Voxels();
 
-        // Placeholder: simple solid cylinder along X axis.
-        Vector3 p0 = new(0f, 0f, 0f);
-        Vector3 p1 = new((float)lengthMM, 0f, 0f);
+        Voxels inlet = InletBuilder.Build(design, x, out float xAfterInlet);
+        nozzle.BoolAdd(inlet);
 
-        Lattice lat = new();
-        lat.AddBeam(p0, p1, rOuter, rOuter, false);
-        return new Voxels(lat);
+        Voxels swirl = SwirlChamberBuilder.Build(design, xAfterInlet, out float xAfterSwirl);
+        nozzle.BoolAdd(swirl);
+
+        Voxels injectorRefs = InjectorRingBuilder.BuildReferences(design, xAfterInlet);
+        nozzle.BoolAdd(injectorRefs);
+
+        Voxels expander = ExpanderBuilder.Build(design, xAfterSwirl, out float xAfterExpander);
+        nozzle.BoolAdd(expander);
+
+        Voxels stator = StatorSectionBuilder.Build(design, xAfterExpander, out float xAfterStator);
+        nozzle.BoolAdd(stator);
+
+        Voxels exit = ExitBuilder.Build(design, xAfterStator, out float xAfterExit);
+        nozzle.BoolAdd(exit);
+
+        return new NozzleGeometryResult(
+            nozzleBody: nozzle,
+            injectorReferences: injectorRefs,
+            injectorCountPlaced: design.InjectorCount,
+            totalLengthMm: xAfterExit);
     }
 }
 
