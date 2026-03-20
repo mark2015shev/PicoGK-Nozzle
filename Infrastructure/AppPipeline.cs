@@ -12,8 +12,8 @@ internal sealed class AppPipeline
 
     public PipelineRunResult Run(NozzleInput input)
     {
-        NozzleSolvedState solved = _physicsSolver.Solve(input);
-        NozzleGeometryResult geometry = _geometryBuilder.Build(input.Design, solved);
+        PhysicsSolveResult physics = _physicsSolver.Solve(input);
+        NozzleGeometryResult geometry = _geometryBuilder.Build(input.Design, physics.State);
 
         if (input.Run.ShowInViewer)
         {
@@ -25,13 +25,6 @@ internal sealed class AppPipeline
             viewer.SetGroupMaterial(2, "#FF7B7B", 0.02f, 0.30f);
         }
 
-        if (input.Run.ExportStl)
-        {
-            Mesh mesh = new(geometry.NozzleBody);
-            mesh.SaveToStlFile(input.Run.StlFileName);
-        }
-
-        return new PipelineRunResult(input, solved, geometry);
+        return new PipelineRunResult(input, physics.State, geometry, physics.Warnings);
     }
 }
-

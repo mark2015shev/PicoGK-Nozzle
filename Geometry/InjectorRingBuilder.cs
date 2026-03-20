@@ -15,10 +15,8 @@ public static class InjectorRingBuilder
         float wallThicknessMm = (float)d.WallThicknessMm;
         float outerR = chamberR + wallThicknessMm;
 
-        float areaPerInjectorMm2 = (float)(d.TotalInjectorAreaMm2 / n);
-        float equivalentDiameterMm = 2f * MathF.Sqrt(Math.Max(areaPerInjectorMm2, 1e-3f) / MathF.PI);
-        float markerRadius = Math.Max(0.6f, 0.20f * equivalentDiameterMm);
-        float markerLength = Math.Max(6f, 1.2f * equivalentDiameterMm);
+        float markerRadius = Math.Max(0.6f, 0.5f * (float)Math.Min(d.InjectorWidthMm, d.InjectorHeightMm));
+        float markerLength = Math.Max(6f, 1.5f * (float)Math.Max(d.InjectorWidthMm, d.InjectorHeightMm));
 
         float yawRad = (float)(d.InjectorYawAngleDeg * Math.PI / 180.0);
         float pitchRad = (float)(d.InjectorPitchAngleDeg * Math.PI / 180.0);
@@ -34,7 +32,6 @@ public static class InjectorRingBuilder
             Vector3 tangent = new(0f, -MathF.Sin(phi), MathF.Cos(phi));
             Vector3 axial = Vector3.UnitX;
 
-            // Yaw: axial/tangential mix, pitch: radial lean, roll: in-plane spin.
             Vector3 baseDirection = Vector3.Normalize((MathF.Cos(yawRad) * axial) + (MathF.Sin(yawRad) * tangent));
             Vector3 pitchedDirection = Vector3.Normalize((MathF.Cos(pitchRad) * baseDirection) + (MathF.Sin(pitchRad) * -radial));
             Vector3 rollDirection = Vector3.Normalize((MathF.Cos(rollRad) * pitchedDirection) + (MathF.Sin(rollRad) * tangent));
@@ -51,4 +48,3 @@ public static class InjectorRingBuilder
         return combined;
     }
 }
-

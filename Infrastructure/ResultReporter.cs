@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using PicoGK;
 using PicoGK_Run.Core;
 using PicoGK_Run.Physics;
@@ -13,80 +14,82 @@ internal static class ResultReporter
         NozzleSolvedState s = result.Solved;
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
-        Library.Log("=== Parametric Nozzle Solver Report ===");
-        Library.Log("--- Source Inputs ---");
-        Library.Log($"Source Outlet Area [mm2]:     {input.Source.SourceOutletAreaMm2:F2}");
-        Library.Log($"Source Outlet Diameter [mm]:  {sourceDiameterMm:F2} (helper)");
-        Library.Log($"Mass Flow [kg/s]:             {input.Source.MassFlowKgPerSec:F4}");
-        Library.Log($"Source Velocity [m/s]:        {input.Source.SourceVelocityMps:F2}");
-        Library.Log($"Pressure Ratio [-]:           {input.Source.PressureRatio:F2}");
-        Library.Log($"Exhaust Temperature [K]:      {(input.Source.ExhaustTemperatureK.HasValue ? input.Source.ExhaustTemperatureK.Value.ToString("F2") : "n/a")}");
+        Library.Log("=== Physics-first parametric nozzle / ejector estimate ===");
+        Library.Log("(Heuristic / first-order — not CFD-calibrated, not test-stand validated.)");
 
-        Library.Log("--- Ambient Inputs ---");
-        Library.Log($"Pressure [Pa]:                {input.Ambient.PressurePa:F0}");
-        Library.Log($"Temperature [K]:              {input.Ambient.TemperatureK:F2}");
-        Library.Log($"Density [kg/m3]:              {input.Ambient.DensityKgPerM3:F4}");
+        Library.Log("--- Source + ambient (boundary only, no engine geometry) ---");
+        Library.Log($"SourceOutletAreaMm2 [mm2]:    {input.Source.SourceOutletAreaMm2:F2} (authoritative)");
+        Library.Log($"Equiv. source diameter [mm]:  {sourceDiameterMm:F2} (derived helper)");
+        Library.Log($"CoreMassFlow [kg/s]:          {input.Source.MassFlowKgPerSec:F4}");
+        Library.Log($"SourceVelocityMps [m/s]:      {input.Source.SourceVelocityMps:F2}");
+        Library.Log($"PressureRatio [-]:            {input.Source.PressureRatio:F2}");
+        Library.Log($"ExhaustTemperatureK [K]:      {(input.Source.ExhaustTemperatureK.HasValue ? input.Source.ExhaustTemperatureK.Value.ToString("F2") : "n/a (continuity falls back to ambient density)")}");
+        Library.Log($"AmbientPressurePa [Pa]:       {input.Source.AmbientPressurePa:F0}");
+        Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2}");
+        Library.Log($"AmbientDensityKgPerM3:        {input.Source.AmbientDensityKgPerM3:F4}");
 
-        Library.Log("--- Nozzle Design Inputs ---");
-        Library.Log($"Inlet Diameter [mm]:          {input.Design.InletDiameterMm:F2}");
-        Library.Log($"Swirl Chamber D x L [mm]:     {input.Design.SwirlChamberDiameterMm:F2} x {input.Design.SwirlChamberLengthMm:F2}");
-        Library.Log($"Total Injector Area [mm2]:    {input.Design.TotalInjectorAreaMm2:F2}");
-        Library.Log($"Injector Count [-]:           {input.Design.InjectorCount}");
+        Library.Log("--- Design inputs ---");
+        Library.Log($"InletDiameterMm:              {input.Design.InletDiameterMm:F2}");
+        Library.Log($"SwirlChamber D x L [mm]:      {input.Design.SwirlChamberDiameterMm:F2} x {input.Design.SwirlChamberLengthMm:F2}");
+        Library.Log($"TotalInjectorAreaMm2:         {input.Design.TotalInjectorAreaMm2:F2} (continuity uses this)");
+        Library.Log($"InjectorCount:                {input.Design.InjectorCount}");
+        Library.Log($"Injector W x H [mm]:          {input.Design.InjectorWidthMm:F2} x {input.Design.InjectorHeightMm:F2} (geometry + slot check)");
         Library.Log($"Injector Yaw/Pitch/Roll [deg]: {input.Design.InjectorYawAngleDeg:F2} / {input.Design.InjectorPitchAngleDeg:F2} / {input.Design.InjectorRollAngleDeg:F2}");
-        Library.Log($"Expander Length [mm]:         {input.Design.ExpanderLengthMm:F2}");
-        Library.Log($"Expander Half-Angle [deg]:    {input.Design.ExpanderHalfAngleDeg:F2}");
-        Library.Log($"Exit Diameter [mm]:           {input.Design.ExitDiameterMm:F2}");
-        Library.Log($"Stator Vane Angle [deg]:      {input.Design.StatorVaneAngleDeg:F2}");
-        Library.Log($"Stator Vane Count [-]:        {input.Design.StatorVaneCount}");
-        Library.Log($"Wall Thickness [mm]:          {input.Design.WallThicknessMm:F2}");
+        Library.Log($"ExpanderLengthMm / HalfAngle: {input.Design.ExpanderLengthMm:F2} / {input.Design.ExpanderHalfAngleDeg:F2} deg");
+        Library.Log($"ExitDiameterMm:               {input.Design.ExitDiameterMm:F2}");
+        Library.Log($"Stator vane angle / count:    {input.Design.StatorVaneAngleDeg:F2} deg / {input.Design.StatorVaneCount}");
+        Library.Log($"WallThicknessMm:              {input.Design.WallThicknessMm:F2}");
 
-        Library.Log("--- Derived Physics ---");
-        Library.Log($"Source Area [mm2]:            {s.SourceAreaMm2:F2}");
-        Library.Log($"Total Injector Area [mm2]:    {s.TotalInjectorAreaMm2:F2}");
-        Library.Log($"Injector Jet Velocity [m/s]:  {s.InjectorJetVelocityMps:F2}");
-        Library.Log($"Tangential Velocity [m/s]:    {s.TangentialVelocityComponentMps:F2}");
-        Library.Log($"Axial Velocity [m/s]:         {s.AxialVelocityComponentMps:F2}");
-        Library.Log($"Swirl Strength [-]:           {s.SwirlStrength:F3}");
-        Library.Log($"Ambient Entrainment [kg/s]:   {s.AmbientAirMassFlowKgPerSec:F4}");
-        Library.Log($"Entrainment Ratio [-]:        {s.EntrainmentRatio:F3}");
-        Library.Log($"Mixed Mass Flow [kg/s]:       {s.MixedMassFlowKgPerSec:F4}");
-        Library.Log($"Mixed Velocity [m/s]:         {s.MixedVelocityMps:F2}");
-        Library.Log($"Expansion Efficiency [-]:     {s.ExpansionEfficiency:F3}");
-        Library.Log($"Axial Recovery Efficiency [-]: {s.AxialRecoveryEfficiency:F3}");
-        Library.Log($"Exit Velocity [m/s]:          {s.ExitVelocityMps:F2}");
-        Library.Log($"Source-Only Thrust [N]:       {s.SourceOnlyThrustN:F2}");
-        Library.Log($"Final Thrust [N]:             {s.FinalThrustN:F2}");
-        Library.Log($"Extra Thrust [N]:             {s.ExtraThrustN:F2}");
-        Library.Log($"Thrust Gain Ratio [-]:        {s.ThrustGainRatio:F3}");
-        Library.Log("--- Heuristic Notes ---");
-        Library.Log("Assumes thrust ~= mdot * V (pressure thrust term omitted in this first-order model).");
-        Library.Log("Entrainment and recovery terms are geometry-informed heuristics, not CFD-calibrated.");
+        Library.Log("--- Solved physics ---");
+        Library.Log($"CoreGasDensity (injector) [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal-gas if T_exhaust set)");
+        Library.Log($"InjectorJetVelocityMps:       {s.InjectorJetVelocityMps:F2} (mdot = rho_core * A_inj * V)");
+        Library.Log($"Vt / Va at injector [m/s]:    {s.TangentialVelocityComponentMps:F2} / {s.AxialVelocityComponentMps:F2}");
+        Library.Log($"InjectorSwirlNumber [-]:      {s.InjectorSwirlNumber:F3} (|Vt|/|Va|, not CFD swirl)");
+        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (decayed for stator heuristic only)");
+        Library.Log($"Pressure loss fractions [-]:  area {s.PressureLoss.FractionFromInjectorSourceAreaMismatch:F3}, swirl {s.PressureLoss.FractionFromSwirlDissipation:F3}, short L/D {s.PressureLoss.FractionFromShortMixingLength:F3} → total {s.PressureLoss.FractionTotal:F3}");
+        Library.Log($"AmbientAirMassFlow [kg/s]:    {s.AmbientAirMassFlowKgPerSec:F4}");
+        Library.Log($"EntrainmentRatio [-]:         {s.EntrainmentRatio:F3}");
+        Library.Log($"MixedMassFlow [kg/s]:         {s.MixedMassFlowKgPerSec:F4} (= core + entrained)");
+        Library.Log($"MixedVelocityMps:             {s.MixedVelocityMps:F2} (momentum + loss + floor)");
+        Library.Log($"ExpansionEfficiency [-]:      {s.ExpansionEfficiency:F3} (geometry + expansion ratio, heuristic)");
+        Library.Log($"AxialRecoveryEfficiency [-]:  {s.AxialRecoveryEfficiency:F3} (stator vs chamber swirl, applied once)");
+        Library.Log($"ExitVelocityMps:              {s.ExitVelocityMps:F2}");
+        Library.Log($"SourceOnlyThrustN:            {s.SourceOnlyThrustN:F2} (baseline: mdot_core * V_core)");
+        Library.Log($"FinalThrustN:                 {s.FinalThrustN:F2} (mdot_mix * V_exit; pressure thrust omitted)");
+        Library.Log($"ExtraThrustN:                 {s.ExtraThrustN:F2}");
+        Library.Log($"ThrustGainRatio [-]:          {s.ThrustGainRatio:F3}");
 
-        Library.Log("--- Geometry ---");
-        Library.Log($"Injector Placements [-]:      {result.Geometry.InjectorCountPlaced}");
-        Library.Log($"Total Length [mm]:            {result.Geometry.TotalLengthMm:F2}");
+        Library.Log("--- Reference geometry (secondary) ---");
+        Library.Log($"Injector placements:          {result.Geometry.InjectorCountPlaced}");
+        Library.Log($"TotalLengthMm:                {result.Geometry.TotalLengthMm:F2}");
 
-        EmitWarnings(result);
+        LogHeuristicAssumptions();
+        LogWarnings(result.SolverWarnings);
     }
 
-    private static void EmitWarnings(PipelineRunResult result)
+    private static void LogHeuristicAssumptions()
     {
-        NozzleInput i = result.Input;
-        NozzleSolvedState s = result.Solved;
+        Library.Log("--- Documented heuristic assumptions (summary) ---");
+        Library.Log("- Steady 1-D-style bookkeeping; no Navier–Stokes, no chemistry, no shock fitting.");
+        Library.Log("- Core thrust baseline: F0 ≈ mdot_core * V_core (no pressure-thrust / area term).");
+        Library.Log("- Injector jet speed from continuity with rho_core from ideal-gas heuristic when T_exhaust is set.");
+        Library.Log("- Entrainment is a bounded algebraic ejector-like model (inlet + chamber + swirl), not CFD entrainment.");
+        Library.Log("- Mixed velocity from axial momentum dilution by entrained mass, then named kinetic losses, then a floor.");
+        Library.Log("- Expansion efficiency penalizes steep half-angle and short expander; uses exit/source area ratio.");
+        Library.Log("- Stator recovery uses chamber-decayed swirl only (single application, not stacked on injector swirl).");
+        Library.Log("- Roll angle does not change axisymmetric injector direction in SwirlMath (documented).");
+    }
 
-        if (i.Design.TotalInjectorAreaMm2 > i.Source.SourceOutletAreaMm2)
-            Library.Log("WARNING: TotalInjectorAreaMm2 exceeds SourceOutletAreaMm2.");
+    private static void LogWarnings(IReadOnlyList<string> warnings)
+    {
+        Library.Log("--- Warnings ---");
+        if (warnings.Count == 0)
+        {
+            Library.Log("(none)");
+            return;
+        }
 
-        if (s.EntrainmentRatio < 0.05 && i.Design.InletDiameterMm > 1.2 * AreaMath.CircleDiameterFromAreaMm2(i.Source.SourceOutletAreaMm2))
-            Library.Log("WARNING: Large inlet with low entrainment; chamber or injector settings may be limiting mixing.");
-
-        if (Math.Abs(i.Design.InjectorYawAngleDeg) > 90.0 ||
-            Math.Abs(i.Design.InjectorPitchAngleDeg) > 45.0 ||
-            Math.Abs(i.Design.InjectorRollAngleDeg) > 45.0)
-            Library.Log("WARNING: Injector angles are outside typical practical bounds.");
-
-        if (s.ExtraThrustN < 0.0)
-            Library.Log("WARNING: Design currently predicts negative extra thrust versus source-only flow.");
+        foreach (string w in warnings)
+            Library.Log("WARNING: " + w);
     }
 }
-

@@ -3,7 +3,7 @@ using PicoGK_Run.Core;
 namespace PicoGK_Run.Parameters;
 
 /// <summary>
-/// Centralized baseline configuration so Program.cs stays minimal.
+/// Default K320 G4–style source boundary and example nozzle design. Adjust here, not in Program.cs.
 /// </summary>
 public static class K320Baseline
 {
@@ -11,15 +11,13 @@ public static class K320Baseline
 
     public static SourceInputs CreateSource() => new(
         sourceOutletAreaMm2: DefaultSourceAreaMm2,
-        massFlowKgPerSec: 0.80,
-        sourceVelocityMps: 520.0,
-        pressureRatio: 2.8,
-        exhaustTemperatureK: 950.0);
-
-    public static AmbientAir CreateAmbient() => new(
-        pressurePa: 101_325.0,
-        temperatureK: 288.15,
-        densityKgPerM3: 1.225);
+        massFlowKgPerSec: 0.53,
+        sourceVelocityMps: 603.6,
+        pressureRatio: 3.6,
+        ambientPressurePa: 101_325.0,
+        ambientTemperatureK: 288.15,
+        ambientDensityKgPerM3: 1.225,
+        exhaustTemperatureK: 1003.15);
 
     public static NozzleDesignInputs CreateDesign() => new()
     {
@@ -28,6 +26,8 @@ public static class K320Baseline
         SwirlChamberLengthMm = 75.0,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
         InjectorCount = 16,
+        InjectorWidthMm = 10.0,
+        InjectorHeightMm = DefaultSourceAreaMm2 / (16.0 * 10.0),
         InjectorYawAngleDeg = 80.0,
         InjectorPitchAngleDeg = 10.0,
         InjectorRollAngleDeg = 0.0,
@@ -42,9 +42,6 @@ public static class K320Baseline
     public static RunConfiguration CreateRun() => new()
     {
         VoxelSizeMM = 0.3f,
-        ExportStl = false,
-        StlFileName = "nozzle_result.stl",
         ShowInViewer = true
     };
 }
-

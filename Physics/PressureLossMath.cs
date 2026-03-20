@@ -1,28 +1,38 @@
 using System;
+using PicoGK_Run.Core;
 
 namespace PicoGK_Run.Physics;
 
+/// <summary>
+/// Heuristic mixing / kinetic-energy loss split into readable parts.
+/// First-order, not CFD-calibrated.
+/// </summary>
 public static class PressureLossMath
 {
-    /// <summary>
-    /// Heuristic mixing/pressure loss factor (0..1). Not calibrated.
-    /// </summary>
-    public static double EstimateLossFraction(
+    public static PressureLossBreakdown Compute(
         double injectorToSourceAreaRatio,
-        double chamberResidenceRatio,
-        double swirlStrength)
+        double chamberLengthToDiameter,
+        double injectorSwirlNumber)
     {
-        // A strong injector/source area mismatch tends to increase losses.
-        double areaMismatchPenalty = Math.Abs(Math.Log(Math.Max(injectorToSourceAreaRatio, 1e-6)));
+        // 1) Area mismatch: log-symmetric penalty around 1.0
+        double areaMismatch = Math.Abs(Math.Log(Math.Max(injectorToSourceAreaRatio, 1e-6)));
+        double fArea = Math.Clamp(0.04 + 0.07 * areaMismatch, 0.0, 0.28);
 
-        // Longer chambers can reduce abrupt-mixing losses up to a point.
-        double residenceBenefit = Math.Clamp(chamberResidenceRatio, 0.2, 3.0);
+        // 2) Swirl-driven shear/dissipation (stronger swirl → more mixing loss)
+        double fSwirl = Math.Clamp(0.05 + 0.09 * injectorSwirlNumber * injectorSwirlNumber, 0.0, 0.32);
 
-        // Excessive swirl raises dissipation.
-        double swirlPenalty = Math.Min(0.30, 0.08 * swirlStrength * swirlStrength);
+        // 3) Short chamber: not enough length to smooth gradients
+        double ld = Math.Clamp(chamberLengthToDiameter, 0.05, 4.0);
+        double fShort = Math.Clamp(0.12 * Math.Exp(-1.4 * ld), 0.0, 0.12);
 
-        double raw = 0.05 + (0.06 * areaMismatchPenalty) + swirlPenalty - (0.03 * residenceBenefit);
-        return Math.Clamp(raw, 0.02, 0.45);
+        double total = Math.Clamp(fArea + fSwirl + fShort, 0.02, 0.52);
+
+        return new PressureLossBreakdown
+        {
+            FractionFromInjectorSourceAreaMismatch = fArea,
+            FractionFromSwirlDissipation = fSwirl,
+            FractionFromShortMixingLength = fShort,
+            FractionTotal = total
+        };
     }
 }
-

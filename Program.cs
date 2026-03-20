@@ -11,7 +11,6 @@ internal static class Program
     {
         NozzleInput input = new(
             source: K320Baseline.CreateSource(),
-            ambient: K320Baseline.CreateAmbient(),
             design: K320Baseline.CreateDesign(),
             run: K320Baseline.CreateRun());
 

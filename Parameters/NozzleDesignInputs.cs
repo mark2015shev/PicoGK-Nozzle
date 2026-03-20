@@ -1,7 +1,7 @@
 namespace PicoGK_Run.Parameters;
 
 /// <summary>
-/// Parametric nozzle design controls. Pure geometry intent.
+/// User-controlled nozzle geometry intent. No physics inside this type.
 /// </summary>
 public sealed class NozzleDesignInputs
 {
@@ -10,6 +10,8 @@ public sealed class NozzleDesignInputs
     public double SwirlChamberLengthMm { get; init; }
     public double TotalInjectorAreaMm2 { get; init; }
     public int InjectorCount { get; init; }
+    public double InjectorWidthMm { get; init; }
+    public double InjectorHeightMm { get; init; }
     public double InjectorYawAngleDeg { get; init; }
     public double InjectorPitchAngleDeg { get; init; }
     public double InjectorRollAngleDeg { get; init; }
@@ -20,4 +22,3 @@ public sealed class NozzleDesignInputs
     public int StatorVaneCount { get; init; }
     public double WallThicknessMm { get; init; }
 }
-
