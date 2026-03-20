@@ -19,7 +19,10 @@ public sealed class SourceInputs
     public double? ExhaustTemperatureK { get; }
 
     public double AmbientPressurePa { get; }
+
+    /// <summary>ISA / test-day ambient temperature. Reported and available for future state equations; <b>not used</b> in current thrust formulas.</summary>
     public double AmbientTemperatureK { get; }
+
     public double AmbientDensityKgPerM3 { get; }
 
     public SourceInputs(

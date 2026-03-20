@@ -3,21 +3,40 @@ using PicoGK_Run.Core;
 namespace PicoGK_Run.Parameters;
 
 /// <summary>
-/// Default K320 G4–style source boundary and example nozzle design. Adjust here, not in Program.cs.
+/// K320 G4+ style <b>source boundary</b> and example nozzle design. All thrust-related source
+/// scalars are set here; verify against your KingTech datasheet before relying on numbers.
 /// </summary>
 public static class K320Baseline
 {
-    private const double DefaultSourceAreaMm2 = 3737.4;
+    /// <summary>Authoritative turbine exit / source flow area [mm²].</summary>
+    public const double DefaultSourceAreaMm2 = 3737.4;
+
+    // --- Typical published K-320G4+ class figures (retail listings / manufacturer pages — verify) ---
+    // Mass flow ~0.53 kg/s, pressure ratio ~3.6, exhaust speed often quoted ~2173 km/h ≈ 603 m/s.
+    private const double K320G4_MassFlowKgPerSec = 0.53;
+    private const double K320G4_ExhaustSpeedMps = 2173.0 * (1000.0 / 3600.0);
+    private const double K320G4_PressureRatio = 3.6;
+
+    /// <summary>
+    /// Used only inside <see cref="PicoGK_Run.Physics.NozzlePhysicsSolver"/> for a first-order ideal-gas
+    /// estimate of core gas density at the injectors (continuity). Omit or set null to fall back
+    /// to <see cref="SourceInputs.AmbientDensityKgPerM3"/> for that step only.
+    /// </summary>
+    private const double K320G4_ExhaustTemperatureK = 1003.15;
+
+    private const double IsaSeaLevelPressurePa = 101_325.0;
+    private const double IsaSeaLevelTemperatureK = 288.15;
+    private const double IsaSeaLevelDensityKgPerM3 = 1.225;
 
     public static SourceInputs CreateSource() => new(
         sourceOutletAreaMm2: DefaultSourceAreaMm2,
-        massFlowKgPerSec: 0.53,
-        sourceVelocityMps: 603.6,
-        pressureRatio: 3.6,
-        ambientPressurePa: 101_325.0,
-        ambientTemperatureK: 288.15,
-        ambientDensityKgPerM3: 1.225,
-        exhaustTemperatureK: 1003.15);
+        massFlowKgPerSec: K320G4_MassFlowKgPerSec,
+        sourceVelocityMps: K320G4_ExhaustSpeedMps,
+        pressureRatio: K320G4_PressureRatio,
+        ambientPressurePa: IsaSeaLevelPressurePa,
+        ambientTemperatureK: IsaSeaLevelTemperatureK,
+        ambientDensityKgPerM3: IsaSeaLevelDensityKgPerM3,
+        exhaustTemperatureK: K320G4_ExhaustTemperatureK);
 
     public static NozzleDesignInputs CreateDesign() => new()
     {

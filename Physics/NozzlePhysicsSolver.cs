@@ -24,6 +24,9 @@ public sealed class NozzlePhysicsSolver
         WarnInjectorSlotArea(design, warnings);
         WarnRollUnused(design, warnings);
 
+        // --- Model choice (not a "heuristic", but a simplification): thrust baseline ---
+        // Source-only thrust uses F0 ≈ mdot_core * V_core with no pressure-thrust / area term.
+
         double sourceAreaMm2 = source.SourceOutletAreaMm2;
         double injectorAreaMm2 = design.TotalInjectorAreaMm2;
 
@@ -40,7 +43,8 @@ public sealed class NozzlePhysicsSolver
 
         double rhoCore = EstimateCoreGasDensityKgPerM3(source, warnings);
 
-        // Continuity at injectors: mdot = rho_core * A_inj * V_inj (single-phase, uniform, steady).
+        // Continuity at injectors (steady, uniform): mdot_core = rho_core * A_inj * V_inj.
+        // rho_core comes from EstimateCoreGasDensityKgPerM3 (heuristic ideal gas when T_exhaust set).
         double injectorJetVelocity = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
 
         var (vTan, vAx) = SwirlMath.ResolveInjectorComponents(
@@ -51,10 +55,19 @@ public sealed class NozzlePhysicsSolver
         double injectorSwirlNumber = SwirlMath.InjectorSwirlNumber(vTan, vAx);
 
         double chamberLd = design.SwirlChamberLengthMm / Math.Max(design.SwirlChamberDiameterMm, 1e-9);
+
+        // -------------------------------------------------------------------------
+        // HEURISTIC — NOT CFD-CALIBRATED: chamber swirl decay before stator model
+        // First-order exponential decay in L/D; coefficient 0.55 is a placeholder.
+        // -------------------------------------------------------------------------
         double chamberSwirlForStator = injectorSwirlNumber * Math.Exp(-0.55 * Math.Clamp(chamberLd, 0.0, 4.0));
         chamberSwirlForStator = Math.Clamp(chamberSwirlForStator, 0.0, 8.0);
 
-        // --- Entrainment (heuristic ejector / turbulent engulfment) ---
+        // -------------------------------------------------------------------------
+        // HEURISTIC — NOT CFD-CALIBRATED: entrainment (secondary / ambient air ingestion)
+        // Algebraic ejector-style estimate from inlet capture, chamber openness, L/D, and
+        // injector swirl number. Coefficients (0.11, 0.16, caps) are not from CFD.
+        // -------------------------------------------------------------------------
         double inletToSource = inletAreaM2 / Math.Max(sourceAreaM2, 1e-12);
         double chamberToSource = chamberAreaM2 / Math.Max(sourceAreaM2, 1e-12);
         double capture = Math.Clamp(Math.Max(0.0, inletToSource - 1.0), 0.0, 6.0);
@@ -67,7 +80,10 @@ public sealed class NozzlePhysicsSolver
 
         double entrainmentRatio = Math.Clamp(entrainmentRaw, 0.0, 1.35);
         if (entrainmentRatio >= 1.32)
-            warnings.Add("Entrainment ratio hit upper heuristic cap (1.35); result may be optimistic.");
+            warnings.Add("Unrealistic entrainment: ratio hit upper heuristic cap (1.35); treat as optimistic.");
+
+        if (entrainmentRatio > 0.90 && inletToSource < 1.12)
+            warnings.Add("Unrealistic entrainment: high entrainment ratio with only modest inlet capture (A_inlet/A_source); review inputs or model limits.");
 
         double ambientMdot = coreMdot * entrainmentRatio;
         double mixedMdot = coreMdot + ambientMdot;
@@ -78,11 +94,15 @@ public sealed class NozzlePhysicsSolver
         double injectorToSourceArea = injectorAreaMm2 / Math.Max(sourceAreaMm2, 1e-12);
         PressureLossBreakdown loss = PressureLossMath.Compute(injectorToSourceArea, chamberLd, injectorSwirlNumber);
 
-        double mixedVelocity = mixedVelocityIdeal * (1.0 - loss.FractionTotal);
+        double mixedVelocityAfterLoss = mixedVelocityIdeal * (1.0 - loss.FractionTotal);
+        if (mixedVelocityAfterLoss < 0.45 * vCore && mixedVelocityIdeal > 1e-6)
+            warnings.Add("Severe mixed-velocity collapse: dilution and/or heuristic losses reduced axial speed well below core speed (before numeric floor).");
+
         double vFloor = 0.42 * vCore;
+        double mixedVelocity = mixedVelocityAfterLoss;
         if (mixedVelocity < vFloor)
         {
-            warnings.Add("Mixed velocity hit minimum floor (0.42 * V_core) to avoid unrealistic collapse.");
+            warnings.Add("Severe mixed-velocity collapse: applied minimum floor (0.42 * V_core); raw mixed speed was lower.");
             mixedVelocity = vFloor;
         }
 
@@ -122,14 +142,14 @@ public sealed class NozzlePhysicsSolver
             ThrustGainRatio = thrustGainRatio
         };
 
-        RunDesignSanityChecks(input, state, warnings);
+        RunDesignSanityChecks(input, state, inletToSource, warnings);
 
         return new PhysicsSolveResult { State = state, Warnings = warnings };
     }
 
     /// <summary>
-    /// Heuristic core density for hot gas at the injector plane: ideal gas with pressure scaled by
-    /// pressure ratio and temperature from exhaust data. First-order only.
+    /// <b>HEURISTIC — NOT CFD-CALIBRATED:</b> core gas density at injectors via ideal gas
+    /// ρ ≈ (P_amb·π_clamp)/(R·T_exhaust). Used only for continuity V_inj = mdot/(ρ A_inj).
     /// </summary>
     private static double EstimateCoreGasDensityKgPerM3(SourceInputs s, List<string> warnings)
     {
@@ -145,11 +165,18 @@ public sealed class NozzlePhysicsSolver
         return Math.Clamp(rho, 0.15, 22.0);
     }
 
+    // -------------------------------------------------------------------------
+    // HEURISTIC — NOT CFD-CALIBRATED: expansion / divergent section recovery
+    // Combines half-angle, length ratio, area expansion ratio, and pressure ratio into one η.
+    // Too-steep angle and too-short length reduce η; not a Method-of-Characteristics nozzle solve.
+    // -------------------------------------------------------------------------
     private static double EstimateExpansionEfficiency(NozzleDesignInputs d, SourceInputs source, List<string> warnings)
     {
         double halfDeg = d.ExpanderHalfAngleDeg;
         if (halfDeg > 18.0)
-            warnings.Add("Expander half-angle is aggressive (>18°); expansion efficiency penalized by model.");
+            warnings.Add("Aggressive expander: half-angle > 18°; expansion efficiency is heavily penalized in this heuristic model.");
+        else if (halfDeg > 14.0)
+            warnings.Add("Aggressive expander: half-angle > 14°; watch separation risk in real flow (heuristic model only).");
 
         double angleRad = halfDeg * (Math.PI / 180.0);
         double steepPenalty = Math.Clamp((halfDeg - 10.0) / 12.0, 0.0, 1.0);
@@ -170,10 +197,11 @@ public sealed class NozzlePhysicsSolver
         return Math.Clamp(eta, 0.12, 0.94);
     }
 
-    /// <summary>
-    /// Stator turns residual swirl into useful axial speed. Uses chamber-decayed swirl only
-    /// (applied once, after mixing + losses, before final thrust assembly via V_exit chain).
-    /// </summary>
+    // -------------------------------------------------------------------------
+    // HEURISTIC — NOT CFD-CALIBRATED: stator / axial recovery
+    // Maps vane angle, vane count, and chamber-decayed swirl to a single η applied once:
+    // V_exit = V_after_expansion * η_stator. Not a blade row CFD / deviation model.
+    // -------------------------------------------------------------------------
     private static double EstimateStatorAxialRecovery(
         NozzleDesignInputs d,
         double chamberSwirlNumber,
@@ -181,7 +209,7 @@ public sealed class NozzlePhysicsSolver
     {
         double beta = Math.Abs(d.StatorVaneAngleDeg);
         if (beta < 8.0 || beta > 55.0)
-            warnings.Add("Stator vane angle is outside a typical effective band (~8–55°) for this heuristic model.");
+            warnings.Add("Stator vane angle outside sensible range (~8–55°) for this first-order recovery model.");
 
         double angleMatch = Math.Exp(-Math.Pow((beta - 26.0) / 16.0, 2.0));
         double vaneFactor = Math.Clamp(d.StatorVaneCount / 14.0, 0.28, 1.0);
@@ -210,17 +238,24 @@ public sealed class NozzlePhysicsSolver
             warnings.Add("InjectorRollAngleDeg is non-zero but physics decomposition ignores roll for axisymmetric injector direction (see SwirlMath).");
     }
 
-    private static void RunDesignSanityChecks(NozzleInput input, NozzleSolvedState s, List<string> warnings)
+    private static void RunDesignSanityChecks(
+        NozzleInput input,
+        NozzleSolvedState s,
+        double inletToSourceAreaRatio,
+        List<string> warnings)
     {
         var d = input.Design;
         var src = input.Source;
 
         if (d.TotalInjectorAreaMm2 > src.SourceOutletAreaMm2)
-            warnings.Add("TotalInjectorAreaMm2 exceeds SourceOutletAreaMm2 (area ratio > 1).");
+            warnings.Add("Injector area exceeds source area: TotalInjectorAreaMm2 > SourceOutletAreaMm2.");
 
         double sourceD = AreaMath.CircleDiameterFromAreaMm2(src.SourceOutletAreaMm2);
         if (d.InletDiameterMm < 1.02 * sourceD)
-            warnings.Add("Inlet diameter is only slightly larger than equivalent source diameter; entrainment may be limited.");
+            warnings.Add("Inlet too small for intended entrainment: inlet diameter only marginally larger than equivalent source diameter.");
+
+        if (d.InletDiameterMm < 1.06 * sourceD && s.EntrainmentRatio < 0.10)
+            warnings.Add("Inlet too small for intended entrainment: low entrainment ratio with tight inlet vs source size.");
 
         if (d.WallThicknessMm < 1.8)
             warnings.Add("Wall thickness is very thin for robust hardware/geometry.");

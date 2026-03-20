@@ -4,8 +4,10 @@ using PicoGK_Run.Core;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Heuristic mixing / kinetic-energy loss split into readable parts.
-/// First-order, not CFD-calibrated.
+/// <b>HEURISTIC — NOT CFD-CALIBRATED.</b> Splits a single kinetic-energy loss fraction into
+/// named, readable parts (area mismatch, swirl dissipation, short mixing length). Coefficients
+/// are engineering placeholders for a first-order nozzle/ejector spreadsheet, not experimentally
+/// fitted to any hardware.
 /// </summary>
 public static class PressureLossMath
 {
@@ -14,6 +16,8 @@ public static class PressureLossMath
         double chamberLengthToDiameter,
         double injectorSwirlNumber)
     {
+        // --- HEURISTIC loss terms (first-order estimate; not CFD-calibrated) ---
+
         // 1) Area mismatch: log-symmetric penalty around 1.0
         double areaMismatch = Math.Abs(Math.Log(Math.Max(injectorToSourceAreaRatio, 1e-6)));
         double fArea = Math.Clamp(0.04 + 0.07 * areaMismatch, 0.0, 0.28);

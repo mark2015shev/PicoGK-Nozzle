@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using PicoGK;
 using PicoGK_Run.Core;
@@ -25,7 +24,7 @@ internal static class ResultReporter
         Library.Log($"PressureRatio [-]:            {input.Source.PressureRatio:F2}");
         Library.Log($"ExhaustTemperatureK [K]:      {(input.Source.ExhaustTemperatureK.HasValue ? input.Source.ExhaustTemperatureK.Value.ToString("F2") : "n/a (continuity falls back to ambient density)")}");
         Library.Log($"AmbientPressurePa [Pa]:       {input.Source.AmbientPressurePa:F0}");
-        Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2}");
+        Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2} (reporting; not used in current solver equations)");
         Library.Log($"AmbientDensityKgPerM3:        {input.Source.AmbientDensityKgPerM3:F4}");
 
         Library.Log("--- Design inputs ---");
@@ -69,15 +68,18 @@ internal static class ResultReporter
 
     private static void LogHeuristicAssumptions()
     {
-        Library.Log("--- Documented heuristic assumptions (summary) ---");
-        Library.Log("- Steady 1-D-style bookkeeping; no Navier–Stokes, no chemistry, no shock fitting.");
-        Library.Log("- Core thrust baseline: F0 ≈ mdot_core * V_core (no pressure-thrust / area term).");
-        Library.Log("- Injector jet speed from continuity with rho_core from ideal-gas heuristic when T_exhaust is set.");
-        Library.Log("- Entrainment is a bounded algebraic ejector-like model (inlet + chamber + swirl), not CFD entrainment.");
-        Library.Log("- Mixed velocity from axial momentum dilution by entrained mass, then named kinetic losses, then a floor.");
-        Library.Log("- Expansion efficiency penalizes steep half-angle and short expander; uses exit/source area ratio.");
-        Library.Log("- Stator recovery uses chamber-decayed swirl only (single application, not stacked on injector swirl).");
-        Library.Log("- Roll angle does not change axisymmetric injector direction in SwirlMath (documented).");
+        Library.Log("--- Documented heuristic assumptions (full list) ---");
+        Library.Log("- Steady, lumped control-volume style; no Navier–Stokes, no chemistry, no shock fitting — not CFD-calibrated.");
+        Library.Log("- Core thrust baseline: F0 ≈ mdot_core * V_core (simplification: no pressure-thrust / area term).");
+        Library.Log("- Injector jet speed: continuity mdot = rho_core * A_inj * V; rho_core from ideal-gas estimate when ExhaustTemperatureK set.");
+        Library.Log("- HEURISTIC: entrainment model — bounded algebraic ejector-like formula (inlet capture, chamber, L/D, swirl number).");
+        Library.Log("- HEURISTIC: pressure-loss model — named fractional kinetic losses (area mismatch, swirl dissipation, short chamber); see PressureLossMath.");
+        Library.Log("- Mixed velocity: momentum dilution (stagnant secondary air) × (1 - loss_total), then optional numeric floor.");
+        Library.Log("- HEURISTIC: expansion efficiency — angle + length + area ratio + PR shaping; not a characteristic nozzle solution.");
+        Library.Log("- HEURISTIC: axial recovery — stator maps vane angle/count + decayed swirl to one η (applied once on V after expansion).");
+        Library.Log("- Chamber swirl decay before stator: exponential in L/D (placeholder coefficient) — heuristic.");
+        Library.Log("- InjectorSwirlNumber = |Vt|/|Va| from yaw/pitch; roll ignored for axisymmetric direction (see SwirlMath).");
+        Library.Log("- AmbientTemperatureK is not referenced by the current equations (only P_amb, rho_amb, T_exhaust for rho_core).");
     }
 
     private static void LogWarnings(IReadOnlyList<string> warnings)
