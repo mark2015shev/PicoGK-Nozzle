@@ -55,7 +55,12 @@ internal static class ResultReporter
         Library.Log($"CoreGasDensity ρ_core [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal gas when T_exhaust set; blend only)");
         Library.Log($"Vt / Va at injector [m/s]:    {s.TangentialVelocityComponentMps:F2} / {s.AxialVelocityComponentMps:F2}");
         Library.Log($"InjectorSwirlNumber [-]:      {s.InjectorSwirlNumber:F3} (|Vt|/|Va|, not CFD swirl)");
-        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (decayed for stator heuristic only)");
+        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (after L/D decay + swirl-pressure recovery debit; stator heuristic)");
+        Library.Log("--- Swirl-pressure recovery (expander) — HEURISTIC, not CFD; not centrifugal thrust ---");
+        Library.Log($"SwirlPressureRisePa:          {s.SwirlPressureRisePa:F1} (order rho*v_theta^2/r wall rise, bounded)");
+        Library.Log($"ExpanderWallAxialForceN:      {s.ExpanderWallAxialForceN:F2} (axial wall component only, capped)");
+        Library.Log($"SwirlPressureRecoveryEff. [-]: {s.SwirlPressureRecoveryEfficiency:F3} (tangential KE fraction tapped, capped)");
+        Library.Log($"Rem.TangentialAfterPR [m/s]:  {s.RemainingTangentialVelocityAfterPressureRecovery:F2} (before stator)");
         Library.Log($"Pressure loss fractions [-]:  area {s.PressureLoss.FractionFromInjectorSourceAreaMismatch:F3}, swirl {s.PressureLoss.FractionFromSwirlDissipation:F3}, short L/D {s.PressureLoss.FractionFromShortMixingLength:F3} → total {s.PressureLoss.FractionTotal:F3}");
         Library.Log($"Dominant loss contribution:   {s.DominantPressureLossContribution}");
         Library.Log($"AmbientAirMassFlow [kg/s]:    {s.AmbientAirMassFlowKgPerSec:F4}");
@@ -66,7 +71,9 @@ internal static class ResultReporter
         Library.Log($"AxialRecoveryEfficiency [-]:  {s.AxialRecoveryEfficiency:F3} (stator vs swirl angle match, heuristic, capped)");
         Library.Log($"ExitVelocityMps:              {s.ExitVelocityMps:F2}");
         Library.Log($"SourceOnlyThrustN:            {s.SourceOnlyThrustN:F2} (baseline: mdot_core * V_core)");
-        Library.Log($"FinalThrustN:                 {s.FinalThrustN:F2} (mdot_mix * V_exit; pressure thrust omitted)");
+        Library.Log($"MomentumThrustComponentN:     {s.MomentumThrustComponentN:F2} (mdot_mix * V_exit)");
+        Library.Log($"PressureThrustComponentN:     {s.PressureThrustComponentN:F2} (swirl-pressure recovery on expander walls)");
+        Library.Log($"FinalThrustN:                 {s.FinalThrustN:F2} (momentum + pressure components; CV-style)");
         Library.Log($"ExtraThrustN:                 {s.ExtraThrustN:F2}");
         Library.Log($"ThrustGainRatio [-]:          {s.ThrustGainRatio:F3}");
 
@@ -98,7 +105,8 @@ internal static class ResultReporter
         Library.Log("- Mixed velocity: axial momentum dilution × (1 - loss_total), then optional numeric floor.");
         Library.Log("- HEURISTIC: expansion efficiency — angle + length + area ratio + PR; not a characteristic nozzle solution.");
         Library.Log("- HEURISTIC: stator recovery — vane angle vs implied swirl turning angle, capped η (no full energy recovery).");
-        Library.Log("- Chamber swirl decay before stator: exponential in L/D — heuristic.");
+        Library.Log("- HEURISTIC: swirl-pressure recovery on angled expander walls (post-mix, pre-stator) — NOT CFD, NOT centrifugal thrust; tangential budget reduced before stator.");
+        Library.Log("- Chamber swirl decay before stator: exponential in L/D — heuristic; then debit from same budget if wall pressure recovery is nonzero.");
         Library.Log("- Yaw/pitch/roll: see SwirlMath XML; roll ignored for axisymmetric physics.");
         Library.Log("- AmbientTemperatureK not used in equations (P_amb, rho_amb, T_exhaust for ρ_core blend).");
     }

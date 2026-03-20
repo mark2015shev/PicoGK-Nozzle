@@ -32,8 +32,38 @@ public sealed class NozzleSolvedState
     /// </summary>
     public double InjectorSwirlNumber { get; init; }
 
-    /// <summary>Chamber-decayed swirl metric for stator heuristic only.</summary>
+    /// <summary>
+    /// Chamber-decayed swirl metric for stator heuristic, <b>after</b> swirl-pressure recovery
+    /// has reduced the available tangential budget (no double counting with expander wall term).
+    /// </summary>
     public double ChamberSwirlNumberForStator { get; init; }
+
+    /// <summary>
+    /// HEURISTIC — NOT CFD: estimated wall pressure rise from swirl-induced radial gradient
+    /// (order dp/dr ~ rho * v_theta^2 / r), bounded. Swirl-pressure recovery — not centrifugal thrust.
+    /// </summary>
+    public double SwirlPressureRisePa { get; init; }
+
+    /// <summary>
+    /// HEURISTIC axial component of resultant wall force on angled expander surfaces from
+    /// <see cref="SwirlPressureRisePa"/>; conservative caps. Same swirl-energy budget as stator.
+    /// </summary>
+    public double ExpanderWallAxialForceN { get; init; }
+
+    /// <summary>
+    /// Fraction of reference tangential kinetic energy notionally tapped for pressure recovery [0, ~0.35].
+    /// Heuristic bookkeeping — not CFD-calibrated.
+    /// </summary>
+    public double SwirlPressureRecoveryEfficiency { get; init; }
+
+    /// <summary>Tangential speed scale in mixed flow after pressure-recovery debit (before stator), m/s.</summary>
+    public double RemainingTangentialVelocityAfterPressureRecovery { get; init; }
+
+    /// <summary>Control-volume momentum flux term: mdot_mix * V_exit.</summary>
+    public double MomentumThrustComponentN { get; init; }
+
+    /// <summary>Swirl-pressure recovery contribution on expander walls (axial), separate from momentum term.</summary>
+    public double PressureThrustComponentN { get; init; }
 
     public PressureLossBreakdown PressureLoss { get; init; }
 
@@ -49,9 +79,10 @@ public sealed class NozzleSolvedState
     public double AxialRecoveryEfficiency { get; init; }
     public double ExitVelocityMps { get; init; }
 
-    /// <summary>First-order: mdot_core * V_core (pressure thrust omitted).</summary>
+    /// <summary>First-order: mdot_core * V_core (no mixed-stream pressure term).</summary>
     public double SourceOnlyThrustN { get; init; }
 
+    /// <summary>Momentum thrust + swirl-pressure wall term (see components).</summary>
     public double FinalThrustN { get; init; }
     public double ExtraThrustN { get; init; }
     public double ThrustGainRatio { get; init; }
