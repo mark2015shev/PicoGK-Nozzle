@@ -5,12 +5,17 @@ using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Geometry;
 
-public static class InjectorRingBuilder
+/// <summary>
+/// <b>Reference-only</b> geometry: small beams showing intended injector station and direction.
+/// These are <b>not</b> flow passages, drilled holes, or CFD mesh — placeholders until real injector ports are modeled.
+/// </summary>
+public static class InjectorReferenceMarkersBuilder
 {
-    public static Voxels BuildReferences(NozzleDesignInputs d, float chamberStartX)
+    public static Voxels Build(NozzleDesignInputs d, float chamberStartX)
     {
         int n = Math.Max(1, d.InjectorCount);
-        float x = chamberStartX + 0.5f * (float)d.SwirlChamberLengthMm;
+        float ratio = (float)Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
+        float x = chamberStartX + ratio * (float)d.SwirlChamberLengthMm;
         float chamberR = 0.5f * (float)d.SwirlChamberDiameterMm;
         float wallThicknessMm = (float)d.WallThicknessMm;
         float outerR = chamberR + wallThicknessMm;

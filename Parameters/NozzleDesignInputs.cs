@@ -1,13 +1,20 @@
 namespace PicoGK_Run.Parameters;
 
 /// <summary>
-/// User-controlled nozzle geometry intent. No physics inside this type.
+/// User-controlled nozzle design intent. No physics inside this type.
 /// </summary>
 public sealed class NozzleDesignInputs
 {
     public double InletDiameterMm { get; init; }
     public double SwirlChamberDiameterMm { get; init; }
     public double SwirlChamberLengthMm { get; init; }
+
+    /// <summary>
+    /// 0 = upstream end of swirl chamber (just after inlet), 1 = downstream end (just before expander).
+    /// Positions reference injector <b>markers</b> / intended station along the chamber axis.
+    /// </summary>
+    public double InjectorAxialPositionRatio { get; init; }
+
     public double TotalInjectorAreaMm2 { get; init; }
     public int InjectorCount { get; init; }
     public double InjectorWidthMm { get; init; }

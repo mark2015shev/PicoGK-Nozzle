@@ -7,11 +7,14 @@ namespace PicoGK_Run.Physics;
 
 /// <summary>
 /// Physics-first parametric nozzle / ejector estimator. All non-trivial sub-models are
-/// explicit heuristics (labeled in code); not CFD, not experimentally fitted to hardware.
+/// explicit <b>heuristics</b> — not CFD, not test-stand calibrated.
 /// </summary>
 public sealed class NozzlePhysicsSolver
 {
     private const double SpecificGasConstantAirJPerKgK = 287.0;
+
+    /// <summary>Weight on V_core×(A_source/A_inj) in jet-speed blend; remainder is continuity mdot/(ρA).</summary>
+    public const double InjectorJetVelocityDriverBlend = 0.88;
 
     public PhysicsSolveResult Solve(NozzleInput input)
     {
@@ -24,8 +27,7 @@ public sealed class NozzlePhysicsSolver
         WarnInjectorSlotArea(design, warnings);
         WarnRollUnused(design, warnings);
 
-        // --- Model choice (not a "heuristic", but a simplification): thrust baseline ---
-        // Source-only thrust uses F0 ≈ mdot_core * V_core with no pressure-thrust / area term.
+        // Thrust baseline (simplification, not heuristic): F0 ≈ mdot_core * V_core, no pressure term.
 
         double sourceAreaMm2 = source.SourceOutletAreaMm2;
         double injectorAreaMm2 = design.TotalInjectorAreaMm2;
@@ -43,9 +45,19 @@ public sealed class NozzlePhysicsSolver
 
         double rhoCore = EstimateCoreGasDensityKgPerM3(source, warnings);
 
-        // Continuity at injectors (steady, uniform): mdot_core = rho_core * A_inj * V_inj.
-        // rho_core comes from EstimateCoreGasDensityKgPerM3 (heuristic ideal gas when T_exhaust set).
-        double injectorJetVelocity = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
+        // -------------------------------------------------------------------------
+        // Source → injector jet speed (HEURISTIC momentum / area model — NOT CFD)
+        // Primary driver: K320/source V_core scaled by area ratio A_source/A_inj (1D bulk continuation
+        // at similar density). Continuity mdot/(ρ A_inj) is a secondary blend so ρ errors do not
+        // collapse the jet unphysically below the source-speed scale when areas match.
+        // -------------------------------------------------------------------------
+        double areaDriver = vCore * (sourceAreaMm2 / Math.Max(injectorAreaMm2, 1e-9));
+        double continuityCheck = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
+        double injectorJetVelocity = InjectorJetVelocityDriverBlend * areaDriver
+            + (1.0 - InjectorJetVelocityDriverBlend) * continuityCheck;
+
+        if (continuityCheck > 1e-6 && Math.Abs(continuityCheck - areaDriver) / Math.Max(areaDriver, 1e-6) > 0.42)
+            warnings.Add("Injector continuity check (mdot/ρA) differs strongly from V_core×(A_source/A_inj); review ρ_core or areas.");
 
         var (vTan, vAx) = SwirlMath.ResolveInjectorComponents(
             injectorJetVelocity,
@@ -55,18 +67,16 @@ public sealed class NozzlePhysicsSolver
         double injectorSwirlNumber = SwirlMath.InjectorSwirlNumber(vTan, vAx);
 
         double chamberLd = design.SwirlChamberLengthMm / Math.Max(design.SwirlChamberDiameterMm, 1e-9);
+        double rAx = Math.Clamp(design.InjectorAxialPositionRatio, 0.0, 1.0);
 
-        // -------------------------------------------------------------------------
-        // HEURISTIC — NOT CFD-CALIBRATED: chamber swirl decay before stator model
-        // First-order exponential decay in L/D; coefficient 0.55 is a placeholder.
-        // -------------------------------------------------------------------------
+        // HEURISTIC — NOT CFD: decay of injector directive swirl before stator
         double chamberSwirlForStator = injectorSwirlNumber * Math.Exp(-0.55 * Math.Clamp(chamberLd, 0.0, 4.0));
         chamberSwirlForStator = Math.Clamp(chamberSwirlForStator, 0.0, 8.0);
 
         // -------------------------------------------------------------------------
-        // HEURISTIC — NOT CFD-CALIBRATED: entrainment (secondary / ambient air ingestion)
-        // Algebraic ejector-style estimate from inlet capture, chamber openness, L/D, and
-        // injector swirl number. Coefficients (0.11, 0.16, caps) are not from CFD.
+        // HEURISTIC — NOT CFD: entrainment (bounded, first-order)
+        // Ties to source momentum scale (V_core), inlet capture, chamber area, L/D, axial injector
+        // station (ratio along chamber), and injector swirl number.
         // -------------------------------------------------------------------------
         double inletToSource = inletAreaM2 / Math.Max(sourceAreaM2, 1e-12);
         double chamberToSource = chamberAreaM2 / Math.Max(sourceAreaM2, 1e-12);
@@ -74,25 +84,29 @@ public sealed class NozzlePhysicsSolver
         double chamberOpenness = Math.Clamp(Math.Sqrt(chamberToSource), 0.4, 2.2);
         double swirlBoost = injectorSwirlNumber / (1.0 + 0.9 * injectorSwirlNumber);
 
+        double momentumScale = Math.Clamp(vCore / 420.0, 0.65, 1.35);
+        double placementMix = 0.88 + 0.20 * rAx;
+
         double entrainmentRaw =
-            0.11 * capture * chamberOpenness
-            + 0.16 * Math.Clamp(chamberLd, 0.12, 2.8) * swirlBoost;
+            momentumScale * (
+                0.10 * capture * chamberOpenness * placementMix
+                + 0.14 * Math.Clamp(chamberLd, 0.12, 2.8) * swirlBoost * (0.95 + 0.10 * rAx));
 
         double entrainmentRatio = Math.Clamp(entrainmentRaw, 0.0, 1.35);
         if (entrainmentRatio >= 1.32)
             warnings.Add("Unrealistic entrainment: ratio hit upper heuristic cap (1.35); treat as optimistic.");
 
         if (entrainmentRatio > 0.90 && inletToSource < 1.12)
-            warnings.Add("Unrealistic entrainment: high entrainment ratio with only modest inlet capture (A_inlet/A_source); review inputs or model limits.");
+            warnings.Add("Unrealistic entrainment: high ratio with only modest inlet capture (A_inlet/A_source).");
 
         double ambientMdot = coreMdot * entrainmentRatio;
         double mixedMdot = coreMdot + ambientMdot;
 
-        // Momentum (first-order): ambient drawn axially ~ stagnant → only core contributes axial momentum.
         double mixedVelocityIdeal = coreMdot * vCore / Math.Max(mixedMdot, 1e-12);
 
         double injectorToSourceArea = injectorAreaMm2 / Math.Max(sourceAreaMm2, 1e-12);
         PressureLossBreakdown loss = PressureLossMath.Compute(injectorToSourceArea, chamberLd, injectorSwirlNumber);
+        string dominantLoss = PressureLossMath.DominantContribution(loss);
 
         double mixedVelocityAfterLoss = mixedVelocityIdeal * (1.0 - loss.FractionTotal);
         if (mixedVelocityAfterLoss < 0.45 * vCore && mixedVelocityIdeal > 1e-6)
@@ -123,12 +137,15 @@ public sealed class NozzlePhysicsSolver
             SourceAreaMm2 = sourceAreaMm2,
             TotalInjectorAreaMm2 = injectorAreaMm2,
             InjectorJetVelocityMps = injectorJetVelocity,
+            InjectorJetVelocityAreaDriverMps = areaDriver,
+            InjectorJetVelocityContinuityCheckMps = continuityCheck,
             CoreGasDensityKgPerM3 = rhoCore,
             TangentialVelocityComponentMps = vTan,
             AxialVelocityComponentMps = vAx,
             InjectorSwirlNumber = injectorSwirlNumber,
             ChamberSwirlNumberForStator = chamberSwirlForStator,
             PressureLoss = loss,
+            DominantPressureLossContribution = dominantLoss,
             AmbientAirMassFlowKgPerSec = ambientMdot,
             EntrainmentRatio = entrainmentRatio,
             MixedMassFlowKgPerSec = mixedMdot,
@@ -142,20 +159,19 @@ public sealed class NozzlePhysicsSolver
             ThrustGainRatio = thrustGainRatio
         };
 
-        RunDesignSanityChecks(input, state, inletToSource, warnings);
+        RunDesignSanityChecks(input, state, warnings);
 
         return new PhysicsSolveResult { State = state, Warnings = warnings };
     }
 
     /// <summary>
-    /// <b>HEURISTIC — NOT CFD-CALIBRATED:</b> core gas density at injectors via ideal gas
-    /// ρ ≈ (P_amb·π_clamp)/(R·T_exhaust). Used only for continuity V_inj = mdot/(ρ A_inj).
+    /// <b>HEURISTIC</b> ρ for continuity <b>cross-check / blend</b> only. Primary jet speed uses V_core×(A_s/A_inj).
     /// </summary>
     private static double EstimateCoreGasDensityKgPerM3(SourceInputs s, List<string> warnings)
     {
         if (!s.ExhaustTemperatureK.HasValue || s.ExhaustTemperatureK.Value < 250.0)
         {
-            warnings.Add("ExhaustTemperatureK missing/low; using AmbientDensityKgPerM3 for injector continuity (conservative/approximate).");
+            warnings.Add("ExhaustTemperatureK missing/low; ρ_core falls back to AmbientDensityKgPerM3 (continuity blend only).");
             return s.AmbientDensityKgPerM3;
         }
 
@@ -165,11 +181,7 @@ public sealed class NozzlePhysicsSolver
         return Math.Clamp(rho, 0.15, 22.0);
     }
 
-    // -------------------------------------------------------------------------
-    // HEURISTIC — NOT CFD-CALIBRATED: expansion / divergent section recovery
-    // Combines half-angle, length ratio, area expansion ratio, and pressure ratio into one η.
-    // Too-steep angle and too-short length reduce η; not a Method-of-Characteristics nozzle solve.
-    // -------------------------------------------------------------------------
+    // HEURISTIC — NOT CFD: expansion efficiency (see prior comments in file history)
     private static double EstimateExpansionEfficiency(NozzleDesignInputs d, SourceInputs source, List<string> warnings)
     {
         double halfDeg = d.ExpanderHalfAngleDeg;
@@ -197,26 +209,29 @@ public sealed class NozzlePhysicsSolver
         return Math.Clamp(eta, 0.12, 0.94);
     }
 
-    // -------------------------------------------------------------------------
-    // HEURISTIC — NOT CFD-CALIBRATED: stator / axial recovery
-    // Maps vane angle, vane count, and chamber-decayed swirl to a single η applied once:
-    // V_exit = V_after_expansion * η_stator. Not a blade row CFD / deviation model.
-    // -------------------------------------------------------------------------
+    // HEURISTIC — NOT CFD: stator recovery; vane angle vs implied swirl turning; capped η
     private static double EstimateStatorAxialRecovery(
         NozzleDesignInputs d,
         double chamberSwirlNumber,
         List<string> warnings)
     {
         double beta = Math.Abs(d.StatorVaneAngleDeg);
-        if (beta < 8.0 || beta > 55.0)
-            warnings.Add("Stator vane angle outside sensible range (~8–55°) for this first-order recovery model.");
+        if (beta < 8.0 || beta > 52.0)
+            warnings.Add("Stator vane angle outside sensible range (~8–52°) for this first-order recovery model.");
 
-        double angleMatch = Math.Exp(-Math.Pow((beta - 26.0) / 16.0, 2.0));
+        double phiSwirlDeg = Math.Atan(Math.Min(chamberSwirlNumber, 3.0)) * (180.0 / Math.PI);
+        double matchToSwirl = Math.Exp(-Math.Pow((beta - phiSwirlDeg) / 17.0, 2.0));
+        double pragmaticMid = Math.Exp(-Math.Pow((beta - 24.0) / 20.0, 2.0));
+        double combinedMatch = 0.52 * matchToSwirl + 0.48 * pragmaticMid;
+
         double vaneFactor = Math.Clamp(d.StatorVaneCount / 14.0, 0.28, 1.0);
-        double swirlLoad = chamberSwirlNumber / (1.0 + 0.22 * chamberSwirlNumber * chamberSwirlNumber);
+        double overload = chamberSwirlNumber / (2.6 + chamberSwirlNumber);
 
-        double eta = 0.38 + 0.48 * angleMatch * vaneFactor * (0.55 + 0.45 * (1.0 / (1.0 + 0.35 * swirlLoad)));
-        return Math.Clamp(eta, 0.20, 0.97);
+        double eta = 0.34 + 0.36 * combinedMatch * vaneFactor * (1.0 - 0.26 * overload);
+        eta = Math.Clamp(eta, 0.22, 0.82);
+        if (eta >= 0.78 && chamberSwirlNumber > 2.2)
+            warnings.Add("Stator recovery is near the model cap; unlikely to recover all swirl energy (heuristic cap).");
+        return eta;
     }
 
     private static void WarnInjectorSlotArea(NozzleDesignInputs d, List<string> warnings)
@@ -228,20 +243,19 @@ public sealed class NozzlePhysicsSolver
         {
             warnings.Add(
                 $"Injector slot area (Count×W×H = {slotSum:F1} mm²) differs from TotalInjectorAreaMm2 ({d.TotalInjectorAreaMm2:F1} mm²) by {100.0 * rel:F1}%. " +
-                "Solver uses TotalInjectorAreaMm2 for continuity; slots are for documentation/geometry.");
+                "Physics uses TotalInjectorAreaMm2 for area ratio / continuity; slots are for reference geometry only.");
         }
     }
 
     private static void WarnRollUnused(NozzleDesignInputs d, List<string> warnings)
     {
         if (Math.Abs(d.InjectorRollAngleDeg) > 1.0)
-            warnings.Add("InjectorRollAngleDeg is non-zero but physics decomposition ignores roll for axisymmetric injector direction (see SwirlMath).");
+            warnings.Add("InjectorRollAngleDeg is non-zero but physics ignores roll for axisymmetric direction (see SwirlMath).");
     }
 
     private static void RunDesignSanityChecks(
         NozzleInput input,
         NozzleSolvedState s,
-        double inletToSourceAreaRatio,
         List<string> warnings)
     {
         var d = input.Design;
@@ -282,6 +296,8 @@ public sealed class NozzlePhysicsSolver
 
         if (d.InletDiameterMm <= 0) throw new ArgumentOutOfRangeException(nameof(d.InletDiameterMm));
         if (d.SwirlChamberDiameterMm <= 0 || d.SwirlChamberLengthMm <= 0) throw new ArgumentOutOfRangeException(nameof(d.SwirlChamberDiameterMm));
+        if (d.InjectorAxialPositionRatio < 0.0 || d.InjectorAxialPositionRatio > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(d.InjectorAxialPositionRatio), "Must be in [0, 1] (chamber upstream → downstream).");
         if (d.TotalInjectorAreaMm2 <= 0) throw new ArgumentOutOfRangeException(nameof(d.TotalInjectorAreaMm2));
         if (d.InjectorCount <= 0) throw new ArgumentOutOfRangeException(nameof(d.InjectorCount));
         if (d.InjectorWidthMm <= 0 || d.InjectorHeightMm <= 0) throw new ArgumentOutOfRangeException(nameof(d.InjectorWidthMm));

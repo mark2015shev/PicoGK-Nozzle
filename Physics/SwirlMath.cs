@@ -3,18 +3,22 @@ using System;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Injector jet direction heuristics. Not CFD-calibrated.
+/// Injector jet direction in the chamber cylindrical frame (x = axial downstream).
+/// <b>Not CFD-calibrated.</b>
 /// </summary>
 public static class SwirlMath
 {
     /// <summary>
-    /// Decomposes injector speed into tangential (circumferential) and axial components
-    /// in the chamber cylindrical frame.
-    /// <para>
-    /// <b>Roll:</b> For an axisymmetric point injector, rotation about the jet centerline
-    /// does not change the jet direction vector; <see cref="injectorRollAngleDeg"/> is
-    /// therefore ignored here and reserved for future non-axisymmetric slot orientation.
-    /// </para>
+    /// Decomposes scalar jet speed into tangential and axial components.
+    /// <list type="bullet">
+    /// <item><b>Yaw (deg):</b> rotates the jet direction from <b>pure axial (+x)</b> toward
+    /// <b>positive tangential</b> (circumferential, right-hand about +x). 0° = axial; 90° = purely tangential in the local tangent direction.</item>
+    /// <item><b>Pitch (deg):</b> tilts the already yawed direction toward <b>inward radial (−r)</b>
+    /// (toward the chamber axis in the meridional plane). 0° = no inward lean.</item>
+    /// <item><b>Roll (deg):</b> for a <b>straight</b> injector centerline, rotation about the jet axis
+    /// does not change the direction vector in an axisymmetric model. Roll is <b>ignored</b> here for
+    /// physics; reserve for future <b>non-axisymmetric</b> slots (clocking of a rectangular port).</item>
+    /// </list>
     /// </summary>
     public static (double TangentialMps, double AxialMps) ResolveInjectorComponents(
         double injectorJetVelocityMps,
@@ -29,11 +33,7 @@ public static class SwirlMath
         return (tangential, axial);
     }
 
-    /// <summary>
-    /// Tangential-to-axial ratio of the injection vector (|Vt|/|Va|).
-    /// Interpretable as a dimensionless "how hard we ask the flow to swirl at the injector";
-    /// not a measured swirl intensity in the chamber.
-    /// </summary>
+    /// <summary>|Vt|/|Va| for the injection vector — design directive, not measured chamber swirl.</summary>
     public static double InjectorSwirlNumber(double tangentialVelocityMps, double axialVelocityMps)
     {
         return Math.Abs(tangentialVelocityMps) / Math.Max(Math.Abs(axialVelocityMps), 1e-6);

@@ -18,9 +18,8 @@ public static class K320Baseline
     private const double K320G4_PressureRatio = 3.6;
 
     /// <summary>
-    /// Used only inside <see cref="PicoGK_Run.Physics.NozzlePhysicsSolver"/> for a first-order ideal-gas
-    /// estimate of core gas density at the injectors (continuity). Omit or set null to fall back
-    /// to <see cref="SourceInputs.AmbientDensityKgPerM3"/> for that step only.
+    /// Used for a <b>heuristic</b> ρ_core in the continuity <b>blend</b> with V_core×(A_source/A_inj).
+    /// Omit or set null to fall back to <see cref="SourceInputs.AmbientDensityKgPerM3"/>.
     /// </summary>
     private const double K320G4_ExhaustTemperatureK = 1003.15;
 
@@ -43,6 +42,7 @@ public static class K320Baseline
         InletDiameterMm = 90.0,
         SwirlChamberDiameterMm = 68.0,
         SwirlChamberLengthMm = 75.0,
+        InjectorAxialPositionRatio = 0.5,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
         InjectorCount = 16,
         InjectorWidthMm = 10.0,

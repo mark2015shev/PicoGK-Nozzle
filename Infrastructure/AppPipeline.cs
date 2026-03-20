@@ -18,13 +18,22 @@ internal sealed class AppPipeline
         if (input.Run.ShowInViewer)
         {
             Viewer viewer = Library.oViewer();
-            viewer.Add(geometry.NozzleBody, 1);
-            viewer.SetGroupMaterial(1, "#7AA5FF", 0.02f, 0.55f);
-
-            viewer.Add(geometry.InjectorReferences, 2);
-            viewer.SetGroupMaterial(2, "#FF7B7B", 0.02f, 0.30f);
+            int g = 1;
+            AddSegment(viewer, ref g, geometry.Inlet, NozzleViewerSegmentColors.InletHex);
+            AddSegment(viewer, ref g, geometry.SwirlChamber, NozzleViewerSegmentColors.SwirlChamberHex);
+            AddSegment(viewer, ref g, geometry.InjectorReferenceMarkers, NozzleViewerSegmentColors.InjectorReferenceMarkersHex);
+            AddSegment(viewer, ref g, geometry.Expander, NozzleViewerSegmentColors.ExpanderHex);
+            AddSegment(viewer, ref g, geometry.StatorSection, NozzleViewerSegmentColors.StatorSectionHex);
+            AddSegment(viewer, ref g, geometry.Exit, NozzleViewerSegmentColors.ExitHex);
         }
 
         return new PipelineRunResult(input, physics.State, geometry, physics.Warnings);
+    }
+
+    private static void AddSegment(Viewer viewer, ref int groupId, Voxels voxels, string hex)
+    {
+        viewer.Add(voxels, groupId);
+        viewer.SetGroupMaterial(groupId, hex, NozzleViewerSegmentColors.Roughness, NozzleViewerSegmentColors.Metallic);
+        groupId++;
     }
 }
