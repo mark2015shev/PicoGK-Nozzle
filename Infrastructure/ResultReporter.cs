@@ -55,7 +55,14 @@ internal static class ResultReporter
         Library.Log($"CoreGasDensity ρ_core [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal gas when T_exhaust set; blend only)");
         Library.Log($"Vt / Va at injector [m/s]:    {s.TangentialVelocityComponentMps:F2} / {s.AxialVelocityComponentMps:F2}");
         Library.Log($"InjectorSwirlNumber [-]:      {s.InjectorSwirlNumber:F3} (|Vt|/|Va|, not CFD swirl)");
-        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (after L/D decay + swirl-pressure recovery debit; stator heuristic)");
+        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (after inlet + expander pressure budget + tangential debit; stator heuristic)");
+        Library.Log("--- Inlet suction / low-pressure (HEURISTIC — not CFD; not free energy) ---");
+        Library.Log("Low-pressure inlet/core region: modeled as suction/capture recovery from same swirl/pressure budget as entrainment + expander.");
+        Library.Log($"InletSuctionDeltaP_Pa:        {s.InletSuctionDeltaPPa:F1} (ρ, Vt, inlet vs chamber dia; bounded)");
+        Library.Log($"InletCaptureEfficiency [-]:   {s.InletCaptureEfficiency:F4} (entrainment mult vs baseline; capped ~1.09)");
+        Library.Log($"InletPressureThrustComponentN: {s.InletPressureThrustComponentN:F2} (annulus × Δp, tiny axial term, budget-debited)");
+        Library.Log($"PressureRecoveryBudgetAfterInlet [-]: {s.PressureRecoveryBudgetAfterInlet:F3} (remaining before expander wall recovery)");
+        Library.Log($"RemainingPressureRecoveryBudget [-]: {s.RemainingPressureRecoveryBudget:F3} (after inlet + expander tap vs Vt ref)");
         Library.Log("--- Swirl-pressure recovery (expander) — HEURISTIC, not CFD; not centrifugal thrust ---");
         Library.Log($"SwirlPressureRisePa:          {s.SwirlPressureRisePa:F1} (order rho*v_theta^2/r wall rise, bounded)");
         Library.Log($"ExpanderWallAxialForceN:      {s.ExpanderWallAxialForceN:F2} (axial wall component only, capped)");
@@ -72,7 +79,7 @@ internal static class ResultReporter
         Library.Log($"ExitVelocityMps:              {s.ExitVelocityMps:F2}");
         Library.Log($"SourceOnlyThrustN:            {s.SourceOnlyThrustN:F2} (baseline: mdot_core * V_core)");
         Library.Log($"MomentumThrustComponentN:     {s.MomentumThrustComponentN:F2} (mdot_mix * V_exit)");
-        Library.Log($"PressureThrustComponentN:     {s.PressureThrustComponentN:F2} (swirl-pressure recovery on expander walls)");
+        Library.Log($"PressureThrustComponentN:     {s.PressureThrustComponentN:F2} (expander wall {s.ExpanderWallAxialForceN:F2} + inlet {s.InletPressureThrustComponentN:F2})");
         Library.Log($"FinalThrustN:                 {s.FinalThrustN:F2} (momentum + pressure components; CV-style)");
         Library.Log($"ExtraThrustN:                 {s.ExtraThrustN:F2}");
         Library.Log($"ThrustGainRatio [-]:          {s.ThrustGainRatio:F3}");
@@ -100,13 +107,14 @@ internal static class ResultReporter
         Library.Log("- Steady, lumped control-volume style; no Navier–Stokes, no chemistry, no shock fitting — not CFD-calibrated.");
         Library.Log("- Core thrust baseline: F0 ≈ mdot_core * V_core (no pressure-thrust / area term).");
         Library.Log("- Injector jet speed: HEURISTIC blend of V_core×(A_source/A_inj) and mdot/(ρ_core A_inj); source speed drives when areas match.");
-        Library.Log("- HEURISTIC: entrainment — bounded formula using V_core scale, inlet/chamber areas, L/D, InjectorAxialPositionRatio, swirl number.");
+        Library.Log("- HEURISTIC: entrainment — bounded formula using V_core scale, inlet/chamber areas, L/D, InjectorAxialPositionRatio, swirl number; optional small inlet-suction capture bump from same budget.");
         Library.Log("- HEURISTIC: pressure-loss — named fractions; swirl term uses saturating S/(1+S) form, not S²-dominated.");
         Library.Log("- Mixed velocity: axial momentum dilution × (1 - loss_total), then optional numeric floor.");
         Library.Log("- HEURISTIC: expansion efficiency — angle + length + area ratio + PR; not a characteristic nozzle solution.");
         Library.Log("- HEURISTIC: stator recovery — vane angle vs implied swirl turning angle, capped η (no full energy recovery).");
+        Library.Log("- HEURISTIC: inlet low-pressure / suction (post-mix) — capture + tiny annulus thrust only; debited from shared pressure-recovery budget before expander; not CFD.");
         Library.Log("- HEURISTIC: swirl-pressure recovery on angled expander walls (post-mix, pre-stator) — NOT CFD, NOT centrifugal thrust; tangential budget reduced before stator.");
-        Library.Log("- Chamber swirl decay before stator: exponential in L/D — heuristic; then debit from same budget if wall pressure recovery is nonzero.");
+        Library.Log("- Chamber swirl decay before stator: exponential in L/D — heuristic; then inlet + expander debits on same swirl/pressure budget (no stacked full recovery).");
         Library.Log("- Yaw/pitch/roll: see SwirlMath XML; roll ignored for axisymmetric physics.");
         Library.Log("- AmbientTemperatureK not used in equations (P_amb, rho_amb, T_exhaust for ρ_core blend).");
     }

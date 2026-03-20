@@ -33,10 +33,36 @@ public sealed class NozzleSolvedState
     public double InjectorSwirlNumber { get; init; }
 
     /// <summary>
-    /// Chamber-decayed swirl metric for stator heuristic, <b>after</b> swirl-pressure recovery
-    /// has reduced the available tangential budget (no double counting with expander wall term).
+    /// Chamber-decayed swirl metric for stator heuristic, <b>after</b> inlet + expander pressure
+    /// recovery debits on the shared swirl/pressure budget (no double counting).
     /// </summary>
     public double ChamberSwirlNumberForStator { get; init; }
+
+    /// <summary>
+    /// HEURISTIC — NOT CFD: magnitude of low-pressure tendency near inlet/core from swirl + entrainment
+    /// (suction / capture recovery — not a free-energy source). Not CFD-calibrated.
+    /// </summary>
+    public double InletSuctionDeltaPPa { get; init; }
+
+    /// <summary>
+    /// Effective entrainment multiplier from inlet suction (1.0 = none). Same budget as expander recovery.
+    /// </summary>
+    public double InletCaptureEfficiency { get; init; }
+
+    /// <summary>
+    /// HEURISTIC axial force from inlet annulus × suction Δp; small, capped, debited from pressure budget.
+    /// </summary>
+    public double InletPressureThrustComponentN { get; init; }
+
+    /// <summary>
+    /// Fraction [0,1] of swirl-pressure recovery potential left after inlet debit, before expander wall term.
+    /// </summary>
+    public double PressureRecoveryBudgetAfterInlet { get; init; }
+
+    /// <summary>
+    /// Residual pressure/swirl recovery budget after inlet + expander taps (tangential scale vs undebited reference).
+    /// </summary>
+    public double RemainingPressureRecoveryBudget { get; init; }
 
     /// <summary>
     /// HEURISTIC — NOT CFD: estimated wall pressure rise from swirl-induced radial gradient
@@ -62,7 +88,7 @@ public sealed class NozzleSolvedState
     /// <summary>Control-volume momentum flux term: mdot_mix * V_exit.</summary>
     public double MomentumThrustComponentN { get; init; }
 
-    /// <summary>Swirl-pressure recovery contribution on expander walls (axial), separate from momentum term.</summary>
+    /// <summary>Sum of expander wall + inlet pressure thrust (axial CV terms), separate from momentum.</summary>
     public double PressureThrustComponentN { get; init; }
 
     public PressureLossBreakdown PressureLoss { get; init; }

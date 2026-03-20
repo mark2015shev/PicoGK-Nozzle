@@ -22,6 +22,18 @@ public sealed class NozzlePhysicsSolver
     /// <summary>HEURISTIC: projects wall pressure resultant to axial direction on angled expander (sin α), &lt; 1.</summary>
     private const double ExpanderWallAxialProjectionCoefficientHeuristic = 0.48;
 
+    /// <summary>
+    /// HEURISTIC — NOT CFD: scales inlet low-pressure / suction Δp from swirl + geometry (not free energy;
+    /// same budget as entrainment and expander wall recovery).
+    /// </summary>
+    private const double InletSuctionPressureCoefficientHeuristic = 0.19;
+
+    /// <summary>HEURISTIC: maps suction Δp into a small entrainment multiplier bump (conservative cap).</summary>
+    private const double InletSuctionCaptureBoostFromDeltaPHeuristic = 2.1e-5;
+
+    /// <summary>HEURISTIC: axial projection on inlet annulus (capture area) for suction thrust; keep small.</summary>
+    private const double InletPressureThrustAreaFactorHeuristic = 0.065;
+
     /// <summary>Weight on V_core×(A_source/A_inj) in jet-speed blend; remainder is continuity mdot/(ρA).</summary>
     public const double InjectorJetVelocityDriverBlend = 0.88;
 
@@ -93,6 +105,30 @@ public sealed class NozzlePhysicsSolver
         double chamberOpenness = Math.Clamp(Math.Sqrt(chamberToSource), 0.4, 2.2);
         double swirlBoost = injectorSwirlNumber / (1.0 + 0.9 * injectorSwirlNumber);
 
+        double injectorToSourceArea = injectorAreaMm2 / Math.Max(sourceAreaMm2, 1e-12);
+        PressureLossBreakdown loss = PressureLossMath.Compute(injectorToSourceArea, chamberLd, injectorSwirlNumber);
+        string dominantLoss = PressureLossMath.DominantContribution(loss);
+
+        double vFloor = 0.42 * vCore;
+        double rhoAmbient = source.AmbientDensityKgPerM3;
+
+        void MixedFromEntrainment(
+            double er,
+            out double ambM,
+            out double mixM,
+            out double vIdeal,
+            out double vAfterLoss,
+            out double vMixed)
+        {
+            ambM = coreMdot * er;
+            mixM = coreMdot + ambM;
+            vIdeal = coreMdot * vCore / Math.Max(mixM, 1e-12);
+            vAfterLoss = vIdeal * (1.0 - loss.FractionTotal);
+            vMixed = vAfterLoss;
+            if (vMixed < vFloor)
+                vMixed = vFloor;
+        }
+
         double momentumScale = Math.Clamp(vCore / 420.0, 0.65, 1.35);
         double placementMix = 0.88 + 0.20 * rAx;
 
@@ -101,33 +137,87 @@ public sealed class NozzlePhysicsSolver
                 0.10 * capture * chamberOpenness * placementMix
                 + 0.14 * Math.Clamp(chamberLd, 0.12, 2.8) * swirlBoost * (0.95 + 0.10 * rAx));
 
-        double entrainmentRatio = Math.Clamp(entrainmentRaw, 0.0, 1.35);
+        double entrainmentRatioBase = Math.Clamp(entrainmentRaw, 0.0, 1.35);
+
+        // Pass 1: baseline mix for ρ and Vt scale used to estimate inlet suction (conservative, not extra energy).
+        MixedFromEntrainment(entrainmentRatioBase, out _, out double mixedMdotPre, out _, out _, out double mixedVelocityPre);
+
+        double volCorePre = coreMdot / Math.Max(rhoCore, 1e-9);
+        double ambMdotPre = coreMdot * entrainmentRatioBase;
+        double volAmbPre = ambMdotPre / Math.Max(rhoAmbient, 1e-9);
+        double rhoMixPre = mixedMdotPre / Math.Max(volCorePre + volAmbPre, 1e-12);
+        rhoMixPre = Math.Clamp(rhoMixPre, 0.2, 25.0);
+
+        double dInletM = design.InletDiameterMm / 1000.0;
+        double dChamberM = design.SwirlChamberDiameterMm / 1000.0;
+        double chamberToInletDiameterRatio = dChamberM / Math.Max(dInletM, 1e-9);
+        double geomInletSuction = Math.Clamp((chamberToInletDiameterRatio - 1.0) / 1.30, 0.0, 1.0);
+
+        double vThetaInletEstimate = mixedVelocityPre * (chamberSwirlRaw / (1.0 + chamberSwirlRaw));
+        vThetaInletEstimate = Math.Min(vThetaInletEstimate, 0.90 * mixedVelocityPre);
+
+        double inletSuctionForCaptureBoostPa = InletSuctionPressureCoefficientHeuristic * rhoMixPre * vThetaInletEstimate * vThetaInletEstimate * geomInletSuction;
+        inletSuctionForCaptureBoostPa = Math.Min(inletSuctionForCaptureBoostPa, 0.065 * rhoMixPre * mixedVelocityPre * mixedVelocityPre);
+        inletSuctionForCaptureBoostPa = Math.Min(inletSuctionForCaptureBoostPa, 5200.0);
+        inletSuctionForCaptureBoostPa = Math.Max(0.0, inletSuctionForCaptureBoostPa);
+
+        double captureBoost = InletSuctionCaptureBoostFromDeltaPHeuristic * inletSuctionForCaptureBoostPa * (0.30 + 0.70 * swirlBoost);
+        captureBoost = Math.Min(captureBoost, 0.058);
+        double captureMult = 1.0 + captureBoost;
+
+        double entrainmentRatio = Math.Clamp(entrainmentRatioBase * captureMult, 0.0, 1.35);
+        double inletCaptureEfficiency = Math.Min(entrainmentRatio / Math.Max(entrainmentRatioBase, 1e-9), 1.09);
+
         if (entrainmentRatio >= 1.32)
             warnings.Add("Unrealistic entrainment: ratio hit upper heuristic cap (1.35); treat as optimistic.");
 
         if (entrainmentRatio > 0.90 && inletToSource < 1.12)
             warnings.Add("Unrealistic entrainment: high ratio with only modest inlet capture (A_inlet/A_source).");
 
-        double ambientMdot = coreMdot * entrainmentRatio;
-        double mixedMdot = coreMdot + ambientMdot;
+        MixedFromEntrainment(
+            entrainmentRatio,
+            out double ambientMdot,
+            out double mixedMdot,
+            out double mixedVelocityIdeal,
+            out double mixedVelocityAfterLoss,
+            out double mixedVelocity);
 
-        double mixedVelocityIdeal = coreMdot * vCore / Math.Max(mixedMdot, 1e-12);
-
-        double injectorToSourceArea = injectorAreaMm2 / Math.Max(sourceAreaMm2, 1e-12);
-        PressureLossBreakdown loss = PressureLossMath.Compute(injectorToSourceArea, chamberLd, injectorSwirlNumber);
-        string dominantLoss = PressureLossMath.DominantContribution(loss);
-
-        double mixedVelocityAfterLoss = mixedVelocityIdeal * (1.0 - loss.FractionTotal);
         if (mixedVelocityAfterLoss < 0.45 * vCore && mixedVelocityIdeal > 1e-6)
             warnings.Add("Severe mixed-velocity collapse: dilution and/or heuristic losses reduced axial speed well below core speed (before numeric floor).");
 
-        double vFloor = 0.42 * vCore;
-        double mixedVelocity = mixedVelocityAfterLoss;
-        if (mixedVelocity < vFloor)
-        {
+        if (mixedVelocityAfterLoss < vFloor && mixedVelocityIdeal > 1e-6)
             warnings.Add("Severe mixed-velocity collapse: applied minimum floor (0.42 * V_core); raw mixed speed was lower.");
-            mixedVelocity = vFloor;
-        }
+
+        // -------------------------------------------------------------------------
+        // HEURISTIC — NOT CFD: inlet low-pressure / suction (post-mix estimate, same swirl/pressure budget).
+        // Models a low-pressure region near inlet/core from swirl + entrainment as capture recovery only —
+        // not a free-energy bonus. Debited before expander wall pressure recovery.
+        // -------------------------------------------------------------------------
+        double volFlowCore = coreMdot / Math.Max(rhoCore, 1e-9);
+        double volFlowAmb = ambientMdot / Math.Max(rhoAmbient, 1e-9);
+        double rhoMix = mixedMdot / Math.Max(volFlowCore + volFlowAmb, 1e-12);
+        rhoMix = Math.Clamp(rhoMix, 0.2, 25.0);
+
+        double vThetaForInletReport = mixedVelocity * (chamberSwirlRaw / (1.0 + chamberSwirlRaw));
+        vThetaForInletReport = Math.Min(vThetaForInletReport, 0.90 * mixedVelocity);
+
+        double inletSuctionDeltaPPa = InletSuctionPressureCoefficientHeuristic * rhoMix * vThetaForInletReport * vThetaForInletReport * geomInletSuction;
+        inletSuctionDeltaPPa = Math.Min(inletSuctionDeltaPPa, 0.065 * rhoMix * mixedVelocity * mixedVelocity);
+        inletSuctionDeltaPPa = Math.Min(inletSuctionDeltaPPa, 5200.0);
+        inletSuctionDeltaPPa = Math.Max(0.0, inletSuctionDeltaPPa);
+
+        double inletAnnulusAreaM2 = Math.Max(0.0, inletAreaM2 - sourceAreaM2);
+        double inletPressureThrustComponentN = Math.Min(
+            0.032 * mixedMdot * mixedVelocity,
+            inletSuctionDeltaPPa * inletAnnulusAreaM2 * InletPressureThrustAreaFactorHeuristic);
+        inletPressureThrustComponentN = Math.Max(0.0, inletPressureThrustComponentN);
+
+        double inletCaptureCost = Math.Clamp(4.0 * (captureMult - 1.0), 0.0, 0.11);
+        double inletThrustCost = Math.Clamp(
+            inletPressureThrustComponentN / (0.17 * mixedMdot * mixedVelocity + 1.0),
+            0.0,
+            0.085);
+        double pressureRecoveryBudgetAfterInlet = Math.Clamp(1.0 - inletCaptureCost - inletThrustCost, 0.45, 1.0);
 
         // -------------------------------------------------------------------------
         // HEURISTIC — NOT CFD: swirl-pressure recovery on expander walls (after mixing, BEFORE stator).
@@ -135,16 +225,13 @@ public sealed class NozzlePhysicsSolver
         // higher wall pressure on outer contour, projected axially on angled expander surfaces.
         // This is NOT an additive "centrifugal bonus force"; it is a bounded pressure-recovery / wall-force
         // term drawn from the same tangential-energy budget as stator recovery (no double counting).
+        // Inlet suction / capture and optional inlet pressure thrust debit the same budget first.
         // -------------------------------------------------------------------------
-        double rhoAmbient = source.AmbientDensityKgPerM3;
-        double volFlowCore = coreMdot / Math.Max(rhoCore, 1e-9);
-        double volFlowAmb = ambientMdot / Math.Max(rhoAmbient, 1e-9);
-        double rhoMix = mixedMdot / Math.Max(volFlowCore + volFlowAmb, 1e-12);
-        rhoMix = Math.Clamp(rhoMix, 0.2, 25.0);
+        // Undebited tangential reference (for reporting + stator mapping); expander uses sqrt(budget) tap.
+        double vThetaSwirlBase = mixedVelocity * (chamberSwirlRaw / (1.0 + chamberSwirlRaw));
+        vThetaSwirlBase = Math.Min(vThetaSwirlBase, 0.90 * mixedVelocity);
 
-        // Tangential speed scale in mixed flow (same swirl budget as chamberSwirlRaw); bounded vs axial bulk.
-        double vThetaPreExpander = mixedVelocity * (chamberSwirlRaw / (1.0 + chamberSwirlRaw));
-        vThetaPreExpander = Math.Min(vThetaPreExpander, 0.90 * mixedVelocity);
+        double vThetaPreExpander = vThetaSwirlBase * Math.Sqrt(pressureRecoveryBudgetAfterInlet);
 
         double rChamberM = 0.5 * design.SwirlChamberDiameterMm / 1000.0;
         double dpSwirlHeuristic = SwirlPressureRiseCoefficientHeuristic * rhoMix * vThetaPreExpander * vThetaPreExpander
@@ -188,10 +275,17 @@ public sealed class NozzlePhysicsSolver
             ? Math.Clamp(1.0 - (vThetaRem / vThetaPreExpander) * (vThetaRem / vThetaPreExpander), 0.0, 0.35)
             : 0.0;
 
-        double chamberSwirlForStator = vThetaPreExpander > 1e-9
-            ? chamberSwirlRaw * (vThetaRem / vThetaPreExpander)
+        // Map remaining tangential scale back to dimensionless swirl vs undebited vThetaSwirlBase
+        // so inlet budget (sqrt) and expander tap both reduce stator recovery vs raw chamberSwirlRaw.
+        double chamberSwirlForStator = vThetaSwirlBase > 1e-9
+            ? chamberSwirlRaw * (vThetaRem / vThetaSwirlBase)
             : 0.0;
         chamberSwirlForStator = Math.Clamp(chamberSwirlForStator, 0.0, 8.0);
+
+        double remainingPressureRecoveryBudget = Math.Clamp(
+            vThetaRem / Math.Max(vThetaSwirlBase, 1e-9),
+            0.0,
+            1.0);
 
         double expansionEfficiency = EstimateExpansionEfficiency(design, source, warnings);
         double axialRecovery = EstimateStatorAxialRecovery(design, chamberSwirlForStator, warnings);
@@ -201,7 +295,7 @@ public sealed class NozzlePhysicsSolver
 
         double sourceOnlyThrust = coreMdot * vCore;
         double momentumThrust = mixedMdot * exitVelocity;
-        double pressureThrust = expanderWallAxialForceN;
+        double pressureThrust = expanderWallAxialForceN + inletPressureThrustComponentN;
         double finalThrust = momentumThrust + pressureThrust;
         double extraThrust = finalThrust - sourceOnlyThrust;
         double thrustGainRatio = finalThrust / Math.Max(sourceOnlyThrust, 1e-9);
@@ -219,6 +313,11 @@ public sealed class NozzlePhysicsSolver
             AxialVelocityComponentMps = vAx,
             InjectorSwirlNumber = injectorSwirlNumber,
             ChamberSwirlNumberForStator = chamberSwirlForStator,
+            InletSuctionDeltaPPa = inletSuctionDeltaPPa,
+            InletCaptureEfficiency = inletCaptureEfficiency,
+            InletPressureThrustComponentN = inletPressureThrustComponentN,
+            PressureRecoveryBudgetAfterInlet = pressureRecoveryBudgetAfterInlet,
+            RemainingPressureRecoveryBudget = remainingPressureRecoveryBudget,
             SwirlPressureRisePa = swirlPressureRisePa,
             ExpanderWallAxialForceN = expanderWallAxialForceN,
             SwirlPressureRecoveryEfficiency = swirlPressureRecoveryEfficiency,
