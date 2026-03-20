@@ -3,6 +3,9 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# PicoGK_Run: generated / exported mesh files (physics-first phase; do not commit)
+*.stl
+
 # dotenv files
 .env
 
