@@ -1,7 +1,8 @@
 namespace PicoGK_Run.Core;
 
 /// <summary>
-/// Physics solver outputs only.
+/// Solver outputs for reporting / geometry. Populated by <see cref="PicoGK_Run.Infrastructure.NozzleFlowCompositionRoot"/>
+/// (SI flow) or legacy <see cref="PicoGK_Run.Physics.NozzlePhysicsSolver"/>.
 /// </summary>
 public sealed class NozzleSolvedState
 {

@@ -5,6 +5,10 @@ using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run;
 
+/// <summary>
+/// Minimal entry: build <see cref="NozzleInput"/> → run <see cref="AppPipeline"/> → log.
+/// SI physics + flow march live in <see cref="PicoGK_Run.Infrastructure.NozzleFlowCompositionRoot"/> (see remarks there for file map).
+/// </summary>
 internal static class Program
 {
     private static void Main(string[] args)

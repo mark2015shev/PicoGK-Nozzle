@@ -14,8 +14,8 @@ internal static class ResultReporter
         NozzleSolvedState s = result.Solved;
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
-        Library.Log("=== Physics-first parametric nozzle / ejector estimate ===");
-        Library.Log("(Heuristic / first-order — not CFD-calibrated, not test-stand validated.)");
+        Library.Log("=== Nozzle / ejector estimate (SI flow drives geometry) ===");
+        Library.Log("Flow: lumped isentropic jet + entrainment march (NozzleFlowCompositionRoot). Not CFD.");
 
         Library.Log("--- Source + ambient (boundary only, no engine geometry) ---");
         Library.Log($"SourceOutletAreaMm2 [mm2]:    {input.Source.SourceOutletAreaMm2:F2} (authoritative)");

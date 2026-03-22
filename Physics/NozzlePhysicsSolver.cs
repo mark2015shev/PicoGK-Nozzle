@@ -6,8 +6,8 @@ using PicoGK_Run.Parameters;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Physics-first parametric nozzle / ejector estimator. All non-trivial sub-models are
-/// explicit <b>heuristics</b> — not CFD, not test-stand calibrated.
+/// Legacy heuristic nozzle / ejector estimator (mm + named losses). Retained for reference;
+/// the default app path uses the SI stack in <see cref="PicoGK_Run.Infrastructure.NozzleFlowCompositionRoot"/> instead.
 /// </summary>
 public sealed class NozzlePhysicsSolver
 {
