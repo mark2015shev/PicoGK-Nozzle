@@ -4,23 +4,47 @@ using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Geometry;
 
+/// <summary>
+/// Assembles nozzle segments along +X. Neighboring solids overlap slightly so voxel unions stay watertight;
+/// exact face-touching bodies can look detached in the viewer — overlap is intentional.
+/// </summary>
 public sealed class NozzleGeometryBuilder
 {
+    /// <summary>Axial overlap between consecutive segments [mm] for robust <see cref="Voxels.BoolAdd"/>.</summary>
+    public const float AssemblyOverlapMm = 0.75f;
+
     public NozzleGeometryResult Build(NozzleDesignInputs design, NozzleSolvedState solved)
     {
+        float overlap = AssemblyOverlapMm;
+
         float x = 0f;
 
         Voxels inlet = InletBuilder.Build(design, x, out float xAfterInlet);
 
-        Voxels swirl = SwirlChamberBuilder.Build(design, xAfterInlet, out float xAfterSwirl);
+        float xSwirlStart = xAfterInlet - overlap;
+        Voxels swirl = SwirlChamberBuilder.Build(design, xSwirlStart, out float xAfterSwirl);
 
-        Voxels injectorMarkers = InjectorReferenceMarkersBuilder.Build(design, xAfterInlet);
+        // Injector station: measured from nominal chamber inlet plane (not overlap-shifted start).
+        Voxels injectorMarkers = InjectorRingBuilder.Build(design, xAfterInlet);
 
-        Voxels expander = ExpanderBuilder.Build(design, xAfterSwirl, out float xAfterExpander);
+        float xExpStart = xAfterSwirl - overlap;
+        Voxels expander = ExpanderBuilder.Build(design, xExpStart, out float xAfterExpander, out float expanderEndInnerR);
 
-        Voxels stator = StatorSectionBuilder.Build(design, xAfterExpander, out float xAfterStator);
+        float xStatorStart = xAfterExpander - overlap;
+        Voxels stator = StatorSectionBuilder.Build(
+            design,
+            xStatorStart,
+            expanderEndInnerR,
+            out float xAfterStator,
+            out float statorDownstreamInnerR);
 
-        Voxels exit = ExitBuilder.Build(design, xAfterStator, out float xAfterExit);
+        float xExitStart = xAfterStator - overlap;
+        Voxels exit = ExitBuilder.Build(
+            design,
+            xExitStart,
+            statorDownstreamInnerR,
+            out float xAfterExit,
+            out _);
 
         return new NozzleGeometryResult(
             inlet: inlet,

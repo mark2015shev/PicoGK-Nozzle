@@ -7,11 +7,19 @@ namespace PicoGK_Run.Geometry;
 
 public static class StatorSectionBuilder
 {
-    public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd)
+    /// <param name="upstreamInnerRadiusMm">Inner gas path radius at expander outlet (must match expander end).</param>
+    /// <param name="downstreamInnerRadiusMm">Inner radius at stator outlet (same as inlet for straight shell).</param>
+    public static Voxels Build(
+        NozzleDesignInputs d,
+        float xStart,
+        float upstreamInnerRadiusMm,
+        out float xEnd,
+        out float downstreamInnerRadiusMm)
     {
-        float innerR = 0.5f * (float)d.ExitDiameterMm;
+        float innerR = Math.Max(0.5f, upstreamInnerRadiusMm);
+        downstreamInnerRadiusMm = innerR;
         float wallThicknessMm = (float)d.WallThicknessMm;
-        float length = Math.Max(10f, 0.10f * (float)d.ExitDiameterMm);
+        float length = Math.Max(10f, 0.10f * Math.Max(innerR * 2f, (float)d.ExitDiameterMm));
 
         Vector3 p0 = new(xStart, 0f, 0f);
         Vector3 p1 = new(xStart + length, 0f, 0f);
@@ -24,12 +32,16 @@ public static class StatorSectionBuilder
         Voxels section = new(shellOuter);
         section.BoolSubtract(new Voxels(shellInner));
 
-        // Lightweight vane markers to expose vane count and angle in geometry.
         int vaneCount = Math.Max(1, d.StatorVaneCount);
         float vaneAngleRad = (float)(d.StatorVaneAngleDeg * Math.PI / 180.0);
         float dPhi = (2f * MathF.PI) / vaneCount;
         float vaneStartX = xStart + 1.0f;
         float vaneEndX = xStart + length - 1.0f;
+
+        float vaneRadius = Math.Max(0.6f, 0.035f * Math.Max(innerR * 2f, (float)d.ExitDiameterMm));
+        // Keep vane beams inside the gas passage (clear of outer wall).
+        float radialMax = Math.Max(innerR - vaneRadius - 0.6f, innerR * 0.5f);
+        float radialCenter = Math.Clamp(innerR * 0.72f, vaneRadius + 0.5f, radialMax);
 
         for (int i = 0; i < vaneCount; i++)
         {
@@ -38,9 +50,8 @@ public static class StatorSectionBuilder
             Vector3 tangent = new(0f, -MathF.Sin(phi), MathF.Cos(phi));
             Vector3 axisSkew = Vector3.Normalize((MathF.Cos(vaneAngleRad) * Vector3.UnitX) + (MathF.Sin(vaneAngleRad) * tangent));
 
-            float vaneRadius = Math.Max(0.8f, 0.04f * (float)d.ExitDiameterMm);
-            Vector3 start = new Vector3(vaneStartX, 0f, 0f) + ((innerR - 1.5f) * radial);
-            Vector3 end = new Vector3(vaneEndX, 0f, 0f) + ((innerR - 1.5f) * radial) + (2.0f * axisSkew);
+            Vector3 start = new Vector3(vaneStartX, 0f, 0f) + (radialCenter * radial);
+            Vector3 end = new Vector3(vaneEndX, 0f, 0f) + (radialCenter * radial) + (1.2f * axisSkew);
 
             Lattice vane = new();
             vane.AddBeam(start, end, vaneRadius, vaneRadius, false);

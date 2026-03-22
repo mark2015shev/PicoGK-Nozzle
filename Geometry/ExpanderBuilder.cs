@@ -5,18 +5,21 @@ using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Geometry;
 
+/// <summary>
+/// Conical expander: inner radius follows <see cref="NozzleDesignInputs.ExpanderHalfAngleDeg"/> exactly
+/// (no averaging with <see cref="NozzleDesignInputs.ExitDiameterMm"/>). Implied exit diameter is geometric.
+/// </summary>
 public static class ExpanderBuilder
 {
-    public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd)
+    public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd, out float endInnerRadiusMm)
     {
         float length = (float)d.ExpanderLengthMm;
         float chamberInnerR = 0.5f * (float)d.SwirlChamberDiameterMm;
         float wallThicknessMm = (float)d.WallThicknessMm;
 
         float halfAngleRad = (float)(Math.PI * d.ExpanderHalfAngleDeg / 180.0);
-        float expansionByAngleR = chamberInnerR + (MathF.Tan(halfAngleRad) * length);
-        float designExitR = 0.5f * (float)d.ExitDiameterMm;
-        float exitInnerR = Math.Max(chamberInnerR, 0.5f * (expansionByAngleR + designExitR));
+        float exitInnerR = chamberInnerR + (MathF.Tan(halfAngleRad) * length);
+        endInnerRadiusMm = exitInnerR;
 
         Vector3 p0 = new(xStart, 0f, 0f);
         Vector3 p1 = new(xStart + length, 0f, 0f);

@@ -11,6 +11,7 @@ namespace PicoGK_Run.Geometry;
 /// </summary>
 public static class InjectorReferenceMarkersBuilder
 {
+    /// <summary>Axial station: <paramref name="chamberStartX"/> + <see cref="NozzleDesignInputs.InjectorAxialPositionRatio"/> × chamber length (0 = upstream, 1 = downstream).</summary>
     public static Voxels Build(NozzleDesignInputs d, float chamberStartX)
     {
         int n = Math.Max(1, d.InjectorCount);
