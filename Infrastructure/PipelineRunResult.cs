@@ -15,17 +15,22 @@ public sealed class PipelineRunResult
     /// <summary>Compressible SI march diagnostics when the detailed path ran; null if legacy-only.</summary>
     public SiFlowDiagnostics? SiFlow { get; }
 
+    /// <summary>Four critical ratio groups + supporting radii (heuristic design envelope).</summary>
+    public NozzleCriticalRatiosSnapshot? CriticalRatios { get; }
+
     public PipelineRunResult(
         NozzleInput input,
         NozzleSolvedState solved,
         NozzleGeometryResult geometry,
         IReadOnlyList<string> solverWarnings,
-        SiFlowDiagnostics? siFlow = null)
+        SiFlowDiagnostics? siFlow = null,
+        NozzleCriticalRatiosSnapshot? criticalRatios = null)
     {
         Input = input;
         Solved = solved;
         Geometry = geometry;
         SolverWarnings = solverWarnings;
         SiFlow = siFlow;
+        CriticalRatios = criticalRatios;
     }
 }

@@ -214,13 +214,20 @@ public static class NozzleFlowCompositionRoot
 
         PrintPhysicsSummary(inletState, designResult, siDiag);
 
-        IReadOnlyList<string> warnings = new[]
+        NozzleCriticalRatiosSnapshot criticalRatios = NozzleCriticalRatios.Compute(
+            drivenDesign,
+            input.Source,
+            solved,
+            siDiag);
+
+        var warnings = new List<string>
         {
             "SI path: compressible entrainment march + first-order stator/expander bookkeeping (not CFD)."
         };
+        warnings.AddRange(NozzleDesignHealthCheck.Validate(drivenDesign, criticalRatios, siDiag));
 
         NozzleInput effectiveInput = new NozzleInput(input.Source, drivenDesign, input.Run);
-        return new PipelineRunResult(effectiveInput, solved, geometry, warnings, siDiag);
+        return new PipelineRunResult(effectiveInput, solved, geometry, warnings, siDiag, criticalRatios);
     }
 
     private static double ExpanderAxialProjectedAreaM2(NozzleDesignInputs d)

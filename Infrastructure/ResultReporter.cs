@@ -41,6 +41,27 @@ internal static class ResultReporter
         Library.Log($"Stator vane angle / count:    {input.Design.StatorVaneAngleDeg:F2} deg / {input.Design.StatorVaneCount}");
         Library.Log($"WallThicknessMm:              {input.Design.WallThicknessMm:F2}");
 
+        if (result.CriticalRatios != null)
+        {
+            NozzleCriticalRatiosSnapshot cr = result.CriticalRatios;
+            Library.Log("--- Four critical ratios (design envelope — heuristic, not CFD) ---");
+            Library.Log("R1 σ = A_inlet/A_chamber (capture openness vs bore):");
+            Library.Log($"    CaptureToChamberAreaRatio [-]: {cr.CaptureToChamberAreaRatio:F3}");
+            Library.Log("R2 S = |Vt|/|Va| at injector (swirl injection intensity):");
+            Library.Log($"    InjectorSwirlNumber [-]:       {cr.InjectorSwirlNumber:F3}");
+            Library.Log("R3 Λ = L_chamber / D_chamber (mixing slenderness):");
+            Library.Log($"    ChamberSlendernessLD [-]:      {cr.ChamberSlendernessLD:F3}");
+            Library.Log($"    A_inj / A_chamber [-]:         {cr.InjectorPortToChamberAreaRatio:F3}");
+            Library.Log("R4 Expander + exit / stator hints:");
+            Library.Log($"    ExpanderHalfAngleDeg [deg]:    {cr.ExpanderHalfAngleDeg:F2}");
+            Library.Log($"    R_expander_end [mm]:           {cr.ExpanderEndInnerRadiusMm:F2}  R_exit_target [mm]: {cr.ExitTargetInnerRadiusMm:F2}");
+            Library.Log($"    |R_exp−R_exit|/R_chamber [-]:  {cr.ExpanderExitToTargetRadiusMismatchRatio:F3}");
+            Library.Log($"    |stator−injector yaw| [deg]:   {cr.StatorToInjectorYawMismatchDeg:F1}");
+            if (cr.SolvedEntrainmentRatio.HasValue)
+                Library.Log($"    Solved ṁ_amb/ṁ_core [-]:       {cr.SolvedEntrainmentRatio.Value:F3}");
+            Library.Log("Tune σ, S, Λ, and expander angle together; see health warnings below.");
+        }
+
         Library.Log("--- Geometry meaning (viewer) ---");
         Library.Log("Injector geometry = REFERENCE MARKERS ONLY (beams): not flow passages, not meshed holes.");
         Library.Log("Future: replace with real injector port solids when modeling passages.");
