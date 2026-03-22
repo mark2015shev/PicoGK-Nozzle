@@ -15,7 +15,8 @@ public sealed class NozzleDesigner
         IReadOnlyList<JetState> flowStates,
         double outletAreaM2,
         double ambientPressurePa,
-        double freestreamVelocityMps)
+        double freestreamVelocityMps,
+        SiFlowDiagnostics? siDiagnostics = null)
     {
         if (flowStates.Count == 0)
             throw new ArgumentException("flowStates must contain at least one state.", nameof(flowStates));
@@ -23,13 +24,15 @@ public sealed class NozzleDesigner
         JetState outlet = flowStates[^1];
         double mixingLengthM = outlet.AxialPositionM - flowStates[0].AxialPositionM;
 
-        double thrustN = _thrust.ComputeThrustN(
-            outlet.TotalMassFlowKgS,
-            outlet.VelocityMps,
-            freestreamVelocityMps,
-            outlet.PressurePa,
-            ambientPressurePa,
-            outlet.AreaM2);
+        double thrustN = siDiagnostics != null
+            ? siDiagnostics.NetThrustN
+            : _thrust.ComputeThrustN(
+                outlet.TotalMassFlowKgS,
+                outlet.VelocityMps,
+                freestreamVelocityMps,
+                outlet.PressurePa,
+                ambientPressurePa,
+                outlet.AreaM2);
 
         double aIn = Math.Max(inletState.AreaM2, 1e-12);
         double aOut = Math.Max(outletAreaM2, 1e-12);

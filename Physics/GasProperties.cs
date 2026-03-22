@@ -40,4 +40,43 @@ public sealed class GasProperties
     {
         return 0.5 * densityKgM3 * velocityMps * velocityMps;
     }
+
+    public double MachNumber(double velocityMps, double temperatureK)
+    {
+        double a = SpeedOfSound(temperatureK);
+        if (a < 1e-6)
+            return 0.0;
+        return Math.Abs(velocityMps) / a;
+    }
+
+    /// <summary>Critical pressure ratio P*/P0 for isentropic choking.</summary>
+    public double CriticalPressureRatio()
+    {
+        double g = Gamma;
+        return Math.Pow(2.0 / (g + 1.0), g / (g - 1.0));
+    }
+
+    /// <summary>Choked mass flow per unit area [kg/(s·m²)] at M = 1 from (P0, T0).</summary>
+    public double ChokedMassFlux(double totalPressurePa, double totalTemperatureK)
+    {
+        return CompressibleFlowMath.ChokedMassFluxPerArea(
+            Math.Max(totalPressurePa, 1.0),
+            Math.Max(totalTemperatureK, 1.0),
+            Gamma,
+            R);
+    }
+
+    public double StaticPressureFromTotalAndMach(double totalPressurePa, double mach)
+    {
+        double m = Math.Clamp(Math.Abs(mach), 0.0, 50.0);
+        double ratio = CompressibleFlowMath.StaticPressureRatioFromMach(m, Gamma);
+        return Math.Max(totalPressurePa * ratio, 1.0);
+    }
+
+    public double StaticTemperatureFromTotalAndMach(double totalTemperatureK, double mach)
+    {
+        double m = Math.Clamp(Math.Abs(mach), 0.0, 50.0);
+        double ratio = CompressibleFlowMath.StaticTemperatureRatioFromMach(m, Gamma);
+        return Math.Max(totalTemperatureK * ratio, 1.0);
+    }
 }

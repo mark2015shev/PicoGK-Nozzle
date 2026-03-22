@@ -15,7 +15,7 @@ internal static class ResultReporter
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
         Library.Log("=== Nozzle / ejector estimate (SI flow drives geometry) ===");
-        Library.Log("Flow: lumped isentropic jet + entrainment march (NozzleFlowCompositionRoot). Not CFD.");
+        Library.Log("Flow: lumped isentropic jet + compressible entrainment march (NozzleFlowCompositionRoot). Not CFD.");
 
         Library.Log("--- Source + ambient (boundary only, no engine geometry) ---");
         Library.Log($"SourceOutletAreaMm2 [mm2]:    {input.Source.SourceOutletAreaMm2:F2} (authoritative)");
@@ -52,6 +52,25 @@ internal static class ResultReporter
         Library.Log($"Blended InjectorJetVelocityMps: {s.InjectorJetVelocityMps:F2} m/s (used for yaw/pitch decomposition)");
 
         Library.Log("--- Solved physics ---");
+        if (result.SiFlow != null)
+        {
+            SiFlowDiagnostics sf = result.SiFlow;
+            Library.Log("--- SI compressible march (first-order estimate; not CFD-calibrated) ---");
+            Library.Log($"Min inlet static P (entrainment solve) [Pa]: {sf.MinInletLocalStaticPressurePa:F1}");
+            Library.Log($"Max inlet Mach (entrained stream) [-]: {sf.MaxInletMach:F4}");
+            Library.Log($"Any entrainment step choked: {sf.AnyEntrainmentStepChoked}");
+            Library.Log($"Σ requested Δṁ_ent [kg/s]:     {sf.SumRequestedEntrainmentIncrementsKgS:F6}");
+            Library.Log($"Σ actual Δṁ_ent [kg/s]:       {sf.SumActualEntrainmentIncrementsKgS:F6}");
+            Library.Log($"Entrainment shortfall Σ [kg/s]: {sf.EntrainmentShortfallSumKgS:F6} (requested − actual, per-step sum)");
+            Library.Log($"Inlet axial pressure force [N]: {sf.InletAxialPressureForceN:F3} (Σ ΔP·A_capture per step, first-order)");
+            Library.Log($"Expander axial pressure force [N]: {sf.ExpanderAxialPressureForceN:F3} (ΔP_exp·A_proj, heuristic ΔP)");
+            Library.Log($"Stator recovered pressure rise [Pa]: {sf.StatorRecoveredPressureRisePa:F2} (η·Δ tangential KE → p, bounded)");
+            Library.Log($"Momentum thrust [N]:          {sf.MomentumThrustN:F3} (ṁ·V_axial CV)");
+            Library.Log($"Pressure thrust [N]:          {sf.PressureThrustN:F3} (exit plane + inlet + expander terms)");
+            Library.Log($"Net thrust [N]:               {sf.NetThrustN:F3}");
+            Library.Log($"March steps recorded:         {sf.MarchSteps.Count}");
+        }
+
         Library.Log($"CoreGasDensity ρ_core [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal gas when T_exhaust set; blend only)");
         Library.Log($"Vt / Va at injector [m/s]:    {s.TangentialVelocityComponentMps:F2} / {s.AxialVelocityComponentMps:F2}");
         Library.Log($"InjectorSwirlNumber [-]:      {s.InjectorSwirlNumber:F3} (|Vt|/|Va|, not CFD swirl)");
@@ -107,7 +126,8 @@ internal static class ResultReporter
         Library.Log("- Steady, lumped control-volume style; no Navier–Stokes, no chemistry, no shock fitting — not CFD-calibrated.");
         Library.Log("- Core thrust baseline: F0 ≈ mdot_core * V_core (no pressure-thrust / area term).");
         Library.Log("- Injector jet speed: HEURISTIC blend of V_core×(A_source/A_inj) and mdot/(ρ_core A_inj); source speed drives when areas match.");
-        Library.Log("- HEURISTIC: entrainment — bounded formula using V_core scale, inlet/chamber areas, L/D, InjectorAxialPositionRatio, swirl number; optional small inlet-suction capture bump from same budget.");
+        Library.Log("- SI default path: entrainment correlation (Ce·ρ·V·P) per step + compressible intake solve (sonic/choked cap); mixed static P mass-weighted vs ambient P — first-order, not CFD.");
+        Library.Log("- HEURISTIC (legacy solver): entrainment — bounded formula using V_core scale, inlet/chamber areas, L/D, InjectorAxialPositionRatio, swirl number; optional small inlet-suction capture bump from same budget.");
         Library.Log("- HEURISTIC: pressure-loss — named fractions; swirl term uses saturating S/(1+S) form, not S²-dominated.");
         Library.Log("- Mixed velocity: axial momentum dilution × (1 - loss_total), then optional numeric floor.");
         Library.Log("- HEURISTIC: expansion efficiency — angle + length + area ratio + PR; not a characteristic nozzle solution.");

@@ -1,0 +1,78 @@
+using System;
+
+namespace PicoGK_Run.Physics;
+
+/// <summary>
+/// Isentropic perfect-gas relations for air (γ, R from <see cref="GasProperties"/>).
+/// Side-effect free; SI units only.
+/// </summary>
+public static class CompressibleFlowMath
+{
+    public static double StaticTemperatureRatioFromMach(double mach, double gamma)
+    {
+        double m2 = mach * mach;
+        return 1.0 / (1.0 + (gamma - 1.0) / 2.0 * m2);
+    }
+
+    public static double StaticPressureRatioFromMach(double mach, double gamma)
+    {
+        double m2 = mach * mach;
+        double inner = 1.0 + (gamma - 1.0) / 2.0 * m2;
+        return Math.Pow(inner, -gamma / (gamma - 1.0));
+    }
+
+    /// <summary>
+    /// Mass flux per unit area ṁ/A [kg/(s·m²)] for isentropic nozzle flow from stagnation (P0,T0).
+    /// ṁ/A = P0/√T0 · √(γ/R) · M · (1 + (γ-1)/2 M²)^(-(γ+1)/(2(γ-1))).
+    /// </summary>
+    public static double MassFluxPerAreaFromMach(double totalPressurePa, double totalTemperatureK, double mach, double gamma, double rGas)
+    {
+        if (totalPressurePa <= 0 || totalTemperatureK <= 1.0 || mach < 0)
+            return 0.0;
+        double m = Math.Min(mach, 50.0);
+        double exponent = -(gamma + 1.0) / (2.0 * (gamma - 1.0));
+        double bracket = 1.0 + (gamma - 1.0) / 2.0 * m * m;
+        double factor = m * Math.Pow(bracket, exponent);
+        return totalPressurePa / Math.Sqrt(totalTemperatureK) * Math.Sqrt(gamma / rGas) * factor;
+    }
+
+    /// <summary>Choked mass flux per area at M = 1.</summary>
+    public static double ChokedMassFluxPerArea(double totalPressurePa, double totalTemperatureK, double gamma, double rGas)
+    {
+        return MassFluxPerAreaFromMach(totalPressurePa, totalTemperatureK, 1.0, gamma, rGas);
+    }
+
+    /// <summary>Whether isentropic flow to static P implies M = 1 or higher at minimum area (reference only).</summary>
+    public static bool IsPressureBelowCritical(double staticPressurePa, double totalPressurePa, double criticalPressureRatio)
+    {
+        if (totalPressurePa <= 0)
+            return false;
+        double pr = staticPressurePa / totalPressurePa;
+        return pr <= criticalPressureRatio * 1.0001;
+    }
+
+    /// <summary>
+    /// Subsonic mass flow through area A from large reservoir (P0,T0) to static P.
+    /// Uses isentropic T(P), then V = √(2 cp (T0-T)), capped at local sonic speed.
+    /// </summary>
+    public static double MassFlowFromStagnationToStaticPressure(
+        GasProperties gas,
+        double totalPressurePa,
+        double totalTemperatureK,
+        double staticPressurePa,
+        double areaM2)
+    {
+        double g = GasProperties.Gamma;
+        if (areaM2 <= 0 || totalPressurePa <= 0 || totalTemperatureK <= 1.0)
+            return 0.0;
+        double p = Math.Clamp(staticPressurePa, 1.0, totalPressurePa * 0.99999);
+        double t = totalTemperatureK * Math.Pow(p / totalPressurePa, (g - 1.0) / g);
+        t = Math.Max(t, 1.0);
+        double cp = gas.SpecificHeatCp;
+        double vIdeal = Math.Sqrt(Math.Max(0.0, 2.0 * cp * (totalTemperatureK - t)));
+        double a = gas.SpeedOfSound(t);
+        double v = Math.Min(vIdeal, a * 0.999);
+        double rho = gas.Density(p, t);
+        return rho * v * areaM2;
+    }
+}

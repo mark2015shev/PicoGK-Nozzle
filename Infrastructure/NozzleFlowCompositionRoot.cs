@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using PicoGK;
 using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
@@ -11,15 +13,8 @@ namespace PicoGK_Run.Infrastructure;
 /// Wires SI physics → design result → mm geometry → <see cref="PipelineRunResult"/>.
 /// </summary>
 /// <remarks>
-/// <b>Files added (physics + bridge):</b>
-/// Physics/GasProperties.cs, AmbientAir.cs, JetState.cs, JetSource.cs, EntrainmentModel.cs,
-/// MixingSectionSolver.cs, FlowMarcher.cs, ThrustCalculator.cs, NozzleDesignResult.cs, NozzleDesigner.cs,
-/// Geometry/FlowDrivenNozzleBuilder.cs, Core/NozzleSolvedStateFlowAdapter.cs, Infrastructure/NozzleFlowCompositionRoot.cs.
-/// <b>Modified:</b> AppPipeline.cs (uses this root + viewer helper), Program.cs (delegates to pipeline).
-/// <b>Where physics meets geometry:</b> <see cref="FlowDrivenNozzleBuilder.BuildDesignInputs"/> merges
-/// <see cref="NozzleDesignResult"/> with template <see cref="NozzleDesignInputs"/>; <see cref="NozzleGeometryBuilder"/> is unchanged.
-/// <b>Still simplified (validate with CFD / test):</b> isentropic jet inlet, uniform ambient static P in mixing,
-/// linear duct area, entrainment correlation Ce·ρ·V·P, no swirl / friction / detailed pressure recovery.
+/// Default path uses <see cref="FlowMarcher.SolveDetailed"/> (compressible entrainment, inlet suction, swirl decay)
+/// plus first-order stator recovery and expander pressure-force bookkeeping — not CFD.
 /// Legacy <see cref="NozzlePhysicsSolver"/> remains in the repo but is not on the default path.
 /// </remarks>
 public static class NozzleFlowCompositionRoot
@@ -48,7 +43,36 @@ public static class NozzleFlowCompositionRoot
             exitAreaM2: exitAreaM2,
             primaryMassFlowKgS: input.Source.MassFlowKgPerSec);
 
-        JetState inletState = jetSource.CreateInitialState();
+        JetState rawInlet = jetSource.CreateInitialState();
+
+        double sourceAreaMm2 = input.Source.SourceOutletAreaMm2;
+        double injectorAreaMm2 = Math.Max(input.Design.TotalInjectorAreaMm2, 1e-9);
+        double sourceAreaM2 = sourceAreaMm2 / 1e6;
+        double injectorAreaM2 = injectorAreaMm2 / 1e6;
+        double coreMdot = input.Source.MassFlowKgPerSec;
+        double vCore = input.Source.SourceVelocityMps > 0.0
+            ? input.Source.SourceVelocityMps
+            : VelocityMath.FromMassFlow(coreMdot, input.Source.AmbientDensityKgPerM3, sourceAreaM2);
+        double rhoCore = rawInlet.DensityKgM3;
+        double areaDriver = vCore * (sourceAreaMm2 / injectorAreaMm2);
+        double continuityCheck = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
+        double injectorJetVelocity = NozzlePhysicsSolver.InjectorJetVelocityDriverBlend * areaDriver
+            + (1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend) * continuityCheck;
+
+        var (vt0, va0) = SwirlMath.ResolveInjectorComponents(
+            injectorJetVelocity,
+            input.Design.InjectorYawAngleDeg,
+            input.Design.InjectorPitchAngleDeg);
+
+        JetState inletState = new JetState(
+            axialPositionM: 0.0,
+            pressurePa: rawInlet.PressurePa,
+            temperatureK: rawInlet.TemperatureK,
+            densityKgM3: rawInlet.DensityKgM3,
+            velocityMps: va0,
+            areaM2: rawInlet.AreaM2,
+            primaryMassFlowKgS: rawInlet.MassFlowKgS,
+            entrainedMassFlowKgS: 0.0);
 
         var entrainment = new EntrainmentModel();
         var mixing = new MixingSectionSolver();
@@ -71,12 +95,94 @@ public static class NozzleFlowCompositionRoot
             return 2.0 * Math.Sqrt(Math.PI * Math.Max(a, 1e-15));
         }
 
-        IReadOnlyList<JetState> flowStates = marcher.Solve(
+        double CaptureAreaAt(double x)
+        {
+            double a = AreaAt(x);
+            return Math.Max(0.18 * a, 1e-9);
+        }
+
+        double swirlDecayPerStep = Math.Pow(0.72, 1.0 / Math.Max(DefaultMarchSteps, 1));
+
+        FlowMarchDetailedResult detailed = marcher.SolveDetailed(
             inletState,
             sectionLengthM,
             DefaultMarchSteps,
             AreaAt,
-            PerimeterAt);
+            PerimeterAt,
+            CaptureAreaAt,
+            primaryTangentialVelocityMps: vt0,
+            swirlDecayPerStepFactor: swirlDecayPerStep);
+
+        IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
+        JetState lastMarch = detailed.FlowStates[^1];
+
+        double etaStator = Math.Min(0.42, input.Design.StatorVaneAngleDeg / 95.0);
+        double fracVt = Math.Clamp(1.0 - 0.38 * etaStator, 0.22, 0.92);
+        var stator = new StatorRecoveryModel();
+        StatorRecoveryOutput statorOut = stator.Apply(
+            detailed.FinalTangentialVelocityMps,
+            lastMarch.DensityKgM3,
+            etaStator,
+            fracVt);
+
+        double pAfterStator = Math.Max(lastMarch.PressurePa + statorOut.RecoveredPressureRisePa, 1.0);
+        double vaAfterStator = lastMarch.VelocityMps + statorOut.AxialVelocityGainMps;
+        double vtAfterStator = statorOut.RemainingTangentialVelocityMps;
+        double rhoAfterStator = gas.Density(pAfterStator, Math.Max(lastMarch.TemperatureK, 1.0));
+
+        var finalOutlet = new JetState(
+            lastMarch.AxialPositionM,
+            pAfterStator,
+            lastMarch.TemperatureK,
+            rhoAfterStator,
+            vaAfterStator,
+            lastMarch.AreaM2,
+            lastMarch.MassFlowKgS,
+            lastMarch.EntrainedMassFlowKgS);
+
+        var flowStates = new List<JetState>(detailed.FlowStates);
+        flowStates[^1] = finalOutlet;
+
+        double halfRad = input.Design.ExpanderHalfAngleDeg * (Math.PI / 180.0);
+        double rhoExp = lastMarch.DensityKgM3;
+        double vaExp = lastMarch.VelocityMps;
+        double dPExpander = 0.22 * rhoExp * vaExp * vaExp * Math.Sin(Math.Max(halfRad, 0.02));
+        dPExpander = Math.Min(dPExpander, 0.48 * rhoExp * vaExp * vaExp);
+        double expanderProjectedAreaM2 = ExpanderAxialProjectedAreaM2(input.Design);
+        double expanderForceN = PressureForceMath.ExpanderOverPressureAxialForce(dPExpander, expanderProjectedAreaM2);
+
+        double inletPressureForceN = steps.Sum(s => s.PressureForceN);
+        double minInletP = steps.Count > 0 ? steps.Min(s => s.InletLocalPressurePa) : ambient.PressurePa;
+        double maxInletMach = steps.Count > 0 ? steps.Max(s => s.InletMach) : 0.0;
+        bool anyChoked = steps.Any(s => s.InletIsChoked);
+        double sumReq = steps.Sum(s => s.RequestedDeltaEntrainedMassFlowKgS);
+        double sumAct = steps.Sum(s => s.DeltaEntrainedMassFlowKgS);
+        double shortfall = Math.Max(0.0, sumReq - sumAct);
+
+        double mdotExit = finalOutlet.TotalMassFlowKgS;
+        double fMom = mdotExit * (finalOutlet.VelocityMps - ambient.VelocityMps);
+        double fExitPlane = (finalOutlet.PressurePa - ambient.PressurePa) * finalOutlet.AreaM2;
+        double fPressureTotal = fExitPlane + inletPressureForceN + expanderForceN;
+        double fNet = fMom + fPressureTotal;
+
+        var siDiag = new SiFlowDiagnostics
+        {
+            MarchSteps = steps,
+            MinInletLocalStaticPressurePa = minInletP,
+            MaxInletMach = maxInletMach,
+            AnyEntrainmentStepChoked = anyChoked,
+            SumRequestedEntrainmentIncrementsKgS = sumReq,
+            SumActualEntrainmentIncrementsKgS = sumAct,
+            EntrainmentShortfallSumKgS = shortfall,
+            ExpanderAxialPressureForceN = expanderForceN,
+            InletAxialPressureForceN = inletPressureForceN,
+            StatorRecoveredPressureRisePa = statorOut.RecoveredPressureRisePa,
+            FinalTangentialVelocityMps = vtAfterStator,
+            FinalAxialVelocityMps = vaAfterStator,
+            MomentumThrustN = fMom,
+            PressureThrustN = fPressureTotal,
+            NetThrustN = fNet
+        };
 
         var designer = new NozzleDesigner();
         NozzleDesignResult designResult = designer.CreateDesignResult(
@@ -84,16 +190,21 @@ public static class NozzleFlowCompositionRoot
             flowStates,
             outletAreaM2,
             ambient.PressurePa,
-            ambient.VelocityMps);
+            ambient.VelocityMps,
+            siDiag);
 
         NozzleDesignInputs drivenDesign = FlowDrivenNozzleBuilder.BuildDesignInputs(designResult, input.Design);
 
         NozzleSolvedState solved = NozzleSolvedStateFlowAdapter.FromSiFlow(
             designResult,
             inletState,
-            flowStates[^1],
+            finalOutlet,
             input.Source,
-            drivenDesign);
+            drivenDesign,
+            areaDriver,
+            continuityCheck,
+            injectorJetVelocity,
+            siDiag);
 
         var geometryBuilder = new NozzleGeometryBuilder();
         NozzleGeometryResult geometry = geometryBuilder.Build(drivenDesign, solved);
@@ -101,27 +212,38 @@ public static class NozzleFlowCompositionRoot
         if (showInViewer)
             AppPipeline.DisplayGeometryInViewer(geometry);
 
-        PrintPhysicsSummary(inletState, designResult);
+        PrintPhysicsSummary(inletState, designResult, siDiag);
 
         IReadOnlyList<string> warnings = new[]
         {
-            "Flow solve uses SI lumped model (NozzleFlowCompositionRoot); not legacy NozzlePhysicsSolver."
+            "SI path: compressible entrainment march + first-order stator/expander bookkeeping (not CFD)."
         };
 
         NozzleInput effectiveInput = new NozzleInput(input.Source, drivenDesign, input.Run);
-        return new PipelineRunResult(effectiveInput, solved, geometry, warnings);
+        return new PipelineRunResult(effectiveInput, solved, geometry, warnings, siDiag);
     }
 
-    private static void PrintPhysicsSummary(JetState inlet, NozzleDesignResult d)
+    private static double ExpanderAxialProjectedAreaM2(NozzleDesignInputs d)
     {
-        Console.WriteLine("--- SI flow-driven nozzle summary ---");
-        Console.WriteLine($"Inlet jet velocity [m/s]:     {inlet.VelocityMps:F2}");
+        double rCh = d.SwirlChamberDiameterMm * 0.5e-3;
+        double rEx = d.ExitDiameterMm * 0.5e-3;
+        double halfRad = d.ExpanderHalfAngleDeg * (Math.PI / 180.0);
+        double ring = Math.PI * Math.Max(rEx * rEx - rCh * rCh, 0.0);
+        return Math.Max(ring * Math.Sin(Math.Max(halfRad, 0.03)), 1e-9);
+    }
+
+    private static void PrintPhysicsSummary(JetState inlet, NozzleDesignResult d, SiFlowDiagnostics si)
+    {
+        Console.WriteLine("--- SI flow-driven nozzle summary (compressible entrainment path) ---");
+        Console.WriteLine($"Inlet jet axial velocity [m/s]: {inlet.VelocityMps:F2}");
         Console.WriteLine($"Estimated exit velocity [m/s]: {d.EstimatedExitVelocityMps:F2}");
         Console.WriteLine($"Estimated total mass flow [kg/s]: {d.EstimatedTotalMassFlowKgS:F4}");
-        Console.WriteLine($"Estimated thrust [N]:       {d.EstimatedThrustN:F2}");
+        Console.WriteLine($"Estimated thrust [N]:       {d.EstimatedThrustN:F2} (momentum + pressure CV terms, first-order)");
+        Console.WriteLine($"Min inlet static (entrain.) [Pa]: {si.MinInletLocalStaticPressurePa:F1}");
+        Console.WriteLine($"Max entrainment Mach [-]:   {si.MaxInletMach:F3}  Choked step: {si.AnyEntrainmentStepChoked}");
         Console.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}");
         Console.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}");
         Console.WriteLine($"Suggested mixing length [m]: {d.SuggestedMixingLengthM:F5}");
-        Console.WriteLine("-------------------------------------");
+        Console.WriteLine("---------------------------------------------------------------------");
     }
 }
