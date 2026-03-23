@@ -54,7 +54,8 @@ public static class K320Baseline
         InjectorPitchAngleDeg = 0.0,
         InjectorRollAngleDeg = 0.0,
         ExpanderLengthMm = 120.0,
-        ExpanderHalfAngleDeg = 9.0,
+        // ~7° full-angle class diffuser unless synthesis/autotune overrides.
+        ExpanderHalfAngleDeg = 7.0,
         ExitDiameterMm = 110.0,
         StatorVaneAngleDeg = 28.0,
         StatorVaneCount = 12,

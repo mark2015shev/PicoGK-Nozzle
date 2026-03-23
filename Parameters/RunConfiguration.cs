@@ -115,6 +115,14 @@ public sealed class RunConfiguration
     public double ChamberVaneBlockageFractionOfAnnulus { get; init; }
 
     /// <summary>
+    /// When true, <see cref="Geometry.FlowDrivenNozzleBuilder"/> nudges chamber length (and optional exit) from <see cref="Physics.NozzleDesignResult"/> within safe clamps.
+    /// </summary>
+    public bool ApplySolvedGeometryHints { get; init; }
+
+    /// <summary>Run <see cref="Geometry.GeometryContinuityValidator"/> on the driven design and surface issues in the report.</summary>
+    public bool RunGeometryContinuityCheck { get; init; } = true;
+
+    /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
     public RunConfiguration AfterAutotune() => new()
@@ -155,6 +163,8 @@ public sealed class RunConfiguration
         UseExplicitInletCapture = UseExplicitInletCapture,
         UseSwirlEntrainmentBoost = UseSwirlEntrainmentBoost,
         UseReynoldsEntrainmentFactor = UseReynoldsEntrainmentFactor,
-        ChamberVaneBlockageFractionOfAnnulus = ChamberVaneBlockageFractionOfAnnulus
+        ChamberVaneBlockageFractionOfAnnulus = ChamberVaneBlockageFractionOfAnnulus,
+        ApplySolvedGeometryHints = ApplySolvedGeometryHints,
+        RunGeometryContinuityCheck = RunGeometryContinuityCheck
     };
 }

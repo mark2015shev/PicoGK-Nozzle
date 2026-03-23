@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.Solvers;
 
 namespace PicoGK_Run.Infrastructure;
 
@@ -21,6 +22,12 @@ public sealed class PipelineRunResult
     /// <summary>Populated when autotune selected the seed before this run.</summary>
     public AutotuneRunSummary? Autotune { get; }
 
+    /// <summary>Explicit staged physics ledger (swirl-vortex SI path).</summary>
+    public NozzlePhysicsStageResult? PhysicsStages { get; }
+
+    /// <summary>Assembly-path continuity checks (mm geometry).</summary>
+    public GeometryContinuityReport? GeometryContinuity { get; }
+
     public PipelineRunResult(
         NozzleInput input,
         NozzleSolvedState solved,
@@ -28,7 +35,9 @@ public sealed class PipelineRunResult
         IReadOnlyList<string> solverWarnings,
         SiFlowDiagnostics? siFlow = null,
         NozzleCriticalRatiosSnapshot? criticalRatios = null,
-        AutotuneRunSummary? autotune = null)
+        AutotuneRunSummary? autotune = null,
+        NozzlePhysicsStageResult? physicsStages = null,
+        GeometryContinuityReport? geometryContinuity = null)
     {
         Input = input;
         Solved = solved;
@@ -37,5 +46,7 @@ public sealed class PipelineRunResult
         SiFlow = siFlow;
         CriticalRatios = criticalRatios;
         Autotune = autotune;
+        PhysicsStages = physicsStages;
+        GeometryContinuity = geometryContinuity;
     }
 }

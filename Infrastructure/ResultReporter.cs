@@ -17,6 +17,8 @@ internal static class ResultReporter
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
         Library.Log("=== Nozzle / ejector estimate (SI flow drives geometry) ===");
+        if (result.PhysicsStages != null || result.GeometryContinuity != null || result.SiFlow != null)
+            RunReportBuilder.LogEngineeringReport(result.PhysicsStages, result.GeometryContinuity, s => Library.Log(s), result.SiFlow);
         if (result.Autotune != null)
         {
             AutotuneRunSummary at = result.Autotune;

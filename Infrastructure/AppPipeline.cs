@@ -54,7 +54,9 @@ internal sealed class AppPipeline
             w,
             pr.SiFlow,
             pr.CriticalRatios,
-            summary);
+            summary,
+            pr.PhysicsStages,
+            pr.GeometryContinuity);
     }
 
     /// <summary>Viewer group order/colors must stay aligned with <see cref="NozzleViewerGroupCatalog"/> (audit log references same IDs).</summary>

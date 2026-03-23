@@ -31,9 +31,9 @@ internal static class Program
             return;
         }
 
-        // Toggle autotune (must use CreateRunWithAutotune or CreateInputWithAutotune so UseAutotune is true).
-        // Coarse-to-fine (3× SI phases, then one voxel run): K320Baseline.CreateInputWithCoarseToFineAutotune();
-        bool useAutotune = true;
+        // Autotune off by default — it optimizes surrogate SI scores; enable only after physics path is trusted.
+        // To run search: useAutotune = true with CreateInputWithAutotune / CreateInputWithCoarseToFineAutotune.
+        bool useAutotune = false;
         NozzleInput input = useAutotune
             ? K320Baseline.CreateInputWithAutotune(trials: 300)
             : new(

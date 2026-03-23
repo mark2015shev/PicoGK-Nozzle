@@ -6,6 +6,7 @@ using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.Solvers;
 
 namespace PicoGK_Run.Infrastructure;
 
@@ -30,7 +31,8 @@ public static class NozzleFlowCompositionRoot
         NozzleCriticalRatiosSnapshot CriticalRatios,
         IReadOnlyList<string> HealthMessages,
         NozzleDesignResult DesignResult,
-        JetState InletState);
+        JetState InletState,
+        NozzlePhysicsStageResult PhysicsStages);
 
     /// <summary>
     /// Same SI path as <see cref="Run"/> up to health check — no voxels, no viewer, no console summary.
@@ -69,6 +71,10 @@ public static class NozzleFlowCompositionRoot
 
         SiPathSolveResult path = SolveSiPath(input.Source, activeDesign, input.Run);
 
+        GeometryContinuityReport? geomContinuity = input.Run.RunGeometryContinuityCheck
+            ? GeometryContinuityValidator.Check(path.DrivenDesign)
+            : null;
+
         var geometryBuilder = new NozzleGeometryBuilder();
         NozzleGeometryResult geometry = geometryBuilder.Build(path.DrivenDesign, path.Solved);
 
@@ -83,10 +89,21 @@ public static class NozzleFlowCompositionRoot
         };
         if (input.Run.UsePhysicsInformedGeometry)
             warnings.Add("Geometry pre-sized by NozzleGeometrySynthesis (first-order rules from K320-class source + swirl/ER heuristics; not a numerical optimizer).");
+        if (geomContinuity is { IsAcceptable: false })
+            warnings.AddRange(geomContinuity.Issues);
         warnings.AddRange(path.HealthMessages);
 
         NozzleInput effectiveInput = new NozzleInput(input.Source, path.DrivenDesign, input.Run);
-        return new PipelineRunResult(effectiveInput, path.Solved, geometry, warnings, path.SiDiag, path.CriticalRatios);
+        return new PipelineRunResult(
+            effectiveInput,
+            path.Solved,
+            geometry,
+            warnings,
+            path.SiDiag,
+            path.CriticalRatios,
+            autotune: null,
+            physicsStages: path.PhysicsStages,
+            geometryContinuity: geomContinuity);
     }
 
     private static SiPathSolveResult SolveSiPath(
@@ -136,16 +153,17 @@ public static class NozzleFlowCompositionRoot
             activeDesign.InjectorYawAngleDeg,
             activeDesign.InjectorPitchAngleDeg);
 
-        // Coupled injector: V_eff = Cd·V·√max(0,1−K_turn); then same yaw/pitch decomposition (linear in |V|).
-        double injectorJetVelocityEffective = InjectorLossModel.EffectiveJetVelocityMps(
-            injectorJetVelocityRaw,
+        // Stage 1 — pressure-driven discharge (authoritative ṁ); yaw/pitch decomposition on effective |V|.
+        InjectorDischargeResult injectorDischarge = InjectorDischargeSolver.Solve(
+            source,
+            activeDesign,
             rhoCore,
-            activeDesign.InjectorYawAngleDeg);
+            ambient.PressurePa);
 
-        var (vt0, va0) = SwirlMath.ResolveInjectorComponents(
-            injectorJetVelocityEffective,
-            activeDesign.InjectorYawAngleDeg,
-            activeDesign.InjectorPitchAngleDeg);
+        double va0 = injectorDischarge.AxialVelocityMps;
+        double vt0 = injectorDischarge.TangentialVelocityMps;
+        double injectorJetVelocityEffective = injectorDischarge.EffectiveVelocityMagnitudeMps;
+        double sInjPre = injectorDischarge.SwirlNumberVtOverVa;
 
         // Pre-march radial picture on effective swirl — bounded entrainment boost (does not add free static head in march).
         double rWallM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
@@ -205,7 +223,6 @@ public static class NozzleFlowCompositionRoot
         double CaptureAreaAt(double x) => aCaptureM2;
 
         double ldRatio = activeDesign.SwirlChamberLengthMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1e-6);
-        double sInjPre = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6); // effective injector swirl
         double preBreak = SwirlDecayModel.PreMarchBreakdownRisk(
             sInjPre,
             ldRatio,
@@ -494,7 +511,7 @@ public static class NozzleFlowCompositionRoot
             ambient.VelocityMps,
             siDiag);
 
-        NozzleDesignInputs drivenDesign = FlowDrivenNozzleBuilder.BuildDesignInputs(designResult, activeDesign);
+        NozzleDesignInputs drivenDesign = FlowDrivenNozzleBuilder.BuildDesignInputs(designResult, activeDesign, run);
 
         NozzleSolvedState solved = NozzleSolvedStateFlowAdapter.FromSiFlow(
             designResult,
@@ -518,6 +535,35 @@ public static class NozzleFlowCompositionRoot
         health.AddRange(healthBase);
         health.AddRange(chamberMarchDiag.ValidationWarnings ?? Array.Empty<string>());
 
+        double pCoreEst = Math.Max(ambient.PressurePa - radialPreMarch.CorePressureDropPa, 1.0);
+        double mdotAmbPotential = SwirlAmbientEntrainmentSolver.ComputeSwirlDrivenAmbientPotentialKgS(
+            ambient.PressurePa,
+            pCoreEst,
+            aCaptureM2,
+            ambient.DensityKgM3,
+            sInjPre);
+
+        var physicsStages = new NozzlePhysicsStageResult
+        {
+            Stage1Injector = injectorDischarge,
+            Stage2SwirlNumberAtInjector = sInjPre,
+            Stage3CorePressureDropPa = radialPreMarch.CorePressureDropPa,
+            Stage3WallPressureRisePa = radialPreMarch.WallPressureRisePa,
+            Stage3EstimatedCoreStaticPressurePa = pCoreEst,
+            Stage4AmbientInflowPotentialKgS = mdotAmbPotential,
+            Stage4AmbientInflowActualIntegratedKgS = sumAct,
+            Stage5MixedMassFlowKgS = lastMarch.TotalMassFlowKgS,
+            Stage5MixedAxialVelocityMps = lastMarch.VelocityMps,
+            Stage5MixedTangentialVelocityMps = detailed.FinalTangentialVelocityMps,
+            Stage6DiffuserPressureRiseEffectivePa = dPExpanderEff,
+            Stage6DiffuserRecoveryMultiplier = diffuserRecoveryMult,
+            Stage7StatorRecoveredPressureRisePa = statorOut.RecoveredPressureRisePa,
+            Stage7StatorEtaEffective = etaStatorEff,
+            Stage7AxialVelocityAfterMps = vaAfterStator,
+            FinalExitAxialVelocityMps = vaAfterStator,
+            FinalTotalMassFlowKgS = finalOutlet.TotalMassFlowKgS
+        };
+
         return new SiPathSolveResult(
             drivenDesign,
             solved,
@@ -525,7 +571,8 @@ public static class NozzleFlowCompositionRoot
             criticalRatios,
             health,
             designResult,
-            inletState);
+            inletState,
+            physicsStages);
     }
 
     /// <summary>
