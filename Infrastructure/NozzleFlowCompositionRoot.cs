@@ -41,8 +41,7 @@ public static class NozzleFlowCompositionRoot
         NozzleDesignInputs candidateDesign,
         RunConfiguration run)
     {
-        _ = run;
-        SiPathSolveResult r = SolveSiPath(source, candidateDesign);
+        SiPathSolveResult r = SolveSiPath(source, candidateDesign, run);
         int hard = r.HealthMessages.Count(m => m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
         return new FlowTuneEvaluation
         {
@@ -68,7 +67,7 @@ public static class NozzleFlowCompositionRoot
             ? NozzleGeometrySynthesis.Synthesize(input.Source, input.Design)
             : input.Design;
 
-        SiPathSolveResult path = SolveSiPath(input.Source, activeDesign);
+        SiPathSolveResult path = SolveSiPath(input.Source, activeDesign, input.Run);
 
         var geometryBuilder = new NozzleGeometryBuilder();
         NozzleGeometryResult geometry = geometryBuilder.Build(path.DrivenDesign, path.Solved);
@@ -90,8 +89,12 @@ public static class NozzleFlowCompositionRoot
         return new PipelineRunResult(effectiveInput, path.Solved, geometry, warnings, path.SiDiag, path.CriticalRatios);
     }
 
-    private static SiPathSolveResult SolveSiPath(SourceInputs source, NozzleDesignInputs activeDesign)
+    private static SiPathSolveResult SolveSiPath(
+        SourceInputs source,
+        NozzleDesignInputs activeDesign,
+        RunConfiguration? runConfiguration = null)
     {
+        RunConfiguration run = runConfiguration ?? new RunConfiguration();
         var gas = new GasProperties();
         var ambient = new AmbientAir(
             gas,
@@ -156,12 +159,28 @@ public static class NozzleFlowCompositionRoot
             radialPreMarch.CorePressureDropPa,
             0.0,
             ChamberPhysicsCoefficients.CouplingInletCorePressureUseCapPa);
-        double entrainmentBoost = 1.0
+        double entrainmentBoostRaw = 1.0
             + ChamberPhysicsCoefficients.CouplingVortexEntrainmentC * deltaPCoreUseful / Math.Max(ambient.PressurePa, 1.0);
-        entrainmentBoost = Math.Clamp(
-            entrainmentBoost,
-            1.0,
-            ChamberPhysicsCoefficients.CouplingVortexEntrainmentBoostMax);
+        double vMagInj = Math.Sqrt(va0 * va0 + vt0 * vt0);
+        double dynHeadRatio = 0.5 * rhoCore * vMagInj * vMagInj / Math.Max(ambient.PressurePa, 1.0);
+        double boostCapDynamic = 1.0 + ChamberPhysicsCoefficients.CouplingVortexEntrainmentDynamicHeadGamma * dynHeadRatio;
+        double boostCapAbsolute = ChamberPhysicsCoefficients.CouplingVortexEntrainmentBoostMax;
+        double entrainmentBoost = Math.Min(entrainmentBoostRaw, Math.Min(boostCapDynamic, boostCapAbsolute));
+        entrainmentBoost = Math.Max(1.0, entrainmentBoost);
+        if (!run.UseSwirlEntrainmentBoost)
+            entrainmentBoost = 1.0;
+
+        double aChamberBoreMm2 = SwirlChamberMarchGeometry.ChamberBoreAreaMm2(activeDesign.SwirlChamberDiameterMm);
+        double aHubMm2 = SwirlChamberMarchGeometry.HubDiskAreaMm2(activeDesign.StatorHubDiameterMm);
+        double aFreeChamberMm2 = SwirlChamberMarchGeometry.EffectiveGasAreaMm2(
+            activeDesign.SwirlChamberDiameterMm,
+            activeDesign.StatorHubDiameterMm,
+            run.ChamberVaneBlockageFractionOfAnnulus);
+        double aEffM2 = Math.Max(aFreeChamberMm2 * 1e-6, 1e-10);
+        double perimeterMarchM = SwirlChamberMarchGeometry.EntrainmentPerimeterM(
+            activeDesign.SwirlChamberDiameterMm,
+            activeDesign.StatorHubDiameterMm);
+        double aCaptureM2 = SwirlChamberMarchGeometry.CaptureAreaM2(activeDesign, run, aFreeChamberMm2);
 
         JetState inletState = new JetState(
             axialPositionM: 0.0,
@@ -169,7 +188,7 @@ public static class NozzleFlowCompositionRoot
             temperatureK: rawInlet.TemperatureK,
             densityKgM3: rawInlet.DensityKgM3,
             velocityMps: va0,
-            areaM2: rawInlet.AreaM2,
+            areaM2: aEffM2,
             primaryMassFlowKgS: rawInlet.MassFlowKgS,
             entrainedMassFlowKgS: 0.0);
 
@@ -179,26 +198,11 @@ public static class NozzleFlowCompositionRoot
 
         double sectionLengthM = activeDesign.SwirlChamberLengthMm / 1000.0;
         double outletAreaM2 = Math.PI * Math.Pow(activeDesign.ExitDiameterMm / 2000.0, 2);
-        double areaIn = inletState.AreaM2;
 
-        double AreaAt(double x)
-        {
-            double t = sectionLengthM > 1e-12 ? x / sectionLengthM : 0.0;
-            t = Math.Clamp(t, 0.0, 1.0);
-            return areaIn + (outletAreaM2 - areaIn) * t;
-        }
-
-        double PerimeterAt(double x)
-        {
-            double a = AreaAt(x);
-            return 2.0 * Math.Sqrt(Math.PI * Math.Max(a, 1e-15));
-        }
-
-        double CaptureAreaAt(double x)
-        {
-            double a = AreaAt(x);
-            return Math.Max(0.18 * a, 1e-9);
-        }
+        // Chamber march: constant effective annulus (CAD bore − hub − vane blockage) and real wetted perimeter.
+        double AreaAt(double x) => aEffM2;
+        double PerimeterAt(double x) => perimeterMarchM;
+        double CaptureAreaAt(double x) => aCaptureM2;
 
         double ldRatio = activeDesign.SwirlChamberLengthMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1e-6);
         double sInjPre = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6); // effective injector swirl
@@ -233,7 +237,22 @@ public static class NozzleFlowCompositionRoot
             CaptureAreaAt,
             primaryTangentialVelocityMps: vt0,
             swirlDecayPerStepFactor: swirlDecayPerStep,
-            entrainmentMassDemandMultiplier: entrainmentBoost);
+            entrainmentMassDemandMultiplier: entrainmentBoost,
+            chamberLdRatio: ldRatio,
+            chamberDiameterMm: activeDesign.SwirlChamberDiameterMm,
+            useReynoldsOnEntrainmentCe: run.UseReynoldsEntrainmentFactor);
+
+        SwirlChamberMarchDiagnostics chamberMarchDiag = BuildSwirlChamberMarchDiagnostics(
+            activeDesign,
+            entrainment,
+            aChamberBoreMm2,
+            aHubMm2,
+            aFreeChamberMm2,
+            aEffM2,
+            perimeterMarchM,
+            aCaptureM2,
+            detailed,
+            entrainmentBoost);
 
         IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
         JetState lastMarch = detailed.FlowStates[^1];
@@ -424,6 +443,23 @@ public static class NozzleFlowCompositionRoot
 
         VortexFlowDiagnostics vortex = ChamberPhysicsPipeline.ToLegacyVortexDiagnostics(chamber, swirlDecayPerStep);
 
+        InjectorPressureVelocityDiagnostics injectorPressureVelocity = InjectorPressureVelocityDiagnostics.Compute(
+            source,
+            ambient.PressurePa,
+            pTotal,
+            pStaticJet,
+            rawInlet.DensityKgM3,
+            injectorJetVelocityRaw,
+            injectorJetVelocityEffective,
+            va0,
+            vt0,
+            activeDesign.InjectorYawAngleDeg,
+            steps,
+            sectionLengthM,
+            activeDesign.InjectorAxialPositionRatio,
+            chamber.RadialPressure,
+            inletState.PressurePa);
+
         var siDiag = new SiFlowDiagnostics
         {
             MarchSteps = steps,
@@ -444,7 +480,9 @@ public static class NozzleFlowCompositionRoot
             Vortex = vortex,
             Chamber = chamber,
             Coupling = couplingDiag,
-            HubStator = hubDiag
+            HubStator = hubDiag,
+            InjectorPressureVelocity = injectorPressureVelocity,
+            ChamberMarch = chamberMarchDiag
         };
 
         var designer = new NozzleDesigner();
@@ -475,7 +513,10 @@ public static class NozzleFlowCompositionRoot
             solved,
             siDiag);
 
-        IReadOnlyList<string> health = NozzleDesignHealthCheck.Validate(drivenDesign, criticalRatios, siDiag);
+        IReadOnlyList<string> healthBase = NozzleDesignHealthCheck.Validate(drivenDesign, criticalRatios, siDiag);
+        var health = new List<string>(healthBase.Count + (chamberMarchDiag.ValidationWarnings?.Count ?? 0));
+        health.AddRange(healthBase);
+        health.AddRange(chamberMarchDiag.ValidationWarnings ?? Array.Empty<string>());
 
         return new SiPathSolveResult(
             drivenDesign,
@@ -490,10 +531,63 @@ public static class NozzleFlowCompositionRoot
     /// <summary>
     /// Coupled SI solve only (no voxels/viewer) — for validation sweeps and tooling; same path as tuning eval.
     /// </summary>
-    internal static SiPathValidationPack EvaluateSiPathForValidation(SourceInputs source, NozzleDesignInputs design)
+    internal static SiPathValidationPack EvaluateSiPathForValidation(
+        SourceInputs source,
+        NozzleDesignInputs design,
+        RunConfiguration? run = null)
     {
-        SiPathSolveResult r = SolveSiPath(source, design);
+        SiPathSolveResult r = SolveSiPath(source, design, run);
         return new SiPathValidationPack(r.Solved, r.SiDiag, r.CriticalRatios, r.HealthMessages);
+    }
+
+    private static SwirlChamberMarchDiagnostics BuildSwirlChamberMarchDiagnostics(
+        NozzleDesignInputs d,
+        EntrainmentModel em,
+        double aChamberBoreMm2,
+        double aHubMm2,
+        double aFreeChamberMm2,
+        double aEffM2,
+        double perimeterMarchM,
+        double aCaptureM2,
+        FlowMarchDetailedResult detailed,
+        double entrainmentMassDemandBoost)
+    {
+        double aInletMm2 = SwirlChamberMarchGeometry.InletCaptureAreaMm2(d.InletDiameterMm);
+        double aInjMm2 = Math.Max(d.TotalInjectorAreaMm2, 1e-9);
+        double aExitMm2 = SwirlChamberMarchGeometry.ExitInnerAreaMm2(d.ExitDiameterMm);
+        double aCh = Math.Max(aChamberBoreMm2, 1e-9);
+        double ceFirst = detailed.StepResults.Count > 0
+            ? detailed.StepResults[0].EntrainmentCeEffective
+            : em.Coefficient;
+        var warnings = new List<string>();
+        if (aInjMm2 / aCh > 0.9)
+            warnings.Add("WARNING (SI march): A_inj/A_chamber > 0.9 — port blockage may suppress entrainment.");
+        double aInletM2 = aInletMm2 * 1e-6;
+        if (aCaptureM2 < 0.5 * aInletM2)
+            warnings.Add("WARNING (SI march): A_capture < 0.5×A_inlet — intake model may starve entrainment.");
+        if (aExitMm2 / aCh > 3.0)
+            warnings.Add("WARNING (SI march): A_exit/A_chamber > 3 — large expansion vs bore may limit useful coupling.");
+
+        return new SwirlChamberMarchDiagnostics
+        {
+            AInletMm2 = aInletMm2,
+            AChamberBoreMm2 = aChamberBoreMm2,
+            AHubMm2 = aHubMm2,
+            AFreeChamberMm2 = aFreeChamberMm2,
+            AInjTotalMm2 = aInjMm2,
+            AExitMm2 = aExitMm2,
+            RatioInletToChamber = aInletMm2 / aCh,
+            RatioInjToChamber = aInjMm2 / aCh,
+            RatioFreeToChamber = aFreeChamberMm2 / aCh,
+            RatioExitToChamber = aExitMm2 / aCh,
+            DuctEffectiveAreaM2 = aEffM2,
+            EntrainmentPerimeterM = perimeterMarchM,
+            CaptureAreaM2 = aCaptureM2,
+            EntrainmentCeBase = em.Coefficient,
+            EntrainmentCeAtFirstStep = ceFirst,
+            EntrainmentMassDemandBoost = entrainmentMassDemandBoost,
+            ValidationWarnings = warnings
+        };
     }
 
     private static IReadOnlyList<string> BuildCouplingSummaryLines(
@@ -545,6 +639,22 @@ public static class NozzleFlowCompositionRoot
         Console.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}");
         Console.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}");
         Console.WriteLine($"Suggested mixing length [m]: {d.SuggestedMixingLengthM:F5}");
+        if (si.ChamberMarch != null)
+        {
+            SwirlChamberMarchDiagnostics m = si.ChamberMarch;
+            Console.WriteLine("--- Swirl chamber SI march geometry (aligned with CAD bore/hub annulus) ---");
+            Console.WriteLine(
+                $"A_inlet {m.AInletMm2:F2} | A_chamber(bore) {m.AChamberBoreMm2:F2} | A_free_ch {m.AFreeChamberMm2:F2} | A_inj {m.AInjTotalMm2:F2} | A_exit {m.AExitMm2:F2} [mm2]");
+            Console.WriteLine(
+                $"Ratios A_in/A_ch {m.RatioInletToChamber:F3} | A_inj/A_ch {m.RatioInjToChamber:F3} | A_free/A_ch {m.RatioFreeToChamber:F3} | A_exit/A_ch {m.RatioExitToChamber:F3}");
+            Console.WriteLine(
+                $"Ce_base {m.EntrainmentCeBase:F4} | Ce@step1 {m.EntrainmentCeAtFirstStep:F4} | B_ent {m.EntrainmentMassDemandBoost:F3}");
+            Console.WriteLine(
+                $"A_capture {m.CaptureAreaM2:E4} m2 | P_ent {m.EntrainmentPerimeterM:F5} m | A_duct_eff {m.DuctEffectiveAreaM2:E4} m2 (constant along chamber march)");
+            foreach (string w in m.ValidationWarnings)
+                Console.WriteLine(w);
+        }
+
         Console.WriteLine("---------------------------------------------------------------------");
     }
 }

@@ -44,11 +44,25 @@ public static class ChamberPhysicsCoefficients
     /// <summary>B_vortex = 1 + C·Δp_core_useful/P_amb; C [-].</summary>
     public static double CouplingVortexEntrainmentC { get; set; } = 0.22;
 
-    /// <summary>Clamp upper bound for B_vortex [-].</summary>
-    public static double CouplingVortexEntrainmentBoostMax { get; set; } = 1.18;
+    /// <summary>Absolute ceiling for B_vortex [-] (mass/energy path still limited by choked intake).</summary>
+    public static double CouplingVortexEntrainmentBoostMax { get; set; } = 2.75;
+
+    /// <summary>Soft cap: B_vortex ≤ 1 + γ·(½ρ|V|²/P_amb) ties boost to dynamic head [-].</summary>
+    public static double CouplingVortexEntrainmentDynamicHeadGamma { get; set; } = 1.2;
 
     /// <summary>Cap on Δp_core passed into entrainment boost [Pa] (avoid over-pull).</summary>
     public static double CouplingInletCorePressureUseCapPa { get; set; } = 35_000.0;
+
+    // --- Entrainment Ce(S, L/D, Re) multipliers (EntrainmentModel) ---
+    public static double EntrainmentSwirlGainS0 { get; set; } = 0.35;
+    public static double EntrainmentSwirlGainK { get; set; } = 0.40;
+    public static double EntrainmentLdRef { get; set; } = 2.5;
+    public static double EntrainmentLdGain { get; set; } = 0.15;
+    public static double EntrainmentReRef { get; set; } = 50_000.0;
+    public static double EntrainmentReGain { get; set; } = 0.08;
+
+    /// <summary>Upper clamp on entrainment mass-demand multiplier passed into <see cref="FlowMarcher"/> [-].</summary>
+    public static double EntrainmentMassDemandBoostClampMax { get; set; } = 4.0;
 
     /// <summary>Scales incidence term in η_stator,eff = η_base·clamp(1 − w_i·K_inc − w_t·K_turn, …).</summary>
     public static double StatorCouplingKIncidenceWeight { get; set; } = 1.0;

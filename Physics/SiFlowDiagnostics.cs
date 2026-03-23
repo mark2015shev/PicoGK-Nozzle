@@ -43,4 +43,10 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Hub-based stator span/blockage and swirl audit — not CFD.</summary>
     public HubStatorFlowDiagnostics? HubStator { get; init; }
+
+    /// <summary>Upstream P0 vs injector q, first-order exit static, chamber/core statics — not CFD.</summary>
+    public InjectorPressureVelocityDiagnostics? InjectorPressureVelocity { get; init; }
+
+    /// <summary>Chamber SI march duct areas, capture, Ce sample, and validation warnings — not CFD.</summary>
+    public SwirlChamberMarchDiagnostics? ChamberMarch { get; init; }
 }

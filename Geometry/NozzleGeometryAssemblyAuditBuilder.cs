@@ -189,7 +189,7 @@ public static class NozzleGeometryAssemblyAuditBuilder
             exitConeHalfAngleDeg,
             w,
             rE1 > rE0 + 1e-6 ? "Diverging" : (rE1 < rE0 - 1e-6 ? "Converging" : "ConstantArea"),
-            "ExitBuilder: outer/inner AddBeam with roundEndCaps=true (avoids dominant flat downstream disk). Length = ExitBuilder.ComputeExitSectionLengthMm.",
+            "ExitBuilder: AddBeam(..., roundCap:false) — flat annular ends keep bore OPEN (roundCap:true closes annulus into bulb/dome). Length = ComputeExitSectionLengthMm.",
             new[]
             {
                 new ProfileMeridianPoint(p.XExitStart, rE0, rE0 + w, "exit start"),

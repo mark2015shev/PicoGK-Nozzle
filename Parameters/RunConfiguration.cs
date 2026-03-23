@@ -97,6 +97,23 @@ public sealed class RunConfiguration
 
     public double AutotuneSwirlChamberDiameterScaleMax { get; init; } = 1.20;
 
+    /// <summary>Multiplies inlet-based capture area for entrainment intake (default 1 = full inlet lip area).</summary>
+    public double CaptureAreaFactor { get; init; } = 1.0;
+
+    /// <summary>
+    /// When true, capture area is min(inlet area, free chamber annulus after hub+vane blockage); when false, inlet area × factor only.
+    /// </summary>
+    public bool UseExplicitInletCapture { get; init; }
+
+    /// <summary>Apply core-suction entrainment demand boost B_vortex (still capped by dynamic head + absolute max).</summary>
+    public bool UseSwirlEntrainmentBoost { get; init; } = true;
+
+    /// <summary>Optional Re_D factor in Ce (chamber diameter, kinematic ν).</summary>
+    public bool UseReynoldsEntrainmentFactor { get; init; }
+
+    /// <summary>Fraction of gas-path annulus area (bore − hub) removed by stator/vane frontal blockage in the SI march [0–1].</summary>
+    public double ChamberVaneBlockageFractionOfAnnulus { get; init; }
+
     /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
@@ -133,6 +150,11 @@ public sealed class RunConfiguration
         AutotuneSwirlChamberLengthScaleMin = AutotuneSwirlChamberLengthScaleMin,
         AutotuneSwirlChamberLengthScaleMax = AutotuneSwirlChamberLengthScaleMax,
         AutotuneSwirlChamberDiameterScaleMin = AutotuneSwirlChamberDiameterScaleMin,
-        AutotuneSwirlChamberDiameterScaleMax = AutotuneSwirlChamberDiameterScaleMax
+        AutotuneSwirlChamberDiameterScaleMax = AutotuneSwirlChamberDiameterScaleMax,
+        CaptureAreaFactor = CaptureAreaFactor,
+        UseExplicitInletCapture = UseExplicitInletCapture,
+        UseSwirlEntrainmentBoost = UseSwirlEntrainmentBoost,
+        UseReynoldsEntrainmentFactor = UseReynoldsEntrainmentFactor,
+        ChamberVaneBlockageFractionOfAnnulus = ChamberVaneBlockageFractionOfAnnulus
     };
 }

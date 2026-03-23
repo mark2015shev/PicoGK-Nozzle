@@ -52,6 +52,7 @@ public sealed class FlowMarcher
             double perimeter = Math.Max(perimeterFunction(x), 0.0);
 
             double dmDotPerM = _entrainment.ComputeEntrainedMassPerLength(
+                _entrainment.Coefficient,
                 _ambient.DensityKgM3,
                 current.VelocityMps,
                 perimeter);
@@ -105,7 +106,10 @@ public sealed class FlowMarcher
         Func<double, double> captureAreaFunction,
         double primaryTangentialVelocityMps,
         double swirlDecayPerStepFactor,
-        double entrainmentMassDemandMultiplier = 1.0)
+        double entrainmentMassDemandMultiplier = 1.0,
+        double chamberLdRatio = 1.0,
+        double chamberDiameterMm = 50.0,
+        bool useReynoldsOnEntrainmentCe = false)
     {
         if (sectionLengthM <= 0 || stepCount < 1)
         {
@@ -119,7 +123,10 @@ public sealed class FlowMarcher
             };
         }
 
-        double boost = Math.Clamp(entrainmentMassDemandMultiplier, 0.25, 2.5);
+        double boost = Math.Clamp(
+            entrainmentMassDemandMultiplier,
+            0.25,
+            ChamberPhysicsCoefficients.EntrainmentMassDemandBoostClampMax);
         double dx = sectionLengthM / stepCount;
         double primaryMdot = inletState.MassFlowKgS;
         var states = new List<JetState> { inletState };
@@ -146,7 +153,16 @@ public sealed class FlowMarcher
             double vMag = Math.Sqrt(va * va + vtMixedForCorr * vtMixedForCorr);
             vMag = Math.Max(vMag, Math.Abs(va));
 
+            double swirlS = Math.Abs(vtMixedForCorr) / Math.Max(Math.Abs(va), 1e-6);
+            double reApprox = SwirlChamberMarchGeometry.ChamberReynoldsApprox(vMag, chamberDiameterMm);
+            double ceStep = _entrainment.ComputeCoefficient(
+                swirlS,
+                chamberLdRatio,
+                reApprox,
+                useReynoldsOnEntrainmentCe);
+
             double dmRequested = _entrainment.ComputeEntrainedMassPerLength(
+                ceStep,
                 _ambient.DensityKgM3,
                 vMag,
                 perimeter) * dx * boost;
@@ -219,7 +235,10 @@ public sealed class FlowMarcher
                 AxialVelocityMps = vaNew,
                 SwirlKineticEnergyPerKg = swirlKe,
                 RecoveredPressureRisePa = 0.0,
-                PressureForceN = dFN
+                PressureForceN = dFN,
+                DuctEffectiveAreaM2 = area,
+                CaptureAreaM2 = aCap,
+                EntrainmentCeEffective = ceStep
             });
 
             states.Add(next);

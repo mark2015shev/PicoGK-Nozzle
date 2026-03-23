@@ -10,6 +10,11 @@ public sealed class SourceInputs
     public double SourceOutletAreaMm2 { get; }
     public double MassFlowKgPerSec { get; }
     public double SourceVelocityMps { get; }
+
+    /// <summary>
+    /// Used in SI path as: jet upstream total pressure P0 ≈ max(<see cref="AmbientPressurePa"/> × PressureRatio, AmbientPressurePa + 1 Pa).
+    /// That is a <b>supply / stagnation</b> scale for <see cref="PicoGK_Run.Physics.JetSource"/> — not post-injector static and not chamber mixed static.
+    /// </summary>
     public double PressureRatio { get; }
 
     /// <summary>

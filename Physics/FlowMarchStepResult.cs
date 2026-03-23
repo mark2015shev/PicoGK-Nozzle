@@ -25,4 +25,13 @@ public sealed class FlowMarchStepResult
     public double SwirlKineticEnergyPerKg { get; init; }
     public double RecoveredPressureRisePa { get; init; }
     public double PressureForceN { get; init; }
+
+    /// <summary>Effective duct flow area (annulus minus hub/vane blockage) [m²].</summary>
+    public double DuctEffectiveAreaM2 { get; init; }
+
+    /// <summary>Compressible intake capture area (constant along chamber march) [m²].</summary>
+    public double CaptureAreaM2 { get; init; }
+
+    /// <summary>Entrainment coefficient Ce used this step (includes swirl/LD/Re factors).</summary>
+    public double EntrainmentCeEffective { get; init; }
 }

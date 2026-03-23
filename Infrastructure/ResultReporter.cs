@@ -45,6 +45,9 @@ internal static class ResultReporter
         Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2} (reporting; not used in current solver equations)");
         Library.Log($"AmbientDensityKgPerM3:        {input.Source.AmbientDensityKgPerM3:F4}");
 
+        if (result.SiFlow?.InjectorPressureVelocity != null)
+            LogInjectorPressureVelocitySection(result.SiFlow.InjectorPressureVelocity);
+
         Library.Log(result.Autotune != null
             ? "--- Design inputs (final pipeline — tuned seed after SI merge; primary dims preserved from seed) ---"
             : "--- Design inputs (final pipeline / driven geometry) ---");
@@ -126,6 +129,8 @@ internal static class ResultReporter
             Library.Log($"Pressure thrust [N]:          {sf.PressureThrustN:F3} (exit plane + inlet + expander terms)");
             Library.Log($"Net thrust [N]:               {sf.NetThrustN:F3}");
             Library.Log($"March steps recorded:         {sf.MarchSteps.Count}");
+            if (sf.ChamberMarch != null)
+                LogSwirlChamberMarchSection(sf);
         }
 
         Library.Log($"CoreGasDensity ρ_core [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal gas when T_exhaust set; blend only)");
@@ -249,6 +254,33 @@ internal static class ResultReporter
         }
     }
 
+    private static void LogSwirlChamberMarchSection(SiFlowDiagnostics sf)
+    {
+        SwirlChamberMarchDiagnostics m = sf.ChamberMarch!;
+        Library.Log("--- Swirl chamber SI march geometry (bore/hub annulus = CAD; no synthetic area ramp) ---");
+        Library.Log(
+            $"A_inlet {m.AInletMm2:F2} | A_chamber(bore) {m.AChamberBoreMm2:F2} | A_hub {m.AHubMm2:F2} | A_free_ch {m.AFreeChamberMm2:F2} | A_inj {m.AInjTotalMm2:F2} | A_exit {m.AExitMm2:F2} [mm2]");
+        Library.Log(
+            $"Ratios A_in/A_ch {m.RatioInletToChamber:F3} | A_inj/A_ch {m.RatioInjToChamber:F3} | A_free/A_ch {m.RatioFreeToChamber:F3} | A_exit/A_ch {m.RatioExitToChamber:F3}");
+        Library.Log(
+            $"Ce_base {m.EntrainmentCeBase:F4} | Ce@step1 {m.EntrainmentCeAtFirstStep:F4} | B_ent (mass demand) {m.EntrainmentMassDemandBoost:F3}");
+        Library.Log(
+            $"A_capture {m.CaptureAreaM2:E4} m2 | P_entrain {m.EntrainmentPerimeterM:F5} m | A_duct_eff {m.DuctEffectiveAreaM2:E4} m2 (uniform along chamber march)");
+        if (sf.MarchSteps.Count > 0)
+        {
+            FlowMarchStepResult first = sf.MarchSteps[0];
+            FlowMarchStepResult mid = sf.MarchSteps[sf.MarchSteps.Count / 2];
+            FlowMarchStepResult last = sf.MarchSteps[^1];
+            Library.Log(
+                $"Per-step A_eff [m2] (first/mid/last): {first.DuctEffectiveAreaM2:E4} / {mid.DuctEffectiveAreaM2:E4} / {last.DuctEffectiveAreaM2:E4}");
+            Library.Log(
+                $"Per-step Ce (first/mid/last): {first.EntrainmentCeEffective:F4} / {mid.EntrainmentCeEffective:F4} / {last.EntrainmentCeEffective:F4}");
+        }
+
+        foreach (string w in m.ValidationWarnings)
+            Library.Log(w);
+    }
+
     private static string FormatEjectorRegime(EjectorOperatingRegime r) => r switch
     {
         EjectorOperatingRegime.SubcriticalEntrainment => "subcritical entrainment",
@@ -297,6 +329,36 @@ internal static class ResultReporter
         Library.Log($"  diffuser bookkeeping: {e.EThetaUsedForDiffuserRecovery_W:F1}  stator recovery debit: {e.EThetaUsedForStatorRecovery_W:F1}");
         Library.Log($"  exit residual: {e.EThetaExitResidual_W:F1}  dissipated (inj+decay): {e.EThetaDissipated_W:F1}");
         Library.Log($"Net thrust (coupled) [N]:       {sf.NetThrustN:F3}  (same path as autotune evaluation)");
+    }
+
+    private static void LogInjectorPressureVelocitySection(InjectorPressureVelocityDiagnostics ip)
+    {
+        Library.Log("--- Injector pressure and velocity state (first-order reporting — not CFD) ---");
+        Library.Log("Do not equate combustor / upstream total pressure with post-injector or chamber mixed static P.");
+        Library.Log($"InjectorUpstreamTotalPressurePa [Pa]:     {ip.InjectorUpstreamTotalPressurePa:F1}");
+        Library.Log($"PressureRatio (meaning):                  {ip.PressureRatioDefinition}");
+        Library.Log($"AmbientStaticPressurePa [Pa]:             {ip.AmbientStaticPressurePa:F1}");
+        Library.Log($"JetSourceReferenceStaticPressurePa [Pa]:  {ip.JetSourceReferenceStaticPressurePa:F1} (static passed into JetSource — currently ambient)");
+        Library.Log($"MarchInletAssignedStaticPressurePa [Pa]:  {ip.MarchInletAssignedStaticPressurePa:F1} (JetState.PressurePa at march start)");
+        Library.Log("Velocities [m/s]:");
+        Library.Log($"  Injector jet raw (blend driver):       {ip.InjectorJetVelocityRawMps:F2}");
+        Library.Log($"  Injector jet effective (Cd·√(1−K)):    {ip.InjectorJetVelocityEffectiveMps:F2}");
+        Library.Log($"  Va_effective / Vt_effective:            {ip.InjectorVaEffectiveMps:F2} / {ip.InjectorVtEffectiveMps:F2}");
+        Library.Log($"  |V|_effective from components:         {ip.InjectorVelocityMagnitudeEffectiveMps:F2}");
+        Library.Log("Dynamic pressure q = 0.5·ρ·V² [Pa]:");
+        Library.Log($"  q from raw |V|:                          {ip.InjectorDynamicPressureRawPa:F1}");
+        Library.Log($"  q from effective scalar |V|:            {ip.InjectorDynamicPressureEffectiveScalarPa:F1}");
+        Library.Log($"  q from (Va²+Vt²) effective:            {ip.InjectorDynamicPressureFromComponentsPa:F1}");
+        Library.Log($"InjectorTotalPressureLossModelPa [Pa]:  {ip.InjectorTotalPressureLossModelPa:F1} (InjectorLossModel vs raw V)");
+        Library.Log($"InjectorExitStaticPressureFirstOrderPa:   {ip.InjectorExitStaticPressureFirstOrderPa:F1}");
+        Library.Log($"  Assumptions: {ip.InjectorExitStaticPressureAssumptions}");
+        Library.Log($"ChamberStaticPressureNearInjectorPa [Pa]: {ip.ChamberStaticPressureNearInjectorPa:F1}");
+        Library.Log($"  Note: {ip.ChamberStaticPressureNearInjectorNote}");
+        Library.Log("Vortex / core (radial model, first-order):");
+        Library.Log($"  CorePressureDropPa [Pa]:                {ip.CorePressureDropPa:F1}");
+        Library.Log($"  CoreStaticPressurePa [Pa]:              {ip.CoreStaticPressurePa:F1}  (≈ P_amb − core drop, floored)");
+        Library.Log($"  AmbientMinusCorePressurePa [Pa]:        {ip.AmbientMinusCorePressurePa:F1}");
+        Library.Log($"Formulas (summary): {ip.FormulasUsedSummary}");
     }
 
     private static void LogLegacyVortexOnly(VortexFlowDiagnostics vx)

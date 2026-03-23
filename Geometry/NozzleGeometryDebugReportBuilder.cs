@@ -114,7 +114,7 @@ public static class NozzleGeometryDebugReportBuilder
 
         explanations.Add("Stator annulus inner wall does not expand in current builder — any perceived opening in the viewer is usually overlap with the expander or the exit taper after the stator.");
         explanations.Add(
-            "PicoGK AddBeam(..., roundCap:false) on inlet/chamber/expander/stator adds flat faces normal to +X at each beam end; segment overlap mostly hides seams. Exit uses round caps + longer axial length so the gray exit group is not dominated by a single flat downstream annulus (washer/plate look).");
+            "Exit uses AddBeam(..., roundCap:false) like other segments: flat annular ends so the duct stays hollow. roundCap:true was removed — it adds spherical end caps and visually closes the exit into a bulb. Longer exit length (ComputeExitSectionLengthMm) reduces stubby 'washer' look without capping the bore.");
 
         // --- Exit (length + stations from GeometryAssemblyPath / ExitBuilder.ComputeExitSectionLengthMm) ---
         double xExitStart = path.XExitStart;
@@ -146,7 +146,7 @@ public static class NozzleGeometryDebugReportBuilder
             rExit0, rExit1,
             wall,
             rExit0 != rExit1 ? exitSlopeHalfAngleDeg : null,
-            "Linear frustum (inner); length = ExitBuilder.ComputeExitSectionLengthMm (slenderness + ΔR); AddBeam round caps true."));
+            "Linear frustum (inner); length = ExitBuilder.ComputeExitSectionLengthMm; AddBeam roundCap false (open annulus at exit)."));
 
         segments.Add(MkSeg(
             "Final outlet lip / exit plane",
