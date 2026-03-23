@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using PicoGK;
 using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
@@ -16,7 +17,11 @@ internal sealed class AppPipeline
 
         NozzleDesignInputs baselineTemplate = CloneDesignForLog(input.Design);
 
+        var autotuneSw = Stopwatch.StartNew();
         NozzleDesignAutotune.Result tune = NozzleDesignAutotune.FindBestSeed(input.Source, input.Design, input.Run);
+        autotuneSw.Stop();
+        Library.Log(
+            $"Autotune wall time: {autotuneSw.Elapsed.TotalMilliseconds:F0} ms (SI-only trials; separate from final-run PipelineProfiler session).");
 
         if (!string.IsNullOrEmpty(tune.CoarseToFineLog))
         {
@@ -56,7 +61,8 @@ internal sealed class AppPipeline
             pr.CriticalRatios,
             summary,
             pr.PhysicsStages,
-            pr.GeometryContinuity);
+            pr.GeometryContinuity,
+            pr.PerformanceProfile);
     }
 
     /// <summary>Viewer group order/colors must stay aligned with <see cref="NozzleViewerGroupCatalog"/> (audit log references same IDs).</summary>

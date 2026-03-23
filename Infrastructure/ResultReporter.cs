@@ -5,6 +5,7 @@ using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.Reports;
 
 namespace PicoGK_Run.Infrastructure;
 
@@ -17,8 +18,19 @@ internal static class ResultReporter
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
         Library.Log("=== Nozzle / ejector estimate (SI flow drives geometry) ===");
+        if (result.PerformanceProfile != null)
+        {
+            Library.Log("--- Pipeline performance (C# stages; PicoGK native work appears inside geometry.*) ---");
+            foreach (string line in result.PerformanceProfile.FormatText().Split(
+                         new[] { '\r', '\n' },
+                         StringSplitOptions.RemoveEmptyEntries))
+                Library.Log(line);
+        }
+
         if (result.PhysicsStages != null || result.GeometryContinuity != null || result.SiFlow != null)
             RunReportBuilder.LogEngineeringReport(result.PhysicsStages, result.GeometryContinuity, s => Library.Log(s), result.SiFlow);
+        if (result.SiFlow?.SwirlChamberHealth != null)
+            LogSwirlChamberHealthReport(result.SiFlow.SwirlChamberHealth);
         if (result.Autotune != null)
         {
             AutotuneRunSummary at = result.Autotune;
@@ -253,6 +265,40 @@ internal static class ResultReporter
         if (sf.Vortex != null)
         {
             Library.Log($"March decay factor / step:     {sf.Vortex.SwirlDecayPerStepFactorUsed:F4} (legacy audit line)");
+        }
+    }
+
+    private static void LogSwirlChamberHealthReport(SwirlChamberHealthReport h)
+    {
+        Library.Log("=== Swirl chamber health (vortex entrainment audit — not CFD) ===");
+        Library.Log(
+            $"Inlet capture A [mm2]: {h.InletCaptureAreaMm2:F1}  Chamber bore A [mm2]: {h.ChamberBoreAreaMm2:F1}  Free annulus A [mm2]: {h.ChamberFreeAnnulusAreaMm2:F1}");
+        Library.Log(
+            $"Injector total A [mm2]: {h.TotalInjectorAreaMm2:F1}  A_inj/A_bore [-]: {h.InjectorToBoreAreaRatio:F3}  A_free/A_bore [-]: {h.FreeAnnulusToBoreAreaRatio:F3}");
+        Library.Log(
+            $"Chamber L/D [-]: {h.ChamberSlendernessLD:F3}  Injector axial position ratio [-]: {h.InjectorAxialPositionRatio:F3}");
+        Library.Log(
+            $"Expander half-angle [deg]: {h.ExpanderHalfAngleDeg:F2}  length [mm]: {h.ExpanderLengthMm:F1}");
+        Library.Log(
+            $"Injector yaw [deg]: {h.InjectorYawAngleDeg:F1}  V_t / V_a [m/s]: {h.InjectorTangentialVelocityMps:F2} / {h.InjectorAxialVelocityMps:F4} (honest decomposition)");
+        Library.Log(
+            $"Est. core static [Pa]: {h.EstimatedCoreStaticPressurePa:F1}  P_amb [Pa]: {h.AmbientStaticPressurePa:F1}");
+        Library.Log(
+            $"Ambient inflow potential [kg/s]: {h.AmbientInflowPotentialKgS:F4}  actual ΣΔṁ [kg/s]: {h.AmbientInflowActualSumKgS:F4}");
+        Library.Log(
+            $"Mixed ṁ @ chamber end [kg/s]: {h.MixedMassFlowAtChamberEndKgS:F4}");
+        Library.Log(
+            $"Expander entry V_ax / V_t [m/s]: {h.ExpanderEntryAxialVelocityMps:F2} / {h.ExpanderEntryTangentialVelocityMps:F2}");
+        Library.Log(
+            $"Stator entry |V_t|/|V_ax| [-]: {h.StatorEntrySwirlNumberVtOverVa:F3}  Stator η_eff [-]: {h.StatorEffectiveEtaUsed:F3}  Δp_rec [Pa]: {h.StatorRecoveredPressureRisePa:F1}");
+        Library.Log(
+            $"Exit V_ax [m/s]: {h.ExitAxialVelocityMps:F2}  Thrust estimate [N]: {h.ThrustEstimateN:F2}");
+        Library.Log("Core pressure model: " + h.CorePressureModelSummary);
+        if (h.PlainLanguageWarnings.Count > 0)
+        {
+            Library.Log("--- Plain-language warnings ---");
+            foreach (string w in h.PlainLanguageWarnings)
+                Library.Log("  • " + w);
         }
     }
 

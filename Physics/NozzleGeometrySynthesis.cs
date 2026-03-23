@@ -39,15 +39,22 @@ public static class NozzleGeometrySynthesis
         var (vt, va) = SwirlMath.ResolveInjectorComponents(vCore, yaw, pitch);
         double swirlNumber = SwirlMath.InjectorSwirlNumber(vt, va);
 
+        int nInj = Math.Max(1, template.InjectorCount);
+        double totalInjArea = Math.Min(aSourceMm2 * 0.995, Math.Max(template.TotalInjectorAreaMm2, aSourceMm2 * 0.85));
+        const double injectorToBoreAreaMargin = 1.06;
+        double dMinForPortsMm = 2.0 * Math.Sqrt((totalInjArea * injectorToBoreAreaMargin) / Math.PI);
+
         // --- Swirl chamber: slightly larger than jet so shear + swirl can “see” the wall (not a tight throat).
         double chamberScale = 1.02 + 0.11 * Math.Tanh(swirlNumber * 0.45) + 0.06 * Math.Sqrt(targetEntrainmentRatio);
         chamberScale = Math.Clamp(chamberScale, 0.92, 1.28);
         double dChamberMm = Math.Clamp(dJetMm * chamberScale, dJetMm * 0.9, dJetMm * 1.32);
+        dChamberMm = Math.Max(dChamberMm, dMinForPortsMm);
 
         // --- Chamber length: shorter envelope by default (compact vortex volume); still scales with D and ER.
         double lambda = 0.92 + 0.14 * (1.0 - 1.0 / (1.0 + targetEntrainmentRatio));
         lambda = Math.Clamp(lambda, 0.72, 1.12);
         double lChamberMm = Math.Clamp(lambda * dChamberMm, 28.0, 88.0);
+        lChamberMm = Math.Max(lChamberMm, Math.Min(95.0, 0.98 * dChamberMm));
 
         // --- Inlet: capture openness σ = (D_in/D_ch)² ; favor σ > 1 for ambient mouth ≥ bore (bellmouth rule in geometry).
         double sigma = 1.22 + 0.28 * targetEntrainmentRatio - 0.06 * Math.Tanh(swirlNumber * 0.35);
@@ -86,8 +93,6 @@ public static class NozzleGeometrySynthesis
         double statorDeg = yaw * (0.32 + 0.04 * Math.Tanh(ld - 1.0)) + 6.0 * Math.Tanh(swirlNumber * 0.25);
         statorDeg = Math.Clamp(statorDeg, 18.0, 52.0);
 
-        int nInj = Math.Max(1, template.InjectorCount);
-        double totalInjArea = Math.Min(aSourceMm2 * 0.995, Math.Max(template.TotalInjectorAreaMm2, aSourceMm2 * 0.85));
         double slotH = Math.Max(template.InjectorHeightMm, 1.0);
         double slotW = totalInjArea / (nInj * slotH);
 

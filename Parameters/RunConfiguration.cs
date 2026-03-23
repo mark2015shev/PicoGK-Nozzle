@@ -122,6 +122,18 @@ public sealed class RunConfiguration
     /// <summary>Run <see cref="Geometry.GeometryContinuityValidator"/> on the driven design and surface issues in the report.</summary>
     public bool RunGeometryContinuityCheck { get; init; } = true;
 
+    /// <summary>Record <see cref="Infrastructure.PipelineProfiler"/> stages on full voxel runs (timing + approximate heap/GC).</summary>
+    public bool EnablePipelineProfiling { get; init; } = true;
+
+    /// <summary>
+    /// Run independent SI autotune trials on multiple cores (RNG sampling stays single-threaded for reproducibility).
+    /// Set false for deterministic single-thread order (debug / diff baselines).
+    /// </summary>
+    public bool AutotuneUseParallelEvaluation { get; init; } = true;
+
+    /// <summary>0 = use <see cref="Environment.ProcessorCount"/>.</summary>
+    public int AutotuneMaxDegreeOfParallelism { get; init; }
+
     /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
@@ -165,6 +177,9 @@ public sealed class RunConfiguration
         UseReynoldsEntrainmentFactor = UseReynoldsEntrainmentFactor,
         ChamberVaneBlockageFractionOfAnnulus = ChamberVaneBlockageFractionOfAnnulus,
         ApplySolvedGeometryHints = ApplySolvedGeometryHints,
-        RunGeometryContinuityCheck = RunGeometryContinuityCheck
+        RunGeometryContinuityCheck = RunGeometryContinuityCheck,
+        EnablePipelineProfiling = EnablePipelineProfiling,
+        AutotuneUseParallelEvaluation = AutotuneUseParallelEvaluation,
+        AutotuneMaxDegreeOfParallelism = AutotuneMaxDegreeOfParallelism
     };
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using PicoGK_Run.Core;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
@@ -93,15 +94,32 @@ public static class NozzleDesignAutotune
         NozzleDesignInputs baseSeed = BaselineSeed(source, template, run);
         FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseSeed, run);
 
+        // Single-threaded RNG + candidate construction keeps trials reproducible; SI solves are embarrassingly parallel.
+        var knobs = new Knobs[trials];
+        for (int i = 0; i < trials; i++)
+            knobs[i] = SampleKnobsLegacy(rng, run, template);
+
+        var candidates = new NozzleDesignInputs[trials];
+        for (int i = 0; i < trials; i++)
+        {
+            candidates[i] = BuildCandidateFromKnobs(
+                source,
+                template,
+                knobs[i],
+                run,
+                useSynthesisBase: run.AutotuneUseSynthesisBaseline);
+        }
+
+        var evals = new FlowTuneEvaluation[trials];
+        EvaluateTrialBatch(source, run, candidates, evals);
+
         double bestScore = double.NegativeInfinity;
         NozzleDesignInputs bestSeed = baseSeed;
         FlowTuneEvaluation? bestEv = null;
 
         for (int i = 0; i < trials; i++)
         {
-            Knobs k = SampleKnobsLegacy(rng, run, template);
-            NozzleDesignInputs candidate = BuildCandidateFromKnobs(source, template, k, run, useSynthesisBase: run.AutotuneUseSynthesisBaseline);
-            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+            FlowTuneEvaluation ev = evals[i];
             if (ev.HasDesignError)
                 continue;
 
@@ -111,7 +129,7 @@ public static class NozzleDesignAutotune
             if (score > bestScore)
             {
                 bestScore = score;
-                bestSeed = candidate;
+                bestSeed = candidates[i];
                 bestEv = ev;
             }
         }
@@ -153,16 +171,32 @@ public static class NozzleDesignAutotune
         var stageBests = new List<AutotuneStageBestSnapshot>();
         var allStage1 = new List<ScoredTrial>();
 
+        var knobs1 = new Knobs[n1];
+        for (int i = 0; i < n1; i++)
+            knobs1[i] = SampleKnobsFromBand(rng, run.AutotuneStage1Band, run, angleRef);
+
+        var candidates1 = new NozzleDesignInputs[n1];
         for (int i = 0; i < n1; i++)
         {
-            Knobs k = SampleKnobsFromBand(rng, run.AutotuneStage1Band, run, angleRef);
-            NozzleDesignInputs candidate = BuildCandidateFromKnobs(source, template, k, run, useSynthesisBase: run.AutotuneUseSynthesisBaseline);
-            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+            candidates1[i] = BuildCandidateFromKnobs(
+                source,
+                template,
+                knobs1[i],
+                run,
+                useSynthesisBase: run.AutotuneUseSynthesisBaseline);
+        }
+
+        var evals1 = new FlowTuneEvaluation[n1];
+        EvaluateTrialBatch(source, run, candidates1, evals1);
+
+        for (int i = 0; i < n1; i++)
+        {
+            FlowTuneEvaluation ev = evals1[i];
             if (ev.HasDesignError)
                 continue;
             double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
             ev = WithScore(ev, score);
-            allStage1.Add(new ScoredTrial(candidate, score, ev));
+            allStage1.Add(new ScoredTrial(candidates1[i], score, ev));
         }
 
         if (allStage1.Count == 0)
@@ -181,21 +215,37 @@ public static class NozzleDesignAutotune
         int seedsC = Math.Max(1, diverseSeeds.Count);
         int basePer = n2 / seedsC;
         int rem = n2 - basePer * seedsC;
+        int[] perSeed2 = new int[diverseSeeds.Count];
+        for (int s = 0; s < diverseSeeds.Count; s++)
+            perSeed2[s] = basePer + (s < rem ? 1 : 0);
+
+        int total2 = 0;
+        for (int s = 0; s < diverseSeeds.Count; s++)
+            total2 += perSeed2[s];
+
+        var candidates2 = new NozzleDesignInputs[total2];
+        int w2 = 0;
         for (int s = 0; s < diverseSeeds.Count; s++)
         {
-            int count = basePer + (s < rem ? 1 : 0);
             NozzleDesignInputs seed = diverseSeeds[s];
-            for (int i = 0; i < count; i++)
+            for (int j = 0; j < perSeed2[s]; j++)
             {
                 Knobs k = SampleKnobsFromBand(rng, run.AutotuneStage2Band, run, seed);
-                NozzleDesignInputs candidate = ApplyKnobs(CloneDesign(seed), k, run);
-                FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
-                if (ev.HasDesignError)
-                    continue;
-                double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
-                ev = WithScore(ev, score);
-                allStage2.Add(new ScoredTrial(candidate, score, ev));
+                candidates2[w2++] = ApplyKnobs(CloneDesign(seed), k, run);
             }
+        }
+
+        var evals2 = new FlowTuneEvaluation[total2];
+        EvaluateTrialBatch(source, run, candidates2, evals2);
+
+        for (int i = 0; i < total2; i++)
+        {
+            FlowTuneEvaluation ev = evals2[i];
+            if (ev.HasDesignError)
+                continue;
+            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+            ev = WithScore(ev, score);
+            allStage2.Add(new ScoredTrial(candidates2[i], score, ev));
         }
 
         if (allStage2.Count == 0)
@@ -214,16 +264,26 @@ public static class NozzleDesignAutotune
 
         NozzleDesignInputs polishCenter = best2.Design;
         var allStage3 = new List<ScoredTrial>();
+
+        var knobs3 = new Knobs[n3];
+        for (int i = 0; i < n3; i++)
+            knobs3[i] = SampleKnobsFromBand(rng, run.AutotuneStage3Band, run, polishCenter);
+
+        var candidates3 = new NozzleDesignInputs[n3];
+        for (int i = 0; i < n3; i++)
+            candidates3[i] = ApplyKnobs(CloneDesign(polishCenter), knobs3[i], run);
+
+        var evals3 = new FlowTuneEvaluation[n3];
+        EvaluateTrialBatch(source, run, candidates3, evals3);
+
         for (int i = 0; i < n3; i++)
         {
-            Knobs k = SampleKnobsFromBand(rng, run.AutotuneStage3Band, run, polishCenter);
-            NozzleDesignInputs candidate = ApplyKnobs(CloneDesign(polishCenter), k, run);
-            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+            FlowTuneEvaluation ev = evals3[i];
             if (ev.HasDesignError)
                 continue;
             double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
             ev = WithScore(ev, score);
-            allStage3.Add(new ScoredTrial(candidate, score, ev));
+            allStage3.Add(new ScoredTrial(candidates3[i], score, ev));
         }
 
         if (allStage3.Count == 0)
@@ -290,6 +350,39 @@ public static class NozzleDesignAutotune
         ScoredTrial second = sorted2[1];
         log.AppendLine(
             $"  Stage 2 runner-up #2 score {second.Score:F4} (best {best2.Score:F4}); stage 3 polishes best only (top2Keep={top2Keep} for future use).");
+    }
+
+    /// <summary>
+    /// Parallel SI evaluations only — PicoGK is never touched here.
+    /// Candidates must be fully built on one thread first so RNG and synthesis order stay deterministic.
+    /// </summary>
+    private static void EvaluateTrialBatch(
+        SourceInputs source,
+        RunConfiguration run,
+        NozzleDesignInputs[] candidates,
+        FlowTuneEvaluation[] sink)
+    {
+        int n = candidates.Length;
+        if (n == 0)
+            return;
+
+        ParallelOptions po = AutotuneParallelOptions(run);
+        if (run.AutotuneUseParallelEvaluation)
+            Parallel.For(0, n, po, i => sink[i] = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidates[i], run));
+        else
+        {
+            for (int i = 0; i < n; i++)
+                sink[i] = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidates[i], run);
+        }
+    }
+
+    private static ParallelOptions AutotuneParallelOptions(RunConfiguration run)
+    {
+        var o = new ParallelOptions();
+        int m = run.AutotuneMaxDegreeOfParallelism;
+        if (m > 0)
+            o.MaxDegreeOfParallelism = m;
+        return o;
     }
 
     private static Result FinishResult(

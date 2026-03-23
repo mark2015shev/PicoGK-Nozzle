@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PicoGK_Run.Physics.Reports;
 
 namespace PicoGK_Run.Physics;
 
@@ -49,4 +50,7 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Chamber SI march duct areas, capture, Ce sample, and validation warnings — not CFD.</summary>
     public SwirlChamberMarchDiagnostics? ChamberMarch { get; init; }
+
+    /// <summary>Swirl-vortex chamber openness, blockage, entrainment, and plain-language geometry warnings.</summary>
+    public SwirlChamberHealthReport? SwirlChamberHealth { get; init; }
 }

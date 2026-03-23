@@ -6,6 +6,7 @@ using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.Reports;
 using PicoGK_Run.Physics.Solvers;
 
 namespace PicoGK_Run.Infrastructure;
@@ -65,23 +66,40 @@ public static class NozzleFlowCompositionRoot
 
     public static PipelineRunResult Run(NozzleInput input, bool showInViewer)
     {
-        NozzleDesignInputs activeDesign = input.Run.UsePhysicsInformedGeometry
-            ? NozzleGeometrySynthesis.Synthesize(input.Source, input.Design)
-            : input.Design;
+        PipelineProfiler.ResetSession(input.Run.EnablePipelineProfiling);
 
-        SiPathSolveResult path = SolveSiPath(input.Source, activeDesign, input.Run);
+        NozzleDesignInputs activeDesign;
+        using (PipelineProfiler.Stage("pipeline.synthesis"))
+        {
+            activeDesign = input.Run.UsePhysicsInformedGeometry
+                ? NozzleGeometrySynthesis.Synthesize(input.Source, input.Design)
+                : input.Design;
+        }
 
-        GeometryContinuityReport? geomContinuity = input.Run.RunGeometryContinuityCheck
-            ? GeometryContinuityValidator.Check(path.DrivenDesign)
-            : null;
+        SiPathSolveResult path;
+        using (PipelineProfiler.Stage("physics.solveSiPath"))
+            path = SolveSiPath(input.Source, activeDesign, input.Run);
 
+        GeometryContinuityReport? geomContinuity;
+        using (PipelineProfiler.Stage("geometry.continuity"))
+        {
+            geomContinuity = input.Run.RunGeometryContinuityCheck
+                ? GeometryContinuityValidator.Check(path.DrivenDesign)
+                : null;
+        }
+
+        // Per-segment timings live in NozzleGeometryBuilder (sum ≈ full voxel assembly; no outer wrapper — avoids double-count in TOTAL).
         var geometryBuilder = new NozzleGeometryBuilder();
         NozzleGeometryResult geometry = geometryBuilder.Build(path.DrivenDesign, path.Solved);
 
         if (showInViewer)
-            AppPipeline.DisplayGeometryInViewer(geometry);
+        {
+            using (PipelineProfiler.Stage("viewer.display"))
+                AppPipeline.DisplayGeometryInViewer(geometry);
+        }
 
-        PrintPhysicsSummary(path.InletState, path.DesignResult, path.SiDiag);
+        using (PipelineProfiler.Stage("reporting.consoleSummary"))
+            PrintPhysicsSummary(path.InletState, path.DesignResult, path.SiDiag);
 
         var warnings = new List<string>
         {
@@ -94,6 +112,7 @@ public static class NozzleFlowCompositionRoot
         warnings.AddRange(path.HealthMessages);
 
         NozzleInput effectiveInput = new NozzleInput(input.Source, path.DrivenDesign, input.Run);
+        PipelineProfileReport? profile = PipelineProfiler.TryBuildReport();
         return new PipelineRunResult(
             effectiveInput,
             path.Solved,
@@ -103,7 +122,8 @@ public static class NozzleFlowCompositionRoot
             path.CriticalRatios,
             autotune: null,
             physicsStages: path.PhysicsStages,
-            geometryContinuity: geomContinuity);
+            geometryContinuity: geomContinuity,
+            performanceProfile: profile);
     }
 
     private static SiPathSolveResult SolveSiPath(
@@ -173,6 +193,7 @@ public static class NozzleFlowCompositionRoot
             rWallM,
             ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
             ChamberPhysicsCoefficients.RadialPressureCapPa);
+        double pCoreEstimatedPa = Math.Max(ambient.PressurePa - radialPreMarch.CorePressureDropPa, 1.0);
         double deltaPCoreUseful = Math.Clamp(
             radialPreMarch.CorePressureDropPa,
             0.0,
@@ -477,6 +498,25 @@ public static class NozzleFlowCompositionRoot
             chamber.RadialPressure,
             inletState.PressurePa);
 
+        double statorEntrySwirlNumber = Math.Abs(detailed.FinalTangentialVelocityMps)
+            / Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6);
+        SwirlChamberHealthReport swirlChamberHealth = SwirlChamberHealthReportBuilder.Build(
+            activeDesign,
+            ambient,
+            injectorDischarge,
+            aCaptureM2,
+            aFreeChamberMm2,
+            sumAct,
+            lastMarch.TotalMassFlowKgS,
+            lastMarch.VelocityMps,
+            detailed.FinalTangentialVelocityMps,
+            statorEntrySwirlNumber,
+            vaAfterStator,
+            fNet,
+            etaStatorEff,
+            statorOut.RecoveredPressureRisePa,
+            pCoreEstimatedPa);
+
         var siDiag = new SiFlowDiagnostics
         {
             MarchSteps = steps,
@@ -499,7 +539,8 @@ public static class NozzleFlowCompositionRoot
             Coupling = couplingDiag,
             HubStator = hubDiag,
             InjectorPressureVelocity = injectorPressureVelocity,
-            ChamberMarch = chamberMarchDiag
+            ChamberMarch = chamberMarchDiag,
+            SwirlChamberHealth = swirlChamberHealth
         };
 
         var designer = new NozzleDesigner();
@@ -531,14 +572,17 @@ public static class NozzleFlowCompositionRoot
             siDiag);
 
         IReadOnlyList<string> healthBase = NozzleDesignHealthCheck.Validate(drivenDesign, criticalRatios, siDiag);
-        var health = new List<string>(healthBase.Count + (chamberMarchDiag.ValidationWarnings?.Count ?? 0));
+        var health = new List<string>(
+            healthBase.Count
+            + (chamberMarchDiag.ValidationWarnings?.Count ?? 0)
+            + swirlChamberHealth.PlainLanguageWarnings.Count);
         health.AddRange(healthBase);
         health.AddRange(chamberMarchDiag.ValidationWarnings ?? Array.Empty<string>());
+        health.AddRange(swirlChamberHealth.PlainLanguageWarnings);
 
-        double pCoreEst = Math.Max(ambient.PressurePa - radialPreMarch.CorePressureDropPa, 1.0);
         double mdotAmbPotential = SwirlAmbientEntrainmentSolver.ComputeSwirlDrivenAmbientPotentialKgS(
             ambient.PressurePa,
-            pCoreEst,
+            pCoreEstimatedPa,
             aCaptureM2,
             ambient.DensityKgM3,
             sInjPre);
@@ -549,7 +593,7 @@ public static class NozzleFlowCompositionRoot
             Stage2SwirlNumberAtInjector = sInjPre,
             Stage3CorePressureDropPa = radialPreMarch.CorePressureDropPa,
             Stage3WallPressureRisePa = radialPreMarch.WallPressureRisePa,
-            Stage3EstimatedCoreStaticPressurePa = pCoreEst,
+            Stage3EstimatedCoreStaticPressurePa = pCoreEstimatedPa,
             Stage4AmbientInflowPotentialKgS = mdotAmbPotential,
             Stage4AmbientInflowActualIntegratedKgS = sumAct,
             Stage5MixedMassFlowKgS = lastMarch.TotalMassFlowKgS,

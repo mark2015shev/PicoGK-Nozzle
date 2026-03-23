@@ -28,6 +28,9 @@ public sealed class PipelineRunResult
     /// <summary>Assembly-path continuity checks (mm geometry).</summary>
     public GeometryContinuityReport? GeometryContinuity { get; }
 
+    /// <summary>Wall-clock breakdown when <see cref="Parameters.RunConfiguration.EnablePipelineProfiling"/> was true.</summary>
+    public PipelineProfileReport? PerformanceProfile { get; }
+
     public PipelineRunResult(
         NozzleInput input,
         NozzleSolvedState solved,
@@ -37,7 +40,8 @@ public sealed class PipelineRunResult
         NozzleCriticalRatiosSnapshot? criticalRatios = null,
         AutotuneRunSummary? autotune = null,
         NozzlePhysicsStageResult? physicsStages = null,
-        GeometryContinuityReport? geometryContinuity = null)
+        GeometryContinuityReport? geometryContinuity = null,
+        PipelineProfileReport? performanceProfile = null)
     {
         Input = input;
         Solved = solved;
@@ -48,5 +52,6 @@ public sealed class PipelineRunResult
         Autotune = autotune;
         PhysicsStages = physicsStages;
         GeometryContinuity = geometryContinuity;
+        PerformanceProfile = performanceProfile;
     }
 }

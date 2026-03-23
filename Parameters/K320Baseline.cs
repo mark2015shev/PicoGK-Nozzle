@@ -39,12 +39,13 @@ public static class K320Baseline
 
     public static NozzleDesignInputs CreateDesign() => new()
     {
-        InletDiameterMm = 90.0,
-        SwirlChamberDiameterMm = 68.0,
-        // Shorter hand chamber (vortex segment in viewer); autotune still searches L and D when UseAutotune is true.
-        SwirlChamberLengthMm = 58.0,
-        // 1 = downstream / near expander; high ratio keeps injectors close to the expander end of the chamber.
-        InjectorAxialPositionRatio = 0.88,
+        InletDiameterMm = 96.0,
+        // Bore must exceed A_inj (~3737 mm²) with annulus margin — 68 mm bore made A_inj/A_ch > 1 (choked).
+        SwirlChamberDiameterMm = 82.0,
+        // Longer chamber for vortex development before expander (hand template; autotune may still vary when enabled).
+        SwirlChamberLengthMm = 80.0,
+        // Mid-chamber injection gives axial runout before expander (90° tangential case).
+        InjectorAxialPositionRatio = 0.74,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
         InjectorCount = 16,
         InjectorWidthMm = 10.0,
@@ -81,7 +82,8 @@ public static class K320Baseline
         VoxelSizeMM = 0.3f,
         ShowInViewer = false,
         UsePhysicsInformedGeometry = false,
-        UseAutotune = false
+        UseAutotune = false,
+        EnablePipelineProfiling = false
     };
 
     /// <summary>Same as <see cref="CreateRun"/> but enables synthesis so chamber/expander/stator/inlet follow first-order rules from the source.</summary>

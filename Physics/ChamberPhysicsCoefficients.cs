@@ -37,6 +37,16 @@ public static class ChamberPhysicsCoefficients
     public static double StatorIncidenceRefDeg { get; set; } = 12.0;
     public static double StatorTurningLossK { get; set; } = 0.14;
 
+    // --- Stator recovery (StatorRecoveryModel) — inspectable caps, swirl-nozzle defaults ---
+    /// <summary>Fraction of recovered specific energy booked to static pressure rise [-].</summary>
+    public static double StatorRecoveryFractionToPressure { get; set; } = 0.65;
+
+    /// <summary>Cap on Δp vs ρ·Δ(½V_t²) [-] (legacy 0.25×2).</summary>
+    public static double StatorRecoveryPressureRiseCapFactor { get; set; } = 0.50;
+
+    /// <summary>Cap axial gain vs |ΔV_t| — higher helps tangential-dominated injector cases without inventing V_a at injectors.</summary>
+    public static double StatorRecoveryAxialGainCapPerDeltaVt { get; set; } = 0.55;
+
     // --- Ejector regime scoring ---
     public static double EjectorShortfallCriticalRatio { get; set; } = 0.35;
 
@@ -90,5 +100,6 @@ public static class ChamberPhysicsCoefficients
     // --- Hub-based stator (HubStatorFirstOrderModel) ---
     public static double HubStatorBlockagePenaltyScale { get; set; } = 1.45;
     public static double HubStatorBlockagePenaltyCap { get; set; } = 0.52;
-    public static double HubStatorMaxEtaCap { get; set; } = 0.50;
+    /// <summary>Upper cap on effective stator η in hub coupling — swirl-vortex nozzle uses a slightly higher ceiling than generic ejector defaults.</summary>
+    public static double HubStatorMaxEtaCap { get; set; } = 0.58;
 }

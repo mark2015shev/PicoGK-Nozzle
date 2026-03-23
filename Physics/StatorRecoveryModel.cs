@@ -24,11 +24,14 @@ public sealed class StatorRecoveryModel
         double deltaKe = 0.5 * (vtIn * vtIn - vtOut * vtOut);
         deltaKe = Math.Max(deltaKe, 0.0);
         double eRecover = eta * deltaKe;
-        double fractionToPressure = 0.65;
+        double fractionToPressure = ChamberPhysicsCoefficients.StatorRecoveryFractionToPressure;
+        fractionToPressure = Math.Clamp(fractionToPressure, 0.35, 0.85);
         double dP = rho * eRecover * fractionToPressure;
-        dP = Math.Min(dP, 0.25 * rho * deltaKe * 2.0);
+        double dPCap = ChamberPhysicsCoefficients.StatorRecoveryPressureRiseCapFactor * rho * deltaKe * 2.0;
+        dP = Math.Min(dP, dPCap);
         double dvAxial = Math.Sqrt(Math.Max(0.0, 2.0 * eRecover * (1.0 - fractionToPressure)));
-        dvAxial = Math.Min(dvAxial, 0.35 * Math.Abs(vtIn - vtOut));
+        double dvCap = ChamberPhysicsCoefficients.StatorRecoveryAxialGainCapPerDeltaVt * Math.Abs(vtIn - vtOut);
+        dvAxial = Math.Min(dvAxial, dvCap);
         return new StatorRecoveryOutput
         {
             RecoveredPressureRisePa = Math.Max(dP, 0.0),
