@@ -75,7 +75,7 @@ internal static class ResultReporter
         Library.Log("Injector geometry = REFERENCE MARKERS ONLY (beams): not flow passages, not meshed holes.");
         Library.Log("Future: replace with real injector port solids when modeling passages.");
 
-        NozzleGeometryDebugReport geometryAudit = NozzleGeometryDebugReportBuilder.Build(input.Design);
+        NozzleGeometryDebugReport geometryAudit = NozzleGeometryDebugReportBuilder.Build(input.Design, result.Geometry);
         NozzleGeometryDebugReportBuilder.WriteReport(geometryAudit, line =>
         {
             Library.Log(line);

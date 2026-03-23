@@ -7,6 +7,7 @@ namespace PicoGK_Run.Geometry;
 /// <summary>
 /// Assembles nozzle segments along +X. Neighboring solids overlap slightly so voxel unions stay watertight;
 /// exact face-touching bodies can look detached in the viewer — overlap is intentional.
+/// Axial stations and radii for logging: <see cref="GeometryAssemblyPath"/> (keep in sync when changing overlap or segment lengths).
 /// </summary>
 public sealed class NozzleGeometryBuilder
 {

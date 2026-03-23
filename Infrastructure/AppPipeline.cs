@@ -57,17 +57,26 @@ internal sealed class AppPipeline
             summary);
     }
 
+    /// <summary>Viewer group order/colors must stay aligned with <see cref="NozzleViewerGroupCatalog"/> (audit log references same IDs).</summary>
     internal static void DisplayGeometryInViewer(NozzleGeometryResult geometry)
     {
         Viewer viewer = Library.oViewer();
         int g = 1;
-        AddSegment(viewer, ref g, geometry.Inlet, NozzleViewerSegmentColors.InletHex);
-        AddSegment(viewer, ref g, geometry.SwirlChamber, NozzleViewerSegmentColors.SwirlChamberHex);
-        AddSegment(viewer, ref g, geometry.InjectorReferenceMarkers, NozzleViewerSegmentColors.InjectorReferenceMarkersHex);
-        AddSegment(viewer, ref g, geometry.Expander, NozzleViewerSegmentColors.ExpanderHex);
-        AddSegment(viewer, ref g, geometry.StatorSection, NozzleViewerSegmentColors.StatorSectionHex);
-        AddSegment(viewer, ref g, geometry.Exit, NozzleViewerSegmentColors.ExitHex);
+        foreach (NozzleViewerGroupCatalog.Entry e in NozzleViewerGroupCatalog.Ordered)
+            AddSegment(viewer, ref g, VoxelsForCatalogProperty(geometry, e.NozzleGeometryResultProperty), e.ColorHex);
     }
+
+    private static Voxels VoxelsForCatalogProperty(NozzleGeometryResult geometry, string propertyName) =>
+        propertyName switch
+        {
+            nameof(NozzleGeometryResult.Inlet) => geometry.Inlet,
+            nameof(NozzleGeometryResult.SwirlChamber) => geometry.SwirlChamber,
+            nameof(NozzleGeometryResult.InjectorReferenceMarkers) => geometry.InjectorReferenceMarkers,
+            nameof(NozzleGeometryResult.Expander) => geometry.Expander,
+            nameof(NozzleGeometryResult.StatorSection) => geometry.StatorSection,
+            nameof(NozzleGeometryResult.Exit) => geometry.Exit,
+            _ => throw new ArgumentOutOfRangeException(nameof(propertyName), propertyName, "Unknown nozzle geometry property for viewer group.")
+        };
 
     private static void LogAutotuneBeforeFinalRun(int trialsUsed, double bestScore, NozzleDesignInputs winning, RunConfiguration run)
     {

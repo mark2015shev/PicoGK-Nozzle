@@ -12,32 +12,28 @@ public static class NozzleGeometryDebugReportBuilder
     public const double DiameterJumpWarnMm = 1.0;
     public const double ExpanderExitVsExitDiameterWarnMm = 1.5;
 
-    public static NozzleGeometryDebugReport Build(NozzleDesignInputs d)
+    public static NozzleGeometryDebugReport Build(NozzleDesignInputs d, NozzleGeometryResult? builtGeometry = null)
     {
-        double overlap = NozzleGeometryBuilder.AssemblyOverlapMm;
+        GeometryAssemblyPath path = GeometryAssemblyPath.Compute(d);
+        double overlap = path.OverlapMm;
         var segments = new List<GeometrySegmentDebugInfo>();
         var explanations = new List<string>();
         var warnings = new List<string>();
 
-        double wall = Math.Max(d.WallThicknessMm, 0.0);
-        double inletD = Math.Max(d.InletDiameterMm, 1.0);
+        double wall = path.WallMm;
         double chamberD = Math.Max(d.SwirlChamberDiameterMm, 1.0);
         double chamberLen = Math.Max(d.SwirlChamberLengthMm, 1.0);
-        double refD = Math.Max(inletD, chamberD);
-        double lipLen = Math.Max(4.0, 0.08 * refD);
-        double flareLen = Math.Max(14.0, 0.30 * refD);
-        double inletNominalR = 0.5 * inletD;
-        double chamberInnerR = 0.5 * chamberD;
-        double entranceInnerR = Math.Max(inletNominalR, chamberInnerR);
+        double chamberInnerR = path.ChamberInnerRadiusMm;
+        double entranceInnerR = path.EntranceInnerRadiusMm;
 
-        double x = 0.0;
-        double xLipEnd = x + lipLen;
-        double xFlareEnd = xLipEnd + flareLen;
-        double xAfterInlet = xFlareEnd;
+        double x = path.XInletStart;
+        double xLipEnd = path.XLipEnd;
+        double xFlareEnd = path.XAfterInlet;
+        double xAfterInlet = path.XAfterInlet;
 
         // --- Inlet lip ---
         double? flareHalfAngleDeg = entranceInnerR > chamberInnerR + 1e-9
-            ? RadiansToDeg(Math.Atan((entranceInnerR - chamberInnerR) / Math.Max(flareLen, 1e-6)))
+            ? RadiansToDeg(Math.Atan((entranceInnerR - chamberInnerR) / Math.Max(path.FlareLengthMm, 1e-6)))
             : null;
         segments.Add(MkSeg(
             "Inlet lip",
@@ -59,8 +55,8 @@ public static class NozzleGeometryDebugReportBuilder
             "Inner wall contracts toward swirl chamber ID; equivalent |ΔR|/L encoded as HalfAngle_deg when monotonic."));
 
         // --- Swirl chamber voxel ---
-        double xSwirlStart = xAfterInlet - overlap;
-        double xAfterSwirl = xSwirlStart + chamberLen;
+        double xSwirlStart = path.XSwirlStart;
+        double xAfterSwirl = path.XAfterSwirl;
         segments.Add(MkSeg(
             "Swirl chamber",
             xSwirlStart, xAfterSwirl,
@@ -70,7 +66,7 @@ public static class NozzleGeometryDebugReportBuilder
             $"Voxel start = inlet end − assembly overlap ({overlap:F2} mm) for watertight union."));
 
         double ratio = Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
-        double xInjectorPlane = xAfterInlet + ratio * chamberLen;
+        double xInjectorPlane = path.XInjectorPlane;
         segments.Add(MkSeg(
             "Injector ring reference position (outer wall station)",
             xInjectorPlane, xInjectorPlane,
@@ -91,11 +87,10 @@ public static class NozzleGeometryDebugReportBuilder
             warnings.Add("Injector reference plane lies near a swirl overlap boundary — viewer overlap can visually shift markers vs chamber bore.");
 
         // --- Expander ---
-        double xExpStart = xAfterSwirl - overlap;
-        double expLen = Math.Max(d.ExpanderLengthMm, 0.0);
-        double halfRad = d.ExpanderHalfAngleDeg * (Math.PI / 180.0);
-        double expanderEndInnerR = chamberInnerR + Math.Tan(halfRad) * expLen;
-        double xAfterExpander = xExpStart + expLen;
+        double xExpStart = path.XExpanderStart;
+        double expLen = path.XAfterExpander - path.XExpanderStart;
+        double expanderEndInnerR = path.ExpanderEndInnerRadiusMm;
+        double xAfterExpander = path.XAfterExpander;
         double impliedExitD = 2.0 * expanderEndInnerR;
         segments.Add(MkSeg(
             "Expander (conical diffuser)",
@@ -106,8 +101,9 @@ public static class NozzleGeometryDebugReportBuilder
             "Inner radius follows ExpanderHalfAngleDeg from chamber ID; implied outlet Ø = 2·R_end (not ExitDiameterMm)."));
 
         // --- Stator ---
-        double xStatorStart = xAfterExpander - overlap;
-        StatorGeometryDebugInfo statorDiag = ComputeStatorDiagnostics(d, xStatorStart, expanderEndInnerR, wall, out double xAfterStator);
+        double xStatorStart = path.XStatorStart;
+        StatorGeometryDebugInfo statorDiag = ComputeStatorDiagnostics(d, path);
+        double xAfterStator = path.XAfterStator;
         segments.Add(MkSeg(
             "Stator section (casing + hub + reference vanes)",
             xStatorStart, xAfterStator,
@@ -117,14 +113,16 @@ public static class NozzleGeometryDebugReportBuilder
             "Annulus inner casing radius is held constant (matches expander exit R); hub + blades are solid add-ons."));
 
         explanations.Add("Stator annulus inner wall does not expand in current builder — any perceived opening in the viewer is usually overlap with the expander or the exit taper after the stator.");
+        explanations.Add(
+            "PicoGK AddBeam(..., roundCap:false) on inlet/chamber/expander/stator adds flat faces normal to +X at each beam end; segment overlap mostly hides seams. Exit uses round caps + longer axial length so the gray exit group is not dominated by a single flat downstream annulus (washer/plate look).");
 
-        // --- Exit ---
-        double xExitStart = xAfterStator - overlap;
-        double targetExitR = 0.5 * Math.Max(d.ExitDiameterMm, 1.0);
-        double rExit0 = Math.Max(0.5, expanderEndInnerR);
-        double rExit1 = Math.Max(0.5, targetExitR);
-        double exitLen = Math.Max(12.0, 0.12 * Math.Max(rExit0 * 2.0, rExit1 * 2.0));
-        double xAfterExit = xExitStart + exitLen;
+        // --- Exit (length + stations from GeometryAssemblyPath / ExitBuilder.ComputeExitSectionLengthMm) ---
+        double xExitStart = path.XExitStart;
+        double targetExitR = path.ExitInnerRadiusTargetMm;
+        double rExit0 = path.ExitInnerRadiusStartMm;
+        double rExit1 = path.ExitInnerRadiusEndMm;
+        double exitLen = path.ExitSectionLengthMm;
+        double xAfterExit = path.XAfterExit;
         double exitSlopeHalfAngleDeg = RadiansToDeg(Math.Atan(Math.Abs(rExit1 - rExit0) / Math.Max(exitLen, 1e-6)));
 
         if (Math.Abs(impliedExitD - d.ExitDiameterMm) > ExpanderExitVsExitDiameterWarnMm)
@@ -148,7 +146,7 @@ public static class NozzleGeometryDebugReportBuilder
             rExit0, rExit1,
             wall,
             rExit0 != rExit1 ? exitSlopeHalfAngleDeg : null,
-            "Linear frustum (inner); length = max(12 mm, 0.12×max(Ø_start,Ø_end)) per ExitBuilder."));
+            "Linear frustum (inner); length = ExitBuilder.ComputeExitSectionLengthMm (slenderness + ΔR); AddBeam round caps true."));
 
         segments.Add(MkSeg(
             "Final outlet lip / exit plane",
@@ -162,9 +160,9 @@ public static class NozzleGeometryDebugReportBuilder
             warnings.Add(
                 $"Final exit inner Ø ({2 * rExit1:F2} mm) is much larger than swirl chamber Ø ({chamberD:F2} mm) — most post-chamber 'opening' is expander + exit taper, not stator row expansion.");
 
-        if (Math.Abs(rExit1 - rExit0) > 1.0 && exitLen < 20.0)
+        if (Math.Abs(rExit1 - rExit0) > 1.0 && exitLen < 0.18 * Math.Max(2.0 * rExit0, 2.0 * rExit1))
             warnings.Add(
-                $"Exit section length ({exitLen:F2} mm) is short relative to inner-radius change (ΔR={Math.Abs(rExit1 - rExit0):F2} mm) — steep exit wall slope.");
+                $"Exit section length ({exitLen:F2} mm) is still short vs bore (L/D≈{exitLen / Math.Max(2.0 * Math.Max(rExit0, rExit1), 1e-6):F3}) — check viewer.");
 
         if (Math.Abs(impliedExitD - d.ExitDiameterMm) > ExpanderExitVsExitDiameterWarnMm)
             warnings.Add(
@@ -240,6 +238,10 @@ public static class NozzleGeometryDebugReportBuilder
             MountInterpretationTags = mountTags
         };
 
+        NozzleGeometryAssemblyAudit assemblyAudit = NozzleGeometryAssemblyAuditBuilder.Build(d, builtGeometry);
+        foreach (string cw in assemblyAudit.ConsistencyWarnings)
+            warnings.Add(cw);
+
         return new NozzleGeometryDebugReport
         {
             AssemblyOverlapMm = overlap,
@@ -253,24 +255,20 @@ public static class NozzleGeometryDebugReportBuilder
             Mismatches = mismatches,
             Stator = statorDiag,
             BuilderExplanations = explanations,
-            Warnings = warnings
+            Warnings = warnings,
+            AssemblyAudit = assemblyAudit
         };
     }
 
-    private static StatorGeometryDebugInfo ComputeStatorDiagnostics(
-        NozzleDesignInputs d,
-        double xStart,
-        double upstreamInnerRadiusMm,
-        double wall,
-        out double xEnd)
+    private static StatorGeometryDebugInfo ComputeStatorDiagnostics(NozzleDesignInputs d, GeometryAssemblyPath path)
     {
-        double innerR = Math.Max(0.5, upstreamInnerRadiusMm);
-        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerR * 2.0, d.ExitDiameterMm));
-        double length = d.StatorAxialLengthMm > 1.0 ? d.StatorAxialLengthMm : lenAuto;
-        xEnd = xStart + length;
+        double xStart = path.XStatorStart;
+        double innerR = Math.Max(0.5, path.ExpanderEndInnerRadiusMm);
+        double xEnd = path.XAfterStator;
+        double length = xEnd - xStart;
+        double wall = path.WallMm;
 
         float innerRf = (float)innerR;
-        float wallF = (float)wall;
         double rOuter = innerR + wall;
 
         float hubDmm = (float)(d.StatorHubDiameterMm > 0.5 ? d.StatorHubDiameterMm : 0.28 * d.SwirlChamberDiameterMm);
@@ -460,5 +458,8 @@ public static class NozzleGeometryDebugReportBuilder
             log($"{shortName,-28}|{F(s.XStartMm),11}|{F(s.XEndMm),10}|{F(s.LengthMm),11}|{F(s.DiameterStartMm),12}|{F(s.DiameterEndMm),10}|{F(s.RadiusStartMm),12}|{F(s.RadiusEndMm),10}|{Fa(s.HalfAngleDeg),15}| {note}");
         }
         log("");
+
+        if (r.AssemblyAudit != null)
+            NozzleGeometryAssemblyAuditBuilder.WriteAssemblyAudit(r.AssemblyAudit, log);
     }
 }

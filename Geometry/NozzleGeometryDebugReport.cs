@@ -15,4 +15,7 @@ public sealed class NozzleGeometryDebugReport
     public StatorGeometryDebugInfo? Stator { get; init; }
     public IReadOnlyList<string> BuilderExplanations { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
+
+    /// <summary>Generators, viewer groups, meridian profiles — single path from <see cref="GeometryAssemblyPath"/>.</summary>
+    public NozzleGeometryAssemblyAudit? AssemblyAudit { get; init; }
 }
