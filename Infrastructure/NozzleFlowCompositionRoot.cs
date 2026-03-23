@@ -69,11 +69,24 @@ public static class NozzleFlowCompositionRoot
         PipelineProfiler.ResetSession(input.Run.EnablePipelineProfiling);
 
         NozzleDesignInputs activeDesign;
+        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing;
         using (PipelineProfiler.Stage("pipeline.synthesis"))
         {
-            activeDesign = input.Run.UsePhysicsInformedGeometry
-                ? NozzleGeometrySynthesis.Synthesize(input.Source, input.Design)
-                : input.Design;
+            if (input.Run.UsePhysicsInformedGeometry)
+            {
+                NozzleGeometrySynthesis.GeometrySynthesisResult syn = NozzleGeometrySynthesis.SynthesizeWithDiagnostics(
+                    input.Source,
+                    input.Design,
+                    input.Run.GeometrySynthesisTargetEntrainmentRatio,
+                    input.Run);
+                activeDesign = syn.Design;
+                chamberSizing = syn.ChamberSizing;
+            }
+            else
+            {
+                activeDesign = input.Design;
+                chamberSizing = SwirlChamberSizingModel.ForUserTemplate(input.Design, input.Source, input.Run);
+            }
         }
 
         SiPathSolveResult path;
@@ -106,7 +119,19 @@ public static class NozzleFlowCompositionRoot
             "SI path: compressible entrainment march + first-order stator/expander bookkeeping (not CFD)."
         };
         if (input.Run.UsePhysicsInformedGeometry)
-            warnings.Add("Geometry pre-sized by NozzleGeometrySynthesis (first-order rules from K320-class source + swirl/ER heuristics; not a numerical optimizer).");
+        {
+            warnings.Add(
+                input.Run.UseDerivedSwirlChamberDiameter
+                    ? "Geometry pre-sized by NozzleGeometrySynthesis with entrainment-derived swirl chamber bore (continuity sizing — not CFD)."
+                    : "Geometry pre-sized by NozzleGeometrySynthesis (jet×swirl/ER heuristics for chamber bore; not CFD).");
+        }
+
+        if (chamberSizing != null)
+        {
+            foreach (string cw in chamberSizing.Warnings)
+                warnings.Add("Chamber sizing: " + cw);
+        }
+
         if (geomContinuity is { IsAcceptable: false })
             warnings.AddRange(geomContinuity.Issues);
         warnings.AddRange(path.HealthMessages);
@@ -123,7 +148,8 @@ public static class NozzleFlowCompositionRoot
             autotune: null,
             physicsStages: path.PhysicsStages,
             geometryContinuity: geomContinuity,
-            performanceProfile: profile);
+            performanceProfile: profile,
+            chamberSizing: chamberSizing);
     }
 
     private static SiPathSolveResult SolveSiPath(

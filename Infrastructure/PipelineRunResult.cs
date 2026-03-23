@@ -31,6 +31,9 @@ public sealed class PipelineRunResult
     /// <summary>Wall-clock breakdown when <see cref="Parameters.RunConfiguration.EnablePipelineProfiling"/> was true.</summary>
     public PipelineProfileReport? PerformanceProfile { get; }
 
+    /// <summary>How swirl chamber bore was chosen (user / heuristic synthesis / entrainment-derived).</summary>
+    public SwirlChamberSizingModel.SizingDiagnostics? ChamberSizing { get; }
+
     public PipelineRunResult(
         NozzleInput input,
         NozzleSolvedState solved,
@@ -41,7 +44,8 @@ public sealed class PipelineRunResult
         AutotuneRunSummary? autotune = null,
         NozzlePhysicsStageResult? physicsStages = null,
         GeometryContinuityReport? geometryContinuity = null,
-        PipelineProfileReport? performanceProfile = null)
+        PipelineProfileReport? performanceProfile = null,
+        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing = null)
     {
         Input = input;
         Solved = solved;
@@ -53,5 +57,6 @@ public sealed class PipelineRunResult
         PhysicsStages = physicsStages;
         GeometryContinuity = geometryContinuity;
         PerformanceProfile = performanceProfile;
+        ChamberSizing = chamberSizing;
     }
 }

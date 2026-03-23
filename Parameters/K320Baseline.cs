@@ -92,6 +92,7 @@ public static class K320Baseline
         VoxelSizeMM = 0.3f,
         ShowInViewer = true,
         UsePhysicsInformedGeometry = true,
+        UseDerivedSwirlChamberDiameter = true,
         UseAutotune = false
     };
 
@@ -117,7 +118,8 @@ public static class K320Baseline
         AutotuneWeightLowAxialPenalty = 0.06,
         AutotuneRandomSeed = 20260213,
         AutotuneUseSynthesisBaseline = true,
-        // Compact swirl: cap axial chamber + tight length scale (diameter scales via AutotuneSwirlChamberDiameterScale*).
+        UseDerivedSwirlChamberDiameter = true,
+        // Compact swirl: cap axial chamber + tight length scale (diameter from ER when derived; else diameter scale knobs).
         AutotuneSwirlChamberLengthMaxMm = 92.0,
         AutotuneSwirlChamberLengthScaleMin = 0.80,
         AutotuneSwirlChamberLengthScaleMax = 1.04
@@ -159,6 +161,7 @@ public static class K320Baseline
             AutotuneWeightLowAxialPenalty = 0.06,
             AutotuneRandomSeed = 20260213,
             AutotuneUseSynthesisBaseline = true,
+            UseDerivedSwirlChamberDiameter = true,
             AutotuneSwirlChamberLengthMaxMm = 92.0,
             AutotuneSwirlChamberLengthScaleMin = 0.80,
             AutotuneSwirlChamberLengthScaleMax = 1.04

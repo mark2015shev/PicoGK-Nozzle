@@ -27,6 +27,9 @@ internal static class ResultReporter
                 Library.Log(line);
         }
 
+        if (result.ChamberSizing != null)
+            LogDerivedSwirlChamberSizing(result.ChamberSizing);
+
         if (result.PhysicsStages != null || result.GeometryContinuity != null || result.SiFlow != null)
             RunReportBuilder.LogEngineeringReport(result.PhysicsStages, result.GeometryContinuity, s => Library.Log(s), result.SiFlow);
         if (result.SiFlow?.SwirlChamberHealth != null)
@@ -457,5 +460,52 @@ internal static class ResultReporter
 
         foreach (string w in warnings)
             Library.Log("WARNING: " + w);
+    }
+
+    private static void LogDerivedSwirlChamberSizing(SwirlChamberSizingModel.SizingDiagnostics d)
+    {
+        Library.Log("=== Derived swirl chamber sizing (first-order area budget — not CFD) ===");
+        string modeLabel = d.Mode switch
+        {
+            SwirlChamberSizingModel.DiameterMode.UserTemplate => "user-fixed (template; no synthesis)",
+            SwirlChamberSizingModel.DiameterMode.SynthesisHeuristic => "synthesis-derived (jet×swirl×ER heuristic bore)",
+            SwirlChamberSizingModel.DiameterMode.EntrainmentDerived => "entrainment-derived (ṁ_mix / ρ / V_axial annulus solve + injector ratio)",
+            _ => d.Mode.ToString()
+        };
+        Library.Log("Chamber diameter source:     " + modeLabel);
+        Library.Log(d.SummaryLine);
+
+        if (d.Mode == SwirlChamberSizingModel.DiameterMode.EntrainmentDerived)
+        {
+            Library.Log($"ER_target [-]:               {d.TargetEntrainmentRatio:F4}");
+            Library.Log($"mdot_core [kg/s]:            {d.MdotCoreKgS:F6}");
+            Library.Log($"mdot_amb_target [kg/s]:      {d.MdotAmbientTargetKgS:F6}");
+            Library.Log($"mdot_mix_target [kg/s]:      {d.MdotMixTargetKgS:F6}");
+            Library.Log($"rho_mix_estimate [kg/m3]:    {d.RhoMixEstimateKgPerM3:F4}");
+            Library.Log($"V_axial_target [m/s]:        {d.TargetAxialVelocityMps:F2}");
+            Library.Log($"A_free_target [m2]:          {d.AFreeTargetM2:E4}");
+            Library.Log($"blockage_fraction φ [-]:     {d.BlockageFractionOfAnnulus:F4} (vane blockage of annulus in SI model)");
+            Library.Log($"hub diameter [mm]:           {d.HubDiameterMm:F2}");
+            Library.Log($"A_inj_total [mm2]:           {d.TotalInjectorAreaMm2:F2}");
+            Library.Log($"D_chamber_target [mm]:       {d.ChamberDiameterTargetMm:F2}");
+            Library.Log($"D_max_cap (mult×D_jet) [mm]: {d.DerivedChamberMaxDiameterMm:F2}");
+            Library.Log($"A_inj / A_bore [-]:          {d.InjectorToBoreAreaRatio:F4} (full-bore circle)");
+            Library.Log($"annulus iterations:          {d.AnnulusIterationsUsed}  injector-cap iterations: {d.InjectorConstraintIterations}");
+        }
+        else if (d.Mode == SwirlChamberSizingModel.DiameterMode.SynthesisHeuristic)
+        {
+            Library.Log($"(Heuristic path) ER used [-]: {d.TargetEntrainmentRatio:F4}  D_chamber [mm]: {d.ChamberDiameterTargetMm:F2}  A_inj/A_bore [-]: {d.InjectorToBoreAreaRatio:F4}");
+        }
+        else
+        {
+            Library.Log($"(User template) D_chamber [mm]: {d.ChamberDiameterTargetMm:F2}  A_inj/A_bore [-]: {d.InjectorToBoreAreaRatio:F4}");
+        }
+
+        if (d.Warnings.Count > 0)
+        {
+            Library.Log("--- Chamber sizing notes ---");
+            foreach (string w in d.Warnings)
+                Library.Log("  • " + w);
+        }
     }
 }

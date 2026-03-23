@@ -456,7 +456,7 @@ public static class NozzleDesignAutotune
 
     private static NozzleDesignInputs BaselineSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run) =>
         run.AutotuneUseSynthesisBaseline
-            ? NozzleGeometrySynthesis.Synthesize(source, template, NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio)
+            ? NozzleGeometrySynthesis.Synthesize(source, template, run.GeometrySynthesisTargetEntrainmentRatio, run)
             : CloneDesign(template);
 
     private static NozzleDesignInputs BuildCandidateFromKnobs(
@@ -467,7 +467,7 @@ public static class NozzleDesignAutotune
         bool useSynthesisBase)
     {
         if (useSynthesisBase)
-            return ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr), k, run);
+            return ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr, run), k, run);
         return ApplyKnobs(CloneDesign(template), k, run);
     }
 
@@ -501,7 +501,7 @@ public static class NozzleDesignAutotune
         double pitch = run.AutotuneVaryPitch ? u(6.0, 16.0) : template.InjectorPitchAngleDeg;
 
         return new Knobs(
-            chamberD: u(dLo, dHi),
+            chamberD: run.UseDerivedSwirlChamberDiameter ? 1.0 : u(dLo, dHi),
             chamberL: u(lLo, lHi),
             inlet: u(0.86, 1.24),
             exit: u(0.82, 1.26),
@@ -541,7 +541,7 @@ public static class NozzleDesignAutotune
             : erCenter;
 
         return new Knobs(
-            chamberD: um(b.ChamberDiameterSpread),
+            chamberD: run.UseDerivedSwirlChamberDiameter ? 1.0 : um(b.ChamberDiameterSpread),
             chamberL: um(b.ChamberLengthSpread),
             inlet: um(b.InletSpread),
             exit: um(b.ExitSpread),

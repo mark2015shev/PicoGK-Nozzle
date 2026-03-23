@@ -1,3 +1,5 @@
+using PicoGK_Run.Physics;
+
 namespace PicoGK_Run.Parameters;
 
 /// <summary>Viewer + optional physics-informed geometry + optional autotune search.</summary>
@@ -134,6 +136,46 @@ public sealed class RunConfiguration
     /// <summary>0 = use <see cref="Environment.ProcessorCount"/>.</summary>
     public int AutotuneMaxDegreeOfParallelism { get; init; }
 
+    // --- Swirl chamber bore sizing (first-order continuity / area; not CFD) ---
+
+    /// <summary>
+    /// When true with <see cref="UsePhysicsInformedGeometry"/>, chamber bore is sized from target ER and
+    /// <see cref="ChamberSizingTargetAxialVelocityMps"/> via <see cref="Physics.SwirlChamberSizingModel"/> instead of jet×scale only.
+    /// </summary>
+    public bool UseDerivedSwirlChamberDiameter { get; init; }
+
+    /// <summary>Target ṁ_amb/ṁ_core used in synthesis and autotune baseline when varying ER.</summary>
+    public double GeometrySynthesisTargetEntrainmentRatio { get; init; } = NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio;
+
+    /// <summary>Nominal mixed axial velocity in the chamber for area sizing [m/s].</summary>
+    public double ChamberSizingTargetAxialVelocityMps { get; init; } = 72.0;
+
+    /// <summary>
+    /// Mixed density for A = ṁ/(ρ V). If ≤ 0.5, <see cref="Physics.SwirlChamberSizingModel.EstimateRhoMixKgPerM3"/> is used.
+    /// </summary>
+    public double ChamberSizingRhoMixKgPerM3 { get; init; }
+
+    /// <summary>Preferred maximum A_inj / A_bore (full circle); bore enlarged in sizing until satisfied when possible.</summary>
+    public double ChamberSizingInjToChamberPreferredMax { get; init; } = 0.70;
+
+    /// <summary>Warning threshold for A_inj / A_bore.</summary>
+    public double ChamberSizingInjToChamberWarning { get; init; } = 0.85;
+
+    /// <summary>Severe warning threshold for A_inj / A_bore.</summary>
+    public double ChamberSizingInjToChamberSevere { get; init; } = 0.95;
+
+    /// <summary>Cap bore: D_ch ≤ multiplier × (jet diameter from source area).</summary>
+    public double DerivedChamberMaxDiameterMultiplierVsJet { get; init; } = 3.0;
+
+    /// <summary>Base multiplier on jet diameter for minimum bore (vortex preservation floor); scaled by swirl in the model.</summary>
+    public double DerivedChamberMinDiameterMultiplierVsJet { get; init; } = 0.88;
+
+    /// <summary>After length heuristic, clamp L/D to at least this when derived sizing is on (0 = skip).</summary>
+    public double DerivedChamberTargetMinLd { get; init; } = 0.88;
+
+    /// <summary>After length heuristic, clamp L/D to at most this when derived sizing is on (0 = skip).</summary>
+    public double DerivedChamberTargetMaxLd { get; init; } = 1.28;
+
     /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
@@ -180,6 +222,17 @@ public sealed class RunConfiguration
         RunGeometryContinuityCheck = RunGeometryContinuityCheck,
         EnablePipelineProfiling = EnablePipelineProfiling,
         AutotuneUseParallelEvaluation = AutotuneUseParallelEvaluation,
-        AutotuneMaxDegreeOfParallelism = AutotuneMaxDegreeOfParallelism
+        AutotuneMaxDegreeOfParallelism = AutotuneMaxDegreeOfParallelism,
+        UseDerivedSwirlChamberDiameter = UseDerivedSwirlChamberDiameter,
+        GeometrySynthesisTargetEntrainmentRatio = GeometrySynthesisTargetEntrainmentRatio,
+        ChamberSizingTargetAxialVelocityMps = ChamberSizingTargetAxialVelocityMps,
+        ChamberSizingRhoMixKgPerM3 = ChamberSizingRhoMixKgPerM3,
+        ChamberSizingInjToChamberPreferredMax = ChamberSizingInjToChamberPreferredMax,
+        ChamberSizingInjToChamberWarning = ChamberSizingInjToChamberWarning,
+        ChamberSizingInjToChamberSevere = ChamberSizingInjToChamberSevere,
+        DerivedChamberMaxDiameterMultiplierVsJet = DerivedChamberMaxDiameterMultiplierVsJet,
+        DerivedChamberMinDiameterMultiplierVsJet = DerivedChamberMinDiameterMultiplierVsJet,
+        DerivedChamberTargetMinLd = DerivedChamberTargetMinLd,
+        DerivedChamberTargetMaxLd = DerivedChamberTargetMaxLd
     };
 }

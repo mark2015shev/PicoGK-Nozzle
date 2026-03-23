@@ -11,11 +11,20 @@ namespace PicoGK_Run.Physics;
 /// (jet size, swirl number, target entrainment, gentle expander, stator alignment). This is <b>not</b> CFD and
 /// <b>not</b> a global numerical optimizer — it is an engineering synthesizer you can replace with search/CFD later.
 /// </para>
+/// <para>
+/// Optional <see cref="RunConfiguration.UseDerivedSwirlChamberDiameter"/> sizes bore from target ṁ_amb/ṁ_core and a
+/// nominal chamber axial velocity (<see cref="SwirlChamberSizingModel"/>), instead of a fixed jet×scale heuristic.
+/// </para>
 /// </summary>
 public static class NozzleGeometrySynthesis
 {
     /// <summary>Default target secondary/core mass-flow ratio for sizing passages (model-scale).</summary>
     public const double DefaultTargetEntrainmentRatio = 0.42;
+
+    /// <summary>Design plus audit of how chamber diameter was chosen.</summary>
+    public readonly record struct GeometrySynthesisResult(
+        NozzleDesignInputs Design,
+        SwirlChamberSizingModel.SizingDiagnostics ChamberSizing);
 
     /// <summary>
     /// Overwrites template fields that should follow physics; keeps injector count, wall thickness, roll, slot aspect when sensible.
@@ -23,7 +32,16 @@ public static class NozzleGeometrySynthesis
     public static NozzleDesignInputs Synthesize(
         SourceInputs source,
         NozzleDesignInputs template,
-        double targetEntrainmentRatio = DefaultTargetEntrainmentRatio)
+        double targetEntrainmentRatio = DefaultTargetEntrainmentRatio,
+        RunConfiguration? run = null) =>
+        SynthesizeWithDiagnostics(source, template, targetEntrainmentRatio, run).Design;
+
+    /// <summary>Same as <see cref="Synthesize"/> but returns sizing diagnostics for reporting.</summary>
+    public static GeometrySynthesisResult SynthesizeWithDiagnostics(
+        SourceInputs source,
+        NozzleDesignInputs template,
+        double targetEntrainmentRatio,
+        RunConfiguration? run)
     {
         targetEntrainmentRatio = Math.Clamp(targetEntrainmentRatio, 0.05, 1.2);
 
@@ -44,17 +62,48 @@ public static class NozzleGeometrySynthesis
         const double injectorToBoreAreaMargin = 1.06;
         double dMinForPortsMm = 2.0 * Math.Sqrt((totalInjArea * injectorToBoreAreaMargin) / Math.PI);
 
-        // --- Swirl chamber: slightly larger than jet so shear + swirl can “see” the wall (not a tight throat).
-        double chamberScale = 1.02 + 0.11 * Math.Tanh(swirlNumber * 0.45) + 0.06 * Math.Sqrt(targetEntrainmentRatio);
-        chamberScale = Math.Clamp(chamberScale, 0.92, 1.28);
-        double dChamberMm = Math.Clamp(dJetMm * chamberScale, dJetMm * 0.9, dJetMm * 1.32);
-        dChamberMm = Math.Max(dChamberMm, dMinForPortsMm);
+        RunConfiguration runEff = run ?? new RunConfiguration();
+        SwirlChamberSizingModel.SizingDiagnostics sizingDiag;
+
+        double dChamberMm;
+        if (runEff.UseDerivedSwirlChamberDiameter)
+        {
+            sizingDiag = SwirlChamberSizingModel.ComputeDerived(source, template, targetEntrainmentRatio, runEff);
+            dChamberMm = sizingDiag.ChamberDiameterTargetMm;
+        }
+        else
+        {
+            // --- Swirl chamber: slightly larger than jet so shear + swirl can “see” the wall (not a tight throat).
+            double chamberScale = 1.02 + 0.11 * Math.Tanh(swirlNumber * 0.45) + 0.06 * Math.Sqrt(targetEntrainmentRatio);
+            chamberScale = Math.Clamp(chamberScale, 0.92, 1.28);
+            dChamberMm = Math.Clamp(dJetMm * chamberScale, dJetMm * 0.9, dJetMm * 1.32);
+            dChamberMm = Math.Max(dChamberMm, dMinForPortsMm);
+            sizingDiag = SwirlChamberSizingModel.ForHeuristicMode(
+                dChamberMm,
+                targetEntrainmentRatio,
+                source,
+                template,
+                runEff);
+        }
 
         // --- Chamber length: shorter envelope by default (compact vortex volume); still scales with D and ER.
         double lambda = 0.92 + 0.14 * (1.0 - 1.0 / (1.0 + targetEntrainmentRatio));
         lambda = Math.Clamp(lambda, 0.72, 1.12);
-        double lChamberMm = Math.Clamp(lambda * dChamberMm, 28.0, 88.0);
+        double lenCap = Math.Clamp(runEff.AutotuneSwirlChamberLengthMaxMm, 40.0, 220.0);
+        double lChamberMm = Math.Clamp(lambda * dChamberMm, 28.0, lenCap);
         lChamberMm = Math.Max(lChamberMm, Math.Min(95.0, 0.98 * dChamberMm));
+
+        if (runEff.UseDerivedSwirlChamberDiameter
+            && runEff.DerivedChamberTargetMinLd > 0.1
+            && runEff.DerivedChamberTargetMaxLd > runEff.DerivedChamberTargetMinLd)
+        {
+            double ld0 = lChamberMm / Math.Max(dChamberMm, 1e-6);
+            if (ld0 < runEff.DerivedChamberTargetMinLd)
+                lChamberMm = Math.Min(lenCap, dChamberMm * runEff.DerivedChamberTargetMinLd);
+            double ld1 = lChamberMm / Math.Max(dChamberMm, 1e-6);
+            if (ld1 > runEff.DerivedChamberTargetMaxLd)
+                lChamberMm = Math.Max(28.0, dChamberMm * runEff.DerivedChamberTargetMaxLd);
+        }
 
         // --- Inlet: capture openness σ = (D_in/D_ch)² ; favor σ > 1 for ambient mouth ≥ bore (bellmouth rule in geometry).
         double sigma = 1.22 + 0.28 * targetEntrainmentRatio - 0.06 * Math.Tanh(swirlNumber * 0.35);
@@ -89,14 +138,14 @@ public static class NozzleGeometrySynthesis
         }
 
         // --- Stator: first-order alignment — turn toward axial; scale with injector yaw and mild L/D factor.
-        double ld = lChamberMm / Math.Max(dChamberMm, 1e-6);
-        double statorDeg = yaw * (0.32 + 0.04 * Math.Tanh(ld - 1.0)) + 6.0 * Math.Tanh(swirlNumber * 0.25);
+        double ldCh = lChamberMm / Math.Max(dChamberMm, 1e-6);
+        double statorDeg = yaw * (0.32 + 0.04 * Math.Tanh(ldCh - 1.0)) + 6.0 * Math.Tanh(swirlNumber * 0.25);
         statorDeg = Math.Clamp(statorDeg, 18.0, 52.0);
 
         double slotH = Math.Max(template.InjectorHeightMm, 1.0);
         double slotW = totalInjArea / (nInj * slotH);
 
-        return new NozzleDesignInputs
+        var design = new NozzleDesignInputs
         {
             InletDiameterMm = dInletMm,
             SwirlChamberDiameterMm = dChamberMm,
@@ -125,5 +174,7 @@ public static class NozzleGeometrySynthesis
                 : Math.Max(4.0, 0.13 * dChamberMm),
             WallThicknessMm = template.WallThicknessMm
         };
+
+        return new GeometrySynthesisResult(design, sizingDiag);
     }
 }
