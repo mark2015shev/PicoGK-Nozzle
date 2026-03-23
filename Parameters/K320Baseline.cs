@@ -41,7 +41,8 @@ public static class K320Baseline
     {
         InletDiameterMm = 90.0,
         SwirlChamberDiameterMm = 68.0,
-        SwirlChamberLengthMm = 75.0,
+        // Shorter hand chamber (vortex segment in viewer); autotune still searches L and D when UseAutotune is true.
+        SwirlChamberLengthMm = 58.0,
         // 1 = downstream / near expander; high ratio keeps injectors close to the expander end of the chamber.
         InjectorAxialPositionRatio = 0.88,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
@@ -98,7 +99,11 @@ public static class K320Baseline
         AutotuneWeightEjectorPenalty = 0.08,
         AutotuneWeightLowAxialPenalty = 0.06,
         AutotuneRandomSeed = 20260213,
-        AutotuneUseSynthesisBaseline = true
+        AutotuneUseSynthesisBaseline = true,
+        // Compact swirl: cap axial chamber + tight length scale (diameter scales via AutotuneSwirlChamberDiameterScale*).
+        AutotuneSwirlChamberLengthMaxMm = 92.0,
+        AutotuneSwirlChamberLengthScaleMin = 0.80,
+        AutotuneSwirlChamberLengthScaleMax = 1.04
     };
 
     /// <summary>Convenience: <see cref="CreateSource"/>, <see cref="CreateDesign"/>, and <see cref="CreateRunWithAutotune"/> (viewer on for the final geometry pass).</summary>

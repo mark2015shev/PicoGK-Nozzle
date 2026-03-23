@@ -37,4 +37,7 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Extended radial / structure / diffuser / ejector / loss diagnostics — not CFD.</summary>
     public ChamberFirstOrderPhysics? Chamber { get; init; }
+
+    /// <summary>Raw vs effective coupling audit for SI thrust path (first-order).</summary>
+    public SiVortexCouplingDiagnostics? Coupling { get; init; }
 }

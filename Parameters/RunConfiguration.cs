@@ -54,6 +54,19 @@ public sealed class RunConfiguration
     /// <summary>If true, search centers on <see cref="NozzleGeometrySynthesis.Synthesize"/>; if false, on a copy of template design.</summary>
     public bool AutotuneUseSynthesisBaseline { get; init; } = true;
 
+    /// <summary>Hard cap on swirl chamber axial length after each trial’s length scale [mm]. Keeps the green segment short.</summary>
+    public double AutotuneSwirlChamberLengthMaxMm { get; init; } = 100.0;
+
+    /// <summary>Per-trial random multiplier range on baseline <c>SwirlChamberLengthMm</c> (autotune search axis).</summary>
+    public double AutotuneSwirlChamberLengthScaleMin { get; init; } = 0.82;
+
+    public double AutotuneSwirlChamberLengthScaleMax { get; init; } = 1.06;
+
+    /// <summary>Per-trial random multiplier range on baseline <c>SwirlChamberDiameterMm</c> (autotune search axis).</summary>
+    public double AutotuneSwirlChamberDiameterScaleMin { get; init; } = 0.84;
+
+    public double AutotuneSwirlChamberDiameterScaleMax { get; init; } = 1.20;
+
     /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
@@ -74,6 +87,11 @@ public sealed class RunConfiguration
         AutotuneWeightEjectorPenalty = AutotuneWeightEjectorPenalty,
         AutotuneWeightLowAxialPenalty = AutotuneWeightLowAxialPenalty,
         AutotuneRandomSeed = AutotuneRandomSeed,
-        AutotuneUseSynthesisBaseline = AutotuneUseSynthesisBaseline
+        AutotuneUseSynthesisBaseline = AutotuneUseSynthesisBaseline,
+        AutotuneSwirlChamberLengthMaxMm = AutotuneSwirlChamberLengthMaxMm,
+        AutotuneSwirlChamberLengthScaleMin = AutotuneSwirlChamberLengthScaleMin,
+        AutotuneSwirlChamberLengthScaleMax = AutotuneSwirlChamberLengthScaleMax,
+        AutotuneSwirlChamberDiameterScaleMin = AutotuneSwirlChamberDiameterScaleMin,
+        AutotuneSwirlChamberDiameterScaleMax = AutotuneSwirlChamberDiameterScaleMax
     };
 }

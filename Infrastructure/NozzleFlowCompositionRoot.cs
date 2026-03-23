@@ -118,13 +118,43 @@ public static class NozzleFlowCompositionRoot
         double rhoCore = rawInlet.DensityKgM3;
         double areaDriver = vCore * (sourceAreaMm2 / injectorAreaMm2);
         double continuityCheck = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
-        double injectorJetVelocity = NozzlePhysicsSolver.InjectorJetVelocityDriverBlend * areaDriver
+        double injectorJetVelocityRaw = NozzlePhysicsSolver.InjectorJetVelocityDriverBlend * areaDriver
             + (1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend) * continuityCheck;
 
-        var (vt0, va0) = SwirlMath.ResolveInjectorComponents(
-            injectorJetVelocity,
+        var (vtRaw, vaRaw) = SwirlMath.ResolveInjectorComponents(
+            injectorJetVelocityRaw,
             activeDesign.InjectorYawAngleDeg,
             activeDesign.InjectorPitchAngleDeg);
+
+        // Coupled injector: V_eff = Cd·V·√max(0,1−K_turn); then same yaw/pitch decomposition (linear in |V|).
+        double injectorJetVelocityEffective = InjectorLossModel.EffectiveJetVelocityMps(
+            injectorJetVelocityRaw,
+            rhoCore,
+            activeDesign.InjectorYawAngleDeg);
+
+        var (vt0, va0) = SwirlMath.ResolveInjectorComponents(
+            injectorJetVelocityEffective,
+            activeDesign.InjectorYawAngleDeg,
+            activeDesign.InjectorPitchAngleDeg);
+
+        // Pre-march radial picture on effective swirl — bounded entrainment boost (does not add free static head in march).
+        double rWallM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
+        var radialPreMarch = RadialVortexPressureModel.Compute(
+            rhoCore,
+            Math.Abs(vt0),
+            rWallM,
+            ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
+            ChamberPhysicsCoefficients.RadialPressureCapPa);
+        double deltaPCoreUseful = Math.Clamp(
+            radialPreMarch.CorePressureDropPa,
+            0.0,
+            ChamberPhysicsCoefficients.CouplingInletCorePressureUseCapPa);
+        double entrainmentBoost = 1.0
+            + ChamberPhysicsCoefficients.CouplingVortexEntrainmentC * deltaPCoreUseful / Math.Max(ambient.PressurePa, 1.0);
+        entrainmentBoost = Math.Clamp(
+            entrainmentBoost,
+            1.0,
+            ChamberPhysicsCoefficients.CouplingVortexEntrainmentBoostMax);
 
         JetState inletState = new JetState(
             axialPositionM: 0.0,
@@ -164,7 +194,7 @@ public static class NozzleFlowCompositionRoot
         }
 
         double ldRatio = activeDesign.SwirlChamberLengthMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1e-6);
-        double sInjPre = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6);
+        double sInjPre = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6); // effective injector swirl
         double preBreak = SwirlDecayModel.PreMarchBreakdownRisk(
             sInjPre,
             ldRatio,
@@ -195,22 +225,79 @@ public static class NozzleFlowCompositionRoot
             PerimeterAt,
             CaptureAreaAt,
             primaryTangentialVelocityMps: vt0,
-            swirlDecayPerStepFactor: swirlDecayPerStep);
+            swirlDecayPerStepFactor: swirlDecayPerStep,
+            entrainmentMassDemandMultiplier: entrainmentBoost);
 
         IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
         JetState lastMarch = detailed.FlowStates[^1];
 
-        double etaStator = Math.Min(0.42, activeDesign.StatorVaneAngleDeg / 95.0);
-        double fracVt = Math.Clamp(1.0 - 0.38 * etaStator, 0.22, 0.92);
+        double etaStatorBase = Math.Min(0.42, activeDesign.StatorVaneAngleDeg / 95.0);
+        double fracVt = Math.Clamp(1.0 - 0.38 * etaStatorBase, 0.22, 0.92);
+
+        double impliedYawDeg = Math.Atan2(
+            Math.Abs(detailed.FinalTangentialVelocityMps),
+            Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6)) * (180.0 / Math.PI);
+
+        var stLossPre = StatorLossModel.Compute(
+            Math.Max(lastMarch.DensityKgM3, 1e-6),
+            lastMarch.VelocityMps,
+            detailed.FinalTangentialVelocityMps,
+            activeDesign.StatorVaneAngleDeg,
+            impliedYawDeg);
+
+        // η_stator,eff = η_base · clamp(1 − w_i·K_inc − w_t·K_turn, η_floor, 1); K_inc = tanh(mismatch/ref), K_turn from model.
+        double kInc = Math.Tanh(
+            stLossPre.IncidenceMismatchDeg / Math.Max(ChamberPhysicsCoefficients.StatorIncidenceRefDeg, 1.0));
+        double kTurn = Math.Clamp(stLossPre.TurningLossK, 0.0, 0.55);
+        double etaFactor = Math.Clamp(
+            1.0
+            - ChamberPhysicsCoefficients.StatorCouplingKIncidenceWeight * kInc
+            - ChamberPhysicsCoefficients.StatorCouplingKTurnWeight * kTurn,
+            ChamberPhysicsCoefficients.StatorCouplingEtaFactorFloor,
+            1.0);
+        double etaStatorEff = Math.Min(etaStatorBase * etaFactor, 0.42);
+
         var stator = new StatorRecoveryModel();
         StatorRecoveryOutput statorOut = stator.Apply(
             detailed.FinalTangentialVelocityMps,
             lastMarch.DensityKgM3,
-            etaStator,
+            etaStatorEff,
             fracVt);
 
+        // Swirling diffuser / expander: scale wall ΔP by recovery model (same inputs as chamber pipeline).
+        double injectorSwirlSimple = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6);
+        var diffuserCoupling = SwirlDiffuserRecoveryModel.Compute(
+            activeDesign.ExpanderHalfAngleDeg,
+            activeDesign.ExpanderLengthMm,
+            activeDesign.SwirlChamberDiameterMm,
+            activeDesign.ExitDiameterMm,
+            Math.Max(lastMarch.DensityKgM3, 1e-6),
+            lastMarch.VelocityMps,
+            injectorSwirlSimple,
+            detailed.FinalTangentialVelocityMps);
+
+        double diffuserRecoveryMult = Math.Clamp(
+            diffuserCoupling.EffectivePressureRecoveryEfficiency
+            / Math.Max(ChamberPhysicsCoefficients.DiffuserCouplingReferenceEfficiency, 0.05),
+            ChamberPhysicsCoefficients.DiffuserCouplingScaleMin,
+            ChamberPhysicsCoefficients.DiffuserCouplingScaleMax);
+
+        double halfRad = activeDesign.ExpanderHalfAngleDeg * (Math.PI / 180.0);
+        double rhoExp = lastMarch.DensityKgM3;
+        double vaExp = lastMarch.VelocityMps;
+        double dPExpanderBase = 0.22 * rhoExp * vaExp * vaExp * Math.Sin(Math.Max(halfRad, 0.02));
+        dPExpanderBase = Math.Min(dPExpanderBase, 0.48 * rhoExp * vaExp * vaExp);
+        double dPExpanderEff = dPExpanderBase * diffuserRecoveryMult;
+        double expanderProjectedAreaM2 = ExpanderAxialProjectedAreaM2(activeDesign);
+        double expanderForceN = PressureForceMath.ExpanderOverPressureAxialForce(dPExpanderEff, expanderProjectedAreaM2);
+
         double pAfterStator = Math.Max(lastMarch.PressurePa + statorOut.RecoveredPressureRisePa, 1.0);
-        double vaAfterStator = lastMarch.VelocityMps + statorOut.AxialVelocityGainMps;
+        double vaAfterStatorBase = lastMarch.VelocityMps + statorOut.AxialVelocityGainMps;
+        double sepAxialFactor = Math.Clamp(
+            1.0 - ChamberPhysicsCoefficients.CouplingDiffuserSeparationAxialPenaltyK * diffuserCoupling.SeparationRiskScore,
+            ChamberPhysicsCoefficients.CouplingDiffuserSeparationAxialFloor,
+            1.0);
+        double vaAfterStator = Math.Max(vaAfterStatorBase * sepAxialFactor, 1e-6);
         double vtAfterStator = statorOut.RemainingTangentialVelocityMps;
         double rhoAfterStator = gas.Density(pAfterStator, Math.Max(lastMarch.TemperatureK, 1.0));
 
@@ -227,13 +314,48 @@ public static class NozzleFlowCompositionRoot
         var flowStates = new List<JetState>(detailed.FlowStates);
         flowStates[^1] = finalOutlet;
 
-        double halfRad = activeDesign.ExpanderHalfAngleDeg * (Math.PI / 180.0);
-        double rhoExp = lastMarch.DensityKgM3;
-        double vaExp = lastMarch.VelocityMps;
-        double dPExpander = 0.22 * rhoExp * vaExp * vaExp * Math.Sin(Math.Max(halfRad, 0.02));
-        dPExpander = Math.Min(dPExpander, 0.48 * rhoExp * vaExp * vaExp);
-        double expanderProjectedAreaM2 = ExpanderAxialProjectedAreaM2(activeDesign);
-        double expanderForceN = PressureForceMath.ExpanderOverPressureAxialForce(dPExpander, expanderProjectedAreaM2);
+        SwirlEnergyCouplingLedger swirlLedger = SwirlEnergyCouplingLedger.Build(
+            coreMdot,
+            vtRaw,
+            vt0,
+            detailed.FinalPrimaryTangentialVelocityMps,
+            lastMarch.TotalMassFlowKgS,
+            detailed.FinalTangentialVelocityMps,
+            vtAfterStator,
+            diffuserRecoveryMult,
+            ChamberPhysicsCoefficients.SwirlLedgerDiffuserBookkeepingK);
+
+        var couplingDiag = new SiVortexCouplingDiagnostics
+        {
+            InjectorJetVelocityRawMps = injectorJetVelocityRaw,
+            InjectorJetVelocityEffectiveMps = injectorJetVelocityEffective,
+            InjectorVtRawMps = vtRaw,
+            InjectorVaRawMps = vaRaw,
+            InjectorVtEffectiveMps = vt0,
+            InjectorVaEffectiveMps = va0,
+            EntrainmentDemandBoostFactor = entrainmentBoost,
+            DeltaPCoreUsefulForEntrainmentPa = deltaPCoreUseful,
+            StatorEtaBase = etaStatorBase,
+            StatorEtaEffective = etaStatorEff,
+            StatorCouplingKIncidence = kInc,
+            StatorCouplingKTurn = kTurn,
+            ExpanderDeltaPBasePa = dPExpanderBase,
+            ExpanderDeltaPEffectivePa = dPExpanderEff,
+            DiffuserRecoveryMultiplier = diffuserRecoveryMult,
+            DiffuserSeparationAxialFactor = sepAxialFactor,
+            FinalAxialVelocityBaseMps = vaAfterStatorBase,
+            FinalAxialVelocityEffectiveMps = vaAfterStator,
+            SwirlEnergy = swirlLedger,
+            CouplingSummaryLines = BuildCouplingSummaryLines(
+                injectorJetVelocityRaw,
+                injectorJetVelocityEffective,
+                diffuserCoupling,
+                diffuserRecoveryMult,
+                entrainmentBoost,
+                swirlLedger,
+                etaStatorBase,
+                etaStatorEff)
+        };
 
         double inletPressureForceN = steps.Sum(s => s.PressureForceN);
         double minInletP = steps.Count > 0 ? steps.Min(s => s.InletLocalPressurePa) : ambient.PressurePa;
@@ -256,7 +378,7 @@ public static class NozzleFlowCompositionRoot
         ChamberFirstOrderPhysics chamber = ChamberPhysicsPipeline.Build(
             activeDesign,
             source,
-            injectorJetVelocity,
+            injectorJetVelocityRaw,
             vt0,
             va0,
             swirlDecayPerStep,
@@ -265,7 +387,7 @@ public static class NozzleFlowCompositionRoot
             detailed,
             lastMarch,
             statorOut,
-            etaStator,
+            etaStatorEff,
             fracVt,
             steps,
             minInletP,
@@ -295,7 +417,8 @@ public static class NozzleFlowCompositionRoot
             PressureThrustN = fPressureTotal,
             NetThrustN = fNet,
             Vortex = vortex,
-            Chamber = chamber
+            Chamber = chamber,
+            Coupling = couplingDiag
         };
 
         var designer = new NozzleDesigner();
@@ -317,7 +440,7 @@ public static class NozzleFlowCompositionRoot
             drivenDesign,
             areaDriver,
             continuityCheck,
-            injectorJetVelocity,
+            injectorJetVelocityRaw,
             siDiag);
 
         NozzleCriticalRatiosSnapshot criticalRatios = NozzleCriticalRatios.Compute(
@@ -336,6 +459,34 @@ public static class NozzleFlowCompositionRoot
             health,
             designResult,
             inletState);
+    }
+
+    private static IReadOnlyList<string> BuildCouplingSummaryLines(
+        double vInRaw,
+        double vInEff,
+        SwirlDiffuserRecoveryResult diffuser,
+        double diffuserRecoveryMult,
+        double entrainmentBoost,
+        SwirlEnergyCouplingLedger e,
+        double etaStatorBase,
+        double etaStatorEff)
+    {
+        var lines = new List<string>(4);
+        if (vInEff < 0.97 * vInRaw)
+            lines.Add("Coupled vortex physics reduced injector energy vs raw blend (Cd / turning loss).");
+        if (diffuser.SeparationRiskScore > 0.48 && diffuserRecoveryMult < 0.92)
+            lines.Add("Diffuser recovery limited by separation risk (ΔP_exp and axial factor scaled).");
+        if (entrainmentBoost > 1.04)
+            lines.Add("Core suction model moderately increased entrainment demand (bounded boost).");
+        double statorDebit = e.EThetaUsedForStatorRecovery_W;
+        double residual = e.EThetaExitResidual_W;
+        if (statorDebit > 1e-6 && residual < 0.22 * (statorDebit + residual))
+            lines.Add("Most tangential energy removed or dissipated before/at stator exit (first-order ledger).");
+        if (etaStatorEff < 0.9 * etaStatorBase)
+            lines.Add("Stator incidence/turning losses reduced effective recovery efficiency.");
+        if (lines.Count == 0)
+            lines.Add("Coupled physics: mild adjustments vs uncoupled baseline (see raw vs effective audit).");
+        return lines;
     }
 
     private static double ExpanderAxialProjectedAreaM2(NozzleDesignInputs d)

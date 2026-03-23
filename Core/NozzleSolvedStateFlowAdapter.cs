@@ -25,8 +25,10 @@ public static class NozzleSolvedStateFlowAdapter
         double entrainmentRatio = core > 1e-12 ? ambientMdot / core : 0.0;
         double sourceOnly = core * source.SourceVelocityMps;
 
+        // Injector swirl for reporting: use effective Vt/Va from coupled SI path when present (matches march inlet).
+        double vJetForInjectorSwirl = si?.Coupling?.InjectorJetVelocityEffectiveMps ?? injectorJetVelocityMps;
         var (vTanInj, vAxInj) = SwirlMath.ResolveInjectorComponents(
-            injectorJetVelocityMps,
+            vJetForInjectorSwirl,
             designInputs.InjectorYawAngleDeg,
             designInputs.InjectorPitchAngleDeg);
 

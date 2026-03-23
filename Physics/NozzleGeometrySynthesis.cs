@@ -44,10 +44,10 @@ public static class NozzleGeometrySynthesis
         chamberScale = Math.Clamp(chamberScale, 0.92, 1.28);
         double dChamberMm = Math.Clamp(dJetMm * chamberScale, dJetMm * 0.9, dJetMm * 1.32);
 
-        // --- Chamber length: L/D ~ 1 for mixing vortex + entrainment footprint (tunable band).
-        double lambda = 1.02 + 0.18 * (1.0 - 1.0 / (1.0 + targetEntrainmentRatio));
-        lambda = Math.Clamp(lambda, 0.85, 1.45);
-        double lChamberMm = Math.Clamp(lambda * dChamberMm, 40.0, 140.0);
+        // --- Chamber length: shorter envelope by default (compact vortex volume); still scales with D and ER.
+        double lambda = 0.92 + 0.14 * (1.0 - 1.0 / (1.0 + targetEntrainmentRatio));
+        lambda = Math.Clamp(lambda, 0.72, 1.12);
+        double lChamberMm = Math.Clamp(lambda * dChamberMm, 28.0, 88.0);
 
         // --- Inlet: capture openness σ = (D_in/D_ch)² ; favor σ > 1 for ambient mouth ≥ bore (bellmouth rule in geometry).
         double sigma = 1.22 + 0.28 * targetEntrainmentRatio - 0.06 * Math.Tanh(swirlNumber * 0.35);

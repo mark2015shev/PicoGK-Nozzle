@@ -37,7 +37,8 @@ public static class StatorLossModel
             TurningLossK = kTurn,
             EstimatedTotalPressureLossPa = dP,
             RecoveryEfficiencyReduction = etaRed,
-            Notes = "Incidence vs atan(Vt/Va); loss is first-order diagnostic vs blade CFD."
+            Notes =
+                "Incidence vs atan(Vt/Va); SI path couples K_inc/K_turn into effective stator η before recovery (first-order)."
         };
     }
 }

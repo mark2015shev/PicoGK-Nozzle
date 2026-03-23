@@ -13,4 +13,7 @@ public sealed class FlowMarchDetailedResult
 
     /// <summary>Axial velocity at end of march (before stator).</summary>
     public double FinalAxialVelocityMps { get; init; }
+
+    /// <summary>Primary-stream tangential speed after last decay step (before mixed Vt recomputation).</summary>
+    public double FinalPrimaryTangentialVelocityMps { get; init; }
 }

@@ -7,6 +7,13 @@ namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
 /// Reproducible random search over bounded geometry + injector yaw (45–80°) and pitch (conservative band); SI forward model only — no voxels per trial.
+/// <para>
+/// <b>Swirl segment (voxels):</b> axial length = <see cref="NozzleDesignInputs.SwirlChamberLengthMm"/>; inner diameter = <see cref="NozzleDesignInputs.SwirlChamberDiameterMm"/>.
+/// With <see cref="RunConfiguration.UseAutotune"/> true, <b>both</b> are search variables: each trial applies random multipliers in
+/// <see cref="RunConfiguration.AutotuneSwirlChamberDiameterScaleMin"/>/<see cref="RunConfiguration.AutotuneSwirlChamberDiameterScaleMax"/> and
+/// length scales in <see cref="RunConfiguration.AutotuneSwirlChamberLengthScaleMin"/>/<see cref="RunConfiguration.AutotuneSwirlChamberLengthScaleMax"/>,
+/// then clamps length to <see cref="RunConfiguration.AutotuneSwirlChamberLengthMaxMm"/>. Without autotune, values come from the hand template or synthesis only.
+/// </para>
 /// </summary>
 public static class NozzleDesignAutotune
 {
@@ -84,10 +91,10 @@ public static class NozzleDesignAutotune
 
         for (int i = 0; i < trials; i++)
         {
-            Knobs k = SampleKnobs(rng, run.AutotuneUseSynthesisBaseline);
+            Knobs k = SampleKnobs(rng, run);
             NozzleDesignInputs candidate = run.AutotuneUseSynthesisBaseline
-                ? ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr), k)
-                : ApplyKnobs(CloneDesign(template), k);
+                ? ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr), k, run)
+                : ApplyKnobs(CloneDesign(template), k, run);
 
             FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
             if (ev.HasDesignError)
@@ -138,16 +145,21 @@ public static class NozzleDesignAutotune
         CoreMassFlowKgS = e.CoreMassFlowKgS
     };
 
-    private static Knobs SampleKnobs(Random rng, bool varyEr)
+    private static Knobs SampleKnobs(Random rng, RunConfiguration run)
     {
         double u(double lo, double hi) => lo + rng.NextDouble() * (hi - lo);
+        bool varyEr = run.AutotuneUseSynthesisBaseline;
+        double dLo = Math.Min(run.AutotuneSwirlChamberDiameterScaleMin, run.AutotuneSwirlChamberDiameterScaleMax);
+        double dHi = Math.Max(run.AutotuneSwirlChamberDiameterScaleMin, run.AutotuneSwirlChamberDiameterScaleMax);
+        double lLo = Math.Min(run.AutotuneSwirlChamberLengthScaleMin, run.AutotuneSwirlChamberLengthScaleMax);
+        double lHi = Math.Max(run.AutotuneSwirlChamberLengthScaleMin, run.AutotuneSwirlChamberLengthScaleMax);
         // Injector angles: yaw strongly affects |Vt|/|Va|; pitch nudged in a narrow band.
         double yaw = u(45.0, 80.0);
         double pitch = u(6.0, 16.0);
 
         return new Knobs(
-            chamberD: u(0.84, 1.20),
-            chamberL: u(0.70, 1.38),
+            chamberD: u(dLo, dHi),
+            chamberL: u(lLo, lHi),
             inlet: u(0.86, 1.24),
             exit: u(0.82, 1.26),
             expAngle: u(0.74, 1.26),
@@ -159,10 +171,11 @@ public static class NozzleDesignAutotune
             injectorPitchDeg: pitch);
     }
 
-    private static NozzleDesignInputs ApplyKnobs(NozzleDesignInputs b, in Knobs k)
+    private static NozzleDesignInputs ApplyKnobs(NozzleDesignInputs b, in Knobs k, RunConfiguration run)
     {
+        double lenCap = Math.Clamp(run.AutotuneSwirlChamberLengthMaxMm, 40.0, 220.0);
         double dCh = Math.Clamp(b.SwirlChamberDiameterMm * k.ChamberD, 35.0, 220.0);
-        double lCh = Math.Clamp(b.SwirlChamberLengthMm * k.ChamberL, 28.0, 180.0);
+        double lCh = Math.Clamp(b.SwirlChamberLengthMm * k.ChamberL, 28.0, lenCap);
         double dIn = Math.Clamp(b.InletDiameterMm * k.Inlet, Math.Max(dCh * 1.0, 30.0), dCh * 1.65);
         double dEx = Math.Clamp(b.ExitDiameterMm * k.Exit, dCh * 1.02, dCh * 1.75);
         double ang = Math.Clamp(b.ExpanderHalfAngleDeg * k.ExpAngle, 3.5, 14.0);

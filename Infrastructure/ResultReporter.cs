@@ -78,10 +78,22 @@ internal static class ResultReporter
         Library.Log($"V_jet ≈ {NozzlePhysicsSolver.InjectorJetVelocityDriverBlend:F2}×[V_core×(A_source/A_inj)] + {1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend:F2}×[mdot/(ρ_core×A_inj)] — source drives when A_inj≈A_source.");
         Library.Log($"V_core×(A_source/A_inj):      {s.InjectorJetVelocityAreaDriverMps:F2} m/s");
         Library.Log($"Continuity mdot/(ρ_core×A_inj): {s.InjectorJetVelocityContinuityCheckMps:F2} m/s");
-        Library.Log($"Blended InjectorJetVelocityMps: {s.InjectorJetVelocityMps:F2} m/s (used for yaw/pitch decomposition)");
+        Library.Log($"Blended InjectorJetVelocityMps (raw driver): {s.InjectorJetVelocityMps:F2} m/s");
+        if (result.SiFlow?.Coupling != null)
+        {
+            SiVortexCouplingDiagnostics c = result.SiFlow.Coupling;
+            Library.Log(
+                $"Effective injector |V| (Cd·√(1−K_turn)) [m/s]: {c.InjectorJetVelocityEffectiveMps:F2} — used for SI march inlet decomposition.");
+        }
+        else
+            Library.Log("(No SI coupling audit — yaw/pitch uses raw blend only.)");
 
         if (result.SiFlow?.Chamber != null)
+        {
             LogChamberPhysicsSection(result.SiFlow);
+            if (result.SiFlow.Coupling != null)
+                LogSiCouplingAudit(result.SiFlow);
+        }
         else if (result.SiFlow?.Vortex != null)
             LogLegacyVortexOnly(result.SiFlow.Vortex);
 
@@ -210,7 +222,7 @@ internal static class ResultReporter
         Library.Log($"Separation risk [-]:           {df.SeparationRiskScore:F3}");
         Library.Log($"Effective recovery eff. [-]:   {df.EffectivePressureRecoveryEfficiency:F3}");
         Library.Log($"Diffuser notes:                {df.Notes}");
-        Library.Log("--- Injector / stator losses (diagnostic) ---");
+        Library.Log("--- Injector / stator losses (same models; thrust path uses coupled η + effective |V|) ---");
         Library.Log($"Injector Δp_loss [Pa]:         {inj.EstimatedTotalPressureLossPa:F1}  Cd={inj.DischargeCoefficient:F3} K_turn={inj.TurningLossCoefficientK:F3}");
         Library.Log($"Injector notes:                {inj.Notes}");
         Library.Log($"Stator incidence mismatch [°]: {st.IncidenceMismatchDeg:F2}  Δp_loss [Pa]: {st.EstimatedTotalPressureLossPa:F1}  K_turn={st.TurningLossK:F3}");
@@ -234,6 +246,28 @@ internal static class ResultReporter
         EjectorOperatingRegime.OverexpandedPoorAdmittance => "overexpanded / poor admittance",
         _ => r.ToString()
     };
+
+    private static void LogSiCouplingAudit(SiFlowDiagnostics sf)
+    {
+        SiVortexCouplingDiagnostics c = sf.Coupling!;
+        SwirlEnergyCouplingLedger e = c.SwirlEnergy;
+        Library.Log("--- SI coupled vortex physics (raw vs values used in thrust) — first-order, not CFD ---");
+        foreach (string line in c.CouplingSummaryLines)
+            Library.Log("Summary: " + line);
+        Library.Log($"Injector |V| raw [m/s]:           {c.InjectorJetVelocityRawMps:F2}  effective: {c.InjectorJetVelocityEffectiveMps:F2}");
+        Library.Log($"Injector Vt/Va raw [m/s]:        {c.InjectorVtRawMps:F2} / {c.InjectorVaRawMps:F2}");
+        Library.Log($"Injector Vt/Va effective [m/s]:  {c.InjectorVtEffectiveMps:F2} / {c.InjectorVaEffectiveMps:F2}");
+        Library.Log($"Entrainment demand boost B [-]: {c.EntrainmentDemandBoostFactor:F4}  Δp_core useful [Pa]: {c.DeltaPCoreUsefulForEntrainmentPa:F1}");
+        Library.Log($"Stator η base / effective [-]:   {c.StatorEtaBase:F4} / {c.StatorEtaEffective:F4}  K_inc={c.StatorCouplingKIncidence:F3} K_turn={c.StatorCouplingKTurn:F3}");
+        Library.Log($"Expander ΔP base / eff [Pa]:     {c.ExpanderDeltaPBasePa:F1} / {c.ExpanderDeltaPEffectivePa:F1}  mult={c.DiffuserRecoveryMultiplier:F3}");
+        Library.Log($"Diffuser sep. axial factor [-]: {c.DiffuserSeparationAxialFactor:F3}  V_ax base/eff [m/s]: {c.FinalAxialVelocityBaseMps:F2} / {c.FinalAxialVelocityEffectiveMps:F2}");
+        Library.Log("Swirl tangential KE rate audit E_θ=½ṁV_θ² [W]:");
+        Library.Log($"  injected raw: {e.EThetaInjectedRaw_W:F1}  after injector loss: {e.EThetaAfterInjectorLoss_W:F1}");
+        Library.Log($"  mixed @ chamber end: {e.EThetaAfterChamberDecay_W:F1}  → entrainment debit: {e.EThetaUsedForEntrainment_W:F1}");
+        Library.Log($"  diffuser bookkeeping: {e.EThetaUsedForDiffuserRecovery_W:F1}  stator recovery debit: {e.EThetaUsedForStatorRecovery_W:F1}");
+        Library.Log($"  exit residual: {e.EThetaExitResidual_W:F1}  dissipated (inj+decay): {e.EThetaDissipated_W:F1}");
+        Library.Log($"Net thrust (coupled) [N]:       {sf.NetThrustN:F3}  (same path as autotune evaluation)");
+    }
 
     private static void LogLegacyVortexOnly(VortexFlowDiagnostics vx)
     {

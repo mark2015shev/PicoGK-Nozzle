@@ -104,7 +104,8 @@ public sealed class FlowMarcher
         Func<double, double> perimeterFunction,
         Func<double, double> captureAreaFunction,
         double primaryTangentialVelocityMps,
-        double swirlDecayPerStepFactor)
+        double swirlDecayPerStepFactor,
+        double entrainmentMassDemandMultiplier = 1.0)
     {
         if (sectionLengthM <= 0 || stepCount < 1)
         {
@@ -113,10 +114,12 @@ public sealed class FlowMarcher
                 FlowStates = new List<JetState> { inletState },
                 StepResults = Array.Empty<FlowMarchStepResult>(),
                 FinalTangentialVelocityMps = primaryTangentialVelocityMps,
-                FinalAxialVelocityMps = inletState.VelocityMps
+                FinalAxialVelocityMps = inletState.VelocityMps,
+                FinalPrimaryTangentialVelocityMps = primaryTangentialVelocityMps
             };
         }
 
+        double boost = Math.Clamp(entrainmentMassDemandMultiplier, 0.25, 2.5);
         double dx = sectionLengthM / stepCount;
         double primaryMdot = inletState.MassFlowKgS;
         var states = new List<JetState> { inletState };
@@ -146,7 +149,7 @@ public sealed class FlowMarcher
             double dmRequested = _entrainment.ComputeEntrainedMassPerLength(
                 _ambient.DensityKgM3,
                 vMag,
-                perimeter) * dx;
+                perimeter) * dx * boost;
 
             InletSuctionOutcome intake = _inletSuction.Solve(
                 _gas,
@@ -235,7 +238,8 @@ public sealed class FlowMarcher
             FlowStates = states,
             StepResults = stepResults,
             FinalTangentialVelocityMps = finalVtMixed,
-            FinalAxialVelocityMps = current.VelocityMps
+            FinalAxialVelocityMps = current.VelocityMps,
+            FinalPrimaryTangentialVelocityMps = vtPrimary
         };
     }
 }
