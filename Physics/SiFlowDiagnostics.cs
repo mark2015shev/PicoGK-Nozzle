@@ -31,4 +31,7 @@ public sealed class SiFlowDiagnostics
     public double MomentumThrustN { get; init; }
     public double PressureThrustN { get; init; }
     public double NetThrustN { get; init; }
+
+    /// <summary>Chamber vortex / radial pressure / swirl budget bookkeeping (first-order, not CFD).</summary>
+    public VortexFlowDiagnostics? Vortex { get; init; }
 }

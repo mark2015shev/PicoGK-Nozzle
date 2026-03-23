@@ -6,7 +6,7 @@ using PicoGK_Run.Physics;
 namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
-/// Reproducible random search over bounded geometric scales (SI forward model only — no voxels per trial).
+/// Reproducible random search over bounded geometry + injector yaw (45–80°) and pitch (conservative band); SI forward model only — no voxels per trial.
 /// </summary>
 public static class NozzleDesignAutotune
 {
@@ -31,6 +31,10 @@ public static class NozzleDesignAutotune
         public readonly double StatorAngle;
         public readonly double AxialPositionScale;
         public readonly double SynthesisTargetEr;
+        /// <summary>Absolute injector yaw [deg], typically 45–80 (reduces swirl vs 80° baseline).</summary>
+        public readonly double InjectorYawDeg;
+        /// <summary>Absolute injector pitch [deg], conservative band.</summary>
+        public readonly double InjectorPitchDeg;
 
         public Knobs(
             double chamberD,
@@ -41,7 +45,9 @@ public static class NozzleDesignAutotune
             double expLength,
             double statorAngle,
             double axialPositionScale,
-            double synthesisTargetEr)
+            double synthesisTargetEr,
+            double injectorYawDeg,
+            double injectorPitchDeg)
         {
             ChamberD = chamberD;
             ChamberL = chamberL;
@@ -52,6 +58,8 @@ public static class NozzleDesignAutotune
             StatorAngle = statorAngle;
             AxialPositionScale = axialPositionScale;
             SynthesisTargetEr = synthesisTargetEr;
+            InjectorYawDeg = injectorYawDeg;
+            InjectorPitchDeg = injectorPitchDeg;
         }
     }
 
@@ -120,6 +128,7 @@ public static class NozzleDesignAutotune
         NetThrustN = e.NetThrustN,
         SourceOnlyThrustN = e.SourceOnlyThrustN,
         EntrainmentRatio = e.EntrainmentRatio,
+        VortexQualityMetric = e.VortexQualityMetric,
         Score = score,
         HealthCount = e.HealthCount,
         HasDesignError = e.HasDesignError,
@@ -131,16 +140,22 @@ public static class NozzleDesignAutotune
     private static Knobs SampleKnobs(Random rng, bool varyEr)
     {
         double u(double lo, double hi) => lo + rng.NextDouble() * (hi - lo);
+        // Injector angles: yaw strongly affects |Vt|/|Va|; pitch nudged in a narrow band.
+        double yaw = u(45.0, 80.0);
+        double pitch = u(6.0, 16.0);
+
         return new Knobs(
-            chamberD: u(0.90, 1.10),
-            chamberL: u(0.80, 1.25),
-            inlet: u(0.94, 1.14),
-            exit: u(0.90, 1.18),
-            expAngle: u(0.82, 1.15),
-            expLength: u(0.72, 1.38),
-            statorAngle: u(0.86, 1.14),
-            axialPositionScale: u(0.82, 1.18),
-            synthesisTargetEr: varyEr ? u(0.22, 0.62) : NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio);
+            chamberD: u(0.84, 1.20),
+            chamberL: u(0.70, 1.38),
+            inlet: u(0.86, 1.24),
+            exit: u(0.82, 1.26),
+            expAngle: u(0.74, 1.26),
+            expLength: u(0.62, 1.48),
+            statorAngle: u(0.78, 1.22),
+            axialPositionScale: u(0.70, 1.32),
+            synthesisTargetEr: varyEr ? u(0.22, 0.62) : NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio,
+            injectorYawDeg: yaw,
+            injectorPitchDeg: pitch);
     }
 
     private static NozzleDesignInputs ApplyKnobs(NozzleDesignInputs b, in Knobs k)
@@ -153,6 +168,8 @@ public static class NozzleDesignAutotune
         double lEx = Math.Clamp(b.ExpanderLengthMm * k.ExpLength, 25.0, 240.0);
         double st = Math.Clamp(b.StatorVaneAngleDeg * k.StatorAngle, 14.0, 58.0);
         double ax = Math.Clamp(b.InjectorAxialPositionRatio * k.AxialPositionScale, 0.08, 0.92);
+        double yaw = Math.Clamp(k.InjectorYawDeg, 45.0, 80.0);
+        double pitch = Math.Clamp(k.InjectorPitchDeg, 4.0, 18.0);
 
         return new NozzleDesignInputs
         {
@@ -164,8 +181,8 @@ public static class NozzleDesignAutotune
             InjectorCount = b.InjectorCount,
             InjectorWidthMm = b.InjectorWidthMm,
             InjectorHeightMm = b.InjectorHeightMm,
-            InjectorYawAngleDeg = b.InjectorYawAngleDeg,
-            InjectorPitchAngleDeg = b.InjectorPitchAngleDeg,
+            InjectorYawAngleDeg = yaw,
+            InjectorPitchAngleDeg = pitch,
             InjectorRollAngleDeg = b.InjectorRollAngleDeg,
             ExpanderLengthMm = lEx,
             ExpanderHalfAngleDeg = ang,

@@ -22,10 +22,13 @@ public sealed class RunConfiguration
     public int AutotuneTrials { get; init; } = 160;
 
     /// <summary>Objective weight for ṁ_amb/ṁ_core (normalized to baseline).</summary>
-    public double AutotuneWeightEntrainment { get; init; } = 0.52;
+    public double AutotuneWeightEntrainment { get; init; } = 0.38;
 
     /// <summary>Objective weight for F_net / F_source-only (with soft floor near 0.88×).</summary>
-    public double AutotuneWeightThrust { get; init; } = 0.48;
+    public double AutotuneWeightThrust { get; init; } = 0.40;
+
+    /// <summary>Objective weight for controlled-vortex quality (moderate swirl, stable regime, recovery) — not axial-ejector bias.</summary>
+    public double AutotuneWeightVortexQuality { get; init; } = 0.22;
 
     /// <summary>Seed for reproducible random search.</summary>
     public int AutotuneRandomSeed { get; init; } = 20260213;
@@ -45,6 +48,7 @@ public sealed class RunConfiguration
         AutotuneTrials = AutotuneTrials,
         AutotuneWeightEntrainment = AutotuneWeightEntrainment,
         AutotuneWeightThrust = AutotuneWeightThrust,
+        AutotuneWeightVortexQuality = AutotuneWeightVortexQuality,
         AutotuneRandomSeed = AutotuneRandomSeed,
         AutotuneUseSynthesisBaseline = AutotuneUseSynthesisBaseline
     };

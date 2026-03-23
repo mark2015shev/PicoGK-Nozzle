@@ -1,3 +1,4 @@
+using PicoGK_Run.Core;
 using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Infrastructure;
@@ -7,5 +8,9 @@ public sealed class AutotuneRunSummary
 {
     public int Trials { get; init; }
     public double BestScore { get; init; }
+
+    /// <summary>Hand/template design from the incoming <see cref="NozzleInput"/> before search (not synthesis baseline).</summary>
+    public NozzleDesignInputs BaselineTemplateDesign { get; init; } = null!;
+
     public NozzleDesignInputs WinningSeedDesign { get; init; } = null!;
 }

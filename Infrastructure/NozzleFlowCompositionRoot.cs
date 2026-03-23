@@ -44,6 +44,7 @@ public static class NozzleFlowCompositionRoot
             EntrainmentRatio = r.Solved.EntrainmentRatio,
             NetThrustN = r.SiDiag.NetThrustN,
             SourceOnlyThrustN = r.Solved.SourceOnlyThrustN,
+            VortexQualityMetric = r.SiDiag.Vortex?.VortexQualityMetric ?? 0.0,
             AmbientAirMassFlowKgS = r.Solved.AmbientAirMassFlowKgPerSec,
             CoreMassFlowKgS = r.Solved.CoreMassFlowKgPerSec,
             HealthCount = r.HealthMessages.Count,
@@ -161,7 +162,15 @@ public static class NozzleFlowCompositionRoot
             return Math.Max(0.18 * a, 1e-9);
         }
 
-        double swirlDecayPerStep = Math.Pow(0.72, 1.0 / Math.Max(DefaultMarchSteps, 1));
+        double erHint = Math.Clamp(
+            0.32 + 0.28 * Math.Tanh((activeDesign.ExitDiameterMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0) - 1.05) * 1.8),
+            0.22,
+            1.35);
+        double swirlDecayPerStep = VortexDiagnosticsCalculator.ComputeSwirlDecayPerStepFactor(
+            activeDesign.SwirlChamberLengthMm,
+            activeDesign.SwirlChamberDiameterMm,
+            erHint,
+            DefaultMarchSteps);
 
         FlowMarchDetailedResult detailed = marcher.SolveDetailed(
             inletState,
@@ -225,6 +234,29 @@ public static class NozzleFlowCompositionRoot
         double fPressureTotal = fExitPlane + inletPressureForceN + expanderForceN;
         double fNet = fMom + fPressureTotal;
 
+        double solvedEr = coreMdot > 1e-12
+            ? Math.Max(0.0, (lastMarch.TotalMassFlowKgS - coreMdot) / coreMdot)
+            : 0.0;
+
+        VortexFlowDiagnostics vortex = VortexDiagnosticsCalculator.Compute(
+            injectorTangentialVelocityMps: vt0,
+            injectorAxialVelocityMps: va0,
+            swirlDecayPerStepFactor: swirlDecayPerStep,
+            marchStepCount: DefaultMarchSteps,
+            primaryMassFlowKgS: coreMdot,
+            totalMassFlowEndKgS: lastMarch.TotalMassFlowKgS,
+            mixedTangentialVelocityPreStatorMps: detailed.FinalTangentialVelocityMps,
+            mixedAxialVelocityPreStatorMps: lastMarch.VelocityMps,
+            tangentialVelocityPostStatorMps: vtAfterStator,
+            mixedDensityKgM3: lastMarch.DensityKgM3,
+            chamberDiameterMm: activeDesign.SwirlChamberDiameterMm,
+            chamberLengthMm: activeDesign.SwirlChamberLengthMm,
+            injectorAxialPositionRatio: activeDesign.InjectorAxialPositionRatio,
+            solvedEntrainmentRatio: solvedEr,
+            statorOut: statorOut,
+            statorEtaUsed: etaStator,
+            statorFracVtUsed: fracVt);
+
         var siDiag = new SiFlowDiagnostics
         {
             MarchSteps = steps,
@@ -241,7 +273,8 @@ public static class NozzleFlowCompositionRoot
             FinalAxialVelocityMps = vaAfterStator,
             MomentumThrustN = fMom,
             PressureThrustN = fPressureTotal,
-            NetThrustN = fNet
+            NetThrustN = fNet,
+            Vortex = vortex
         };
 
         var designer = new NozzleDesigner();

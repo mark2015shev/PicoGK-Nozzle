@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using PicoGK_Run.Parameters;
-
 namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
@@ -18,6 +17,9 @@ public sealed class FlowTuneEvaluation
     public double NetThrustN { get; init; }
     public double SourceOnlyThrustN { get; init; }
     public double EntrainmentRatio { get; init; }
+
+    /// <summary>0–1 from <see cref="PicoGK_Run.Physics.VortexFlowDiagnostics.VortexQualityMetric"/> when SI vortex block ran.</summary>
+    public double VortexQualityMetric { get; init; }
 
     /// <summary>Composite autotune objective when scored; 0 if not yet scored.</summary>
     public double Score { get; init; }

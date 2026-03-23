@@ -42,13 +42,15 @@ public static class K320Baseline
         InletDiameterMm = 90.0,
         SwirlChamberDiameterMm = 68.0,
         SwirlChamberLengthMm = 75.0,
-        InjectorAxialPositionRatio = 0.5,
+        // 1 = downstream / near expander; high ratio keeps injectors close to the expander end of the chamber.
+        InjectorAxialPositionRatio = 0.88,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
         InjectorCount = 16,
         InjectorWidthMm = 10.0,
         InjectorHeightMm = DefaultSourceAreaMm2 / (16.0 * 10.0),
-        InjectorYawAngleDeg = 80.0,
-        InjectorPitchAngleDeg = 10.0,
+        // 90° yaw = purely tangential jet in the cylindrical frame (see SwirlMath); 0° pitch = no inward radial tilt.
+        InjectorYawAngleDeg = 90.0,
+        InjectorPitchAngleDeg = 0.0,
         InjectorRollAngleDeg = 0.0,
         ExpanderLengthMm = 120.0,
         ExpanderHalfAngleDeg = 9.0,
@@ -86,14 +88,15 @@ public static class K320Baseline
         UsePhysicsInformedGeometry = false,
         UseAutotune = true,
         AutotuneTrials = trials,
-        AutotuneWeightEntrainment = 0.52,
-        AutotuneWeightThrust = 0.48,
+        AutotuneWeightEntrainment = 0.38,
+        AutotuneWeightThrust = 0.40,
+        AutotuneWeightVortexQuality = 0.22,
         AutotuneRandomSeed = 20260213,
         AutotuneUseSynthesisBaseline = true
     };
 
-    /// <summary>Convenience: K320 source + hand template + autotune run config.</summary>
-    public static NozzleInput CreateInputWithAutotune(int trials = 200) => new(
+    /// <summary>Convenience: <see cref="CreateSource"/>, <see cref="CreateDesign"/>, and <see cref="CreateRunWithAutotune"/> (viewer on for the final geometry pass).</summary>
+    public static NozzleInput CreateInputWithAutotune(int trials = 160) => new(
         CreateSource(),
         CreateDesign(),
         CreateRunWithAutotune(trials));

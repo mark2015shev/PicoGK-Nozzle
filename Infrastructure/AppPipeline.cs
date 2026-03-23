@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PicoGK;
 using PicoGK_Run.Core;
@@ -13,7 +14,13 @@ internal sealed class AppPipeline
         if (!input.Run.UseAutotune)
             return NozzleFlowCompositionRoot.Run(input, input.Run.ShowInViewer);
 
+        NozzleDesignInputs baselineTemplate = CloneDesignForLog(input.Design);
+
         NozzleDesignAutotune.Result tune = NozzleDesignAutotune.FindBestSeed(input.Source, input.Design, input.Run);
+
+        LogAutotuneBeforeFinalRun(tune.TrialsUsed, tune.BestScore, tune.BestSeedDesign);
+        LogAutotuneGeometryDeltaToConsole(baselineTemplate, tune.BestSeedDesign);
+
         NozzleInput work = new NozzleInput(input.Source, tune.BestSeedDesign, input.Run.AfterAutotune());
 
         PipelineRunResult pr = NozzleFlowCompositionRoot.Run(work, work.Run.ShowInViewer);
@@ -22,12 +29,13 @@ internal sealed class AppPipeline
         {
             Trials = tune.TrialsUsed,
             BestScore = tune.BestScore,
+            BaselineTemplateDesign = baselineTemplate,
             WinningSeedDesign = tune.BestSeedDesign
         };
 
         var w = new List<string>
         {
-            $"Autotune: {tune.TrialsUsed} SI-only evaluations, best score {tune.BestScore:F4} (weights E={input.Run.AutotuneWeightEntrainment:F2}, T={input.Run.AutotuneWeightThrust:F2}). Pre-CFD — validate in CFD."
+            $"Autotune: {tune.TrialsUsed} SI-only evaluations, best score {tune.BestScore:F4} (weights E={input.Run.AutotuneWeightEntrainment:F2}, T={input.Run.AutotuneWeightThrust:F2}, V={input.Run.AutotuneWeightVortexQuality:F2} vortex-quality). Pre-CFD — validate in CFD."
         };
         w.AddRange(pr.SolverWarnings);
 
@@ -52,6 +60,69 @@ internal sealed class AppPipeline
         AddSegment(viewer, ref g, geometry.StatorSection, NozzleViewerSegmentColors.StatorSectionHex);
         AddSegment(viewer, ref g, geometry.Exit, NozzleViewerSegmentColors.ExitHex);
     }
+
+    private static void LogAutotuneBeforeFinalRun(int trialsUsed, double bestScore, NozzleDesignInputs winning)
+    {
+        Library.Log("=== Autotune enabled (SI search — pre-CFD) ===");
+        Library.Log($"Autotune: trial count (SI-only evals): {trialsUsed}");
+        Library.Log($"Autotune: best composite score [-]:      {bestScore:F4}");
+        Library.Log("Autotune: winning seed geometry [mm / deg]:");
+        LogDesignToLibrary(winning);
+        Library.Log($"Autotune: winning injector Yaw / Pitch [deg]: {winning.InjectorYawAngleDeg:F2} / {winning.InjectorPitchAngleDeg:F2}");
+    }
+
+    private static void LogDesignToLibrary(NozzleDesignInputs d)
+    {
+        Library.Log($"  InletDiameterMm:            {d.InletDiameterMm:F2}");
+        Library.Log($"  SwirlChamber D x L:         {d.SwirlChamberDiameterMm:F2} x {d.SwirlChamberLengthMm:F2}");
+        Library.Log($"  InjectorAxialPositionRatio: {d.InjectorAxialPositionRatio:F3}");
+        Library.Log($"  InjectorYaw / Pitch [deg]:  {d.InjectorYawAngleDeg:F2} / {d.InjectorPitchAngleDeg:F2}");
+        Library.Log($"  ExpanderLength / HalfAngle: {d.ExpanderLengthMm:F2} / {d.ExpanderHalfAngleDeg:F2}");
+        Library.Log($"  ExitDiameterMm:             {d.ExitDiameterMm:F2}");
+        Library.Log($"  StatorVaneAngleDeg:         {d.StatorVaneAngleDeg:F2}");
+    }
+
+    /// <summary>Proves at least one tuned knob moved vs the hand template (console — easy to spot in CI / terminal).</summary>
+    private static void LogAutotuneGeometryDeltaToConsole(NozzleDesignInputs baseline, NozzleDesignInputs tuned)
+    {
+        const double eps = 0.02; // mm or deg; ratio uses absolute delta
+        bool inlet = Math.Abs(tuned.InletDiameterMm - baseline.InletDiameterMm) > eps;
+        bool chD = Math.Abs(tuned.SwirlChamberDiameterMm - baseline.SwirlChamberDiameterMm) > eps;
+        bool chL = Math.Abs(tuned.SwirlChamberLengthMm - baseline.SwirlChamberLengthMm) > eps;
+        bool exit = Math.Abs(tuned.ExitDiameterMm - baseline.ExitDiameterMm) > eps;
+        bool exL = Math.Abs(tuned.ExpanderLengthMm - baseline.ExpanderLengthMm) > eps;
+        bool exA = Math.Abs(tuned.ExpanderHalfAngleDeg - baseline.ExpanderHalfAngleDeg) > 0.05;
+        bool st = Math.Abs(tuned.StatorVaneAngleDeg - baseline.StatorVaneAngleDeg) > 0.05;
+        bool ax = Math.Abs(tuned.InjectorAxialPositionRatio - baseline.InjectorAxialPositionRatio) > 0.02;
+        bool yaw = Math.Abs(tuned.InjectorYawAngleDeg - baseline.InjectorYawAngleDeg) > 0.05;
+        bool pitch = Math.Abs(tuned.InjectorPitchAngleDeg - baseline.InjectorPitchAngleDeg) > 0.05;
+        bool any = inlet || chD || chL || exit || exL || exA || st || ax || yaw || pitch;
+
+        Console.WriteLine("[Autotune] Geometry delta vs hand template: " + (any ? "YES (at least one knob changed)" : "NO — winner matches template within tolerance"));
+        if (!any)
+            Console.WriteLine("[Autotune] WARNING: widen search bounds or increase trials if you expected visible geometry changes.");
+    }
+
+    private static NozzleDesignInputs CloneDesignForLog(NozzleDesignInputs d) => new()
+    {
+        InletDiameterMm = d.InletDiameterMm,
+        SwirlChamberDiameterMm = d.SwirlChamberDiameterMm,
+        SwirlChamberLengthMm = d.SwirlChamberLengthMm,
+        InjectorAxialPositionRatio = d.InjectorAxialPositionRatio,
+        TotalInjectorAreaMm2 = d.TotalInjectorAreaMm2,
+        InjectorCount = d.InjectorCount,
+        InjectorWidthMm = d.InjectorWidthMm,
+        InjectorHeightMm = d.InjectorHeightMm,
+        InjectorYawAngleDeg = d.InjectorYawAngleDeg,
+        InjectorPitchAngleDeg = d.InjectorPitchAngleDeg,
+        InjectorRollAngleDeg = d.InjectorRollAngleDeg,
+        ExpanderLengthMm = d.ExpanderLengthMm,
+        ExpanderHalfAngleDeg = d.ExpanderHalfAngleDeg,
+        ExitDiameterMm = d.ExitDiameterMm,
+        StatorVaneAngleDeg = d.StatorVaneAngleDeg,
+        StatorVaneCount = d.StatorVaneCount,
+        WallThicknessMm = d.WallThicknessMm
+    };
 
     private static void AddSegment(Viewer viewer, ref int groupId, Voxels voxels, string hex)
     {

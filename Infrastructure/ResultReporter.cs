@@ -24,7 +24,9 @@ internal static class ResultReporter
             Library.Log($"Autotune enabled:            yes");
             Library.Log($"Trials (SI-only evals):      {at.Trials}");
             Library.Log($"Best composite score [-]:    {at.BestScore:F4}");
-            Library.Log("Winning seed design [mm / deg]:");
+            Library.Log("Original hand/template design (pre-autotune baseline):");
+            LogDesignBlock(at.BaselineTemplateDesign);
+            Library.Log("Winning seed design (used for final SI + voxels) [mm / deg]:");
             LogDesignBlock(at.WinningSeedDesign);
         }
         else if (input.Run.UsePhysicsInformedGeometry)
@@ -42,7 +44,9 @@ internal static class ResultReporter
         Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2} (reporting; not used in current solver equations)");
         Library.Log($"AmbientDensityKgPerM3:        {input.Source.AmbientDensityKgPerM3:F4}");
 
-        Library.Log("--- Design inputs (final pipeline / driven geometry) ---");
+        Library.Log(result.Autotune != null
+            ? "--- Design inputs (final pipeline — tuned seed after SI merge; primary dims preserved from seed) ---"
+            : "--- Design inputs (final pipeline / driven geometry) ---");
         LogDesignBlock(input.Design);
 
         if (result.CriticalRatios != null)
@@ -75,6 +79,26 @@ internal static class ResultReporter
         Library.Log($"V_core×(A_source/A_inj):      {s.InjectorJetVelocityAreaDriverMps:F2} m/s");
         Library.Log($"Continuity mdot/(ρ_core×A_inj): {s.InjectorJetVelocityContinuityCheckMps:F2} m/s");
         Library.Log($"Blended InjectorJetVelocityMps: {s.InjectorJetVelocityMps:F2} m/s (used for yaw/pitch decomposition)");
+
+        if (result.SiFlow?.Vortex != null)
+        {
+            VortexFlowDiagnostics vx = result.SiFlow.Vortex;
+            Library.Log("--- Vortex structure and pressure field (heuristic — not CFD) ---");
+            Library.Log("Radial pressure: first-order dp/dr ~ rho*Vtheta^2/r sense; wall rise vs core depression split for reporting only.");
+            Library.Log($"Vortex class:                  {vx.StructureClassLabel}");
+            Library.Log($"Core pressure depression [Pa]: {vx.CorePressureDepressionPa:F1}");
+            Library.Log($"Wall pressure rise [Pa]:      {vx.WallPressureRisePa:F1}");
+            Library.Log($"Swirl decay fraction [-]:      {vx.SwirlDecayFractionAlongChamber:F3} (primary Vtheta along chamber)");
+            Library.Log($"Remaining swirl at stator [-]: {vx.RemainingSwirlFractionAtStator:F3} (|Vt| scale vs injector |Vt|)");
+            Library.Log($"Estimated recovery fraction [-]: {vx.EstimatedRecoveryFraction:F3} (stator / axial recovery bucket)");
+            Library.Log($"Vortex quality metric [-]:     {vx.VortexQualityMetric:F3} (moderate S, stable regime, ER, recovery — tuning hook)");
+            Library.Log("Swirl budget split (four buckets, normalized — bookkeeping):");
+            Library.Log($"  for entrainment:             {vx.FractionSwirlForEntrainment:F3}");
+            Library.Log($"  remaining at stator plane:   {vx.FractionSwirlRemainingAtStator:F3}");
+            Library.Log($"  to axial recovery:           {vx.FractionSwirlToAxialRecovery:F3}");
+            Library.Log($"  dissipated / lost:           {vx.FractionSwirlDissipated:F3}");
+            Library.Log($"March swirl decay factor/step: {vx.SwirlDecayPerStepFactorUsed:F4} (audit)");
+        }
 
         Library.Log("--- Solved physics ---");
         if (result.SiFlow != null)
@@ -177,6 +201,8 @@ internal static class ResultReporter
         Library.Log("- Chamber swirl decay before stator: exponential in L/D — heuristic; then inlet + expander debits on same swirl/pressure budget (no stacked full recovery).");
         Library.Log("- Yaw/pitch/roll: see SwirlMath XML; roll ignored for axisymmetric physics.");
         Library.Log("- AmbientTemperatureK not used in equations (P_amb, rho_amb, T_exhaust for ρ_core blend).");
+        Library.Log("- Vortex diagnostics: radial pressure / core depression / swirl budget split are 1-D heuristics for controlled-vortex interpretation — not CFD vortex identification or stability.");
+        Library.Log("- Chamber swirl decay factor: L/D, diameter scale, entrainment-loading hint — tunable later against experiment or CFD.");
     }
 
     private static void LogWarnings(IReadOnlyList<string> warnings)
