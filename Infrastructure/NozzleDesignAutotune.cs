@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using PicoGK_Run.Core;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
@@ -6,14 +9,9 @@ using PicoGK_Run.Physics;
 namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
-/// Reproducible random search over bounded geometry + injector yaw (45–80°) and pitch (conservative band); SI forward model only — no voxels per trial.
-/// <para>
-/// <b>Swirl segment (voxels):</b> axial length = <see cref="NozzleDesignInputs.SwirlChamberLengthMm"/>; inner diameter = <see cref="NozzleDesignInputs.SwirlChamberDiameterMm"/>.
-/// With <see cref="RunConfiguration.UseAutotune"/> true, <b>both</b> are search variables: each trial applies random multipliers in
-/// <see cref="RunConfiguration.AutotuneSwirlChamberDiameterScaleMin"/>/<see cref="RunConfiguration.AutotuneSwirlChamberDiameterScaleMax"/> and
-/// length scales in <see cref="RunConfiguration.AutotuneSwirlChamberLengthScaleMin"/>/<see cref="RunConfiguration.AutotuneSwirlChamberLengthScaleMax"/>,
-/// then clamps length to <see cref="RunConfiguration.AutotuneSwirlChamberLengthMaxMm"/>. Without autotune, values come from the hand template or synthesis only.
-/// </para>
+/// Reproducible random search on the coupled SI model (no voxels per trial).
+/// <see cref="AutotuneStrategy.SingleStage"/> keeps the legacy one-pool search;
+/// <see cref="AutotuneStrategy.CoarseToFine"/> runs broad → diverse top seeds → polish.
 /// </summary>
 public static class NozzleDesignAutotune
 {
@@ -23,8 +21,20 @@ public static class NozzleDesignAutotune
         public double BestScore { get; init; }
         public int TrialsUsed { get; init; }
         public FlowTuneEvaluation BaselineEvaluation { get; init; } = null!;
-        /// <summary>Best candidate with <see cref="FlowTuneEvaluation.Score"/> set.</summary>
         public FlowTuneEvaluation? BestEvaluation { get; init; }
+
+        /// <summary>Human-readable stage log when <see cref="AutotuneStrategy.CoarseToFine"/> was used.</summary>
+        public string? CoarseToFineLog { get; init; }
+
+        public IReadOnlyList<AutotuneStageBestSnapshot>? StageBests { get; init; }
+    }
+
+    public sealed class AutotuneStageBestSnapshot
+    {
+        public int Stage { get; init; }
+        public int TrialsInStage { get; init; }
+        public double BestScore { get; init; }
+        public NozzleDesignInputs BestDesign { get; init; } = null!;
     }
 
     private readonly struct Knobs
@@ -38,9 +48,7 @@ public static class NozzleDesignAutotune
         public readonly double StatorAngle;
         public readonly double AxialPositionScale;
         public readonly double SynthesisTargetEr;
-        /// <summary>Absolute injector yaw [deg], typically 45–80 (reduces swirl vs 80° baseline).</summary>
         public readonly double InjectorYawDeg;
-        /// <summary>Absolute injector pitch [deg], conservative band.</summary>
         public readonly double InjectorPitchDeg;
 
         public Knobs(
@@ -70,19 +78,19 @@ public static class NozzleDesignAutotune
         }
     }
 
-    public static Result FindBestSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run)
+    private sealed record ScoredTrial(NozzleDesignInputs Design, double Score, FlowTuneEvaluation Eval);
+
+    public static Result FindBestSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run) =>
+        run.AutotuneStrategy == AutotuneStrategy.CoarseToFine
+            ? FindBestSeedCoarseToFine(source, template, run)
+            : FindBestSeedSingleStage(source, template, run);
+
+    private static Result FindBestSeedSingleStage(SourceInputs source, NozzleDesignInputs template, RunConfiguration run)
     {
         int trials = Math.Clamp(run.AutotuneTrials, 20, 5000);
         var rng = new Random(run.AutotuneRandomSeed);
 
-        NozzleDesignInputs BaselineSeed()
-        {
-            if (run.AutotuneUseSynthesisBaseline)
-                return NozzleGeometrySynthesis.Synthesize(source, template, NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio);
-            return CloneDesign(template);
-        }
-
-        NozzleDesignInputs baseSeed = BaselineSeed();
+        NozzleDesignInputs baseSeed = BaselineSeed(source, template, run);
         FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseSeed, run);
 
         double bestScore = double.NegativeInfinity;
@@ -91,11 +99,8 @@ public static class NozzleDesignAutotune
 
         for (int i = 0; i < trials; i++)
         {
-            Knobs k = SampleKnobs(rng, run);
-            NozzleDesignInputs candidate = run.AutotuneUseSynthesisBaseline
-                ? ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr), k, run)
-                : ApplyKnobs(CloneDesign(template), k, run);
-
+            Knobs k = SampleKnobsLegacy(rng, run, template);
+            NozzleDesignInputs candidate = BuildCandidateFromKnobs(source, template, k, run, useSynthesisBase: run.AutotuneUseSynthesisBaseline);
             FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
             if (ev.HasDesignError)
                 continue;
@@ -128,6 +133,251 @@ public static class NozzleDesignAutotune
         };
     }
 
+    private static Result FindBestSeedCoarseToFine(SourceInputs source, NozzleDesignInputs template, RunConfiguration run)
+    {
+        int n1 = Math.Clamp(run.AutotuneStage1Trials, 12, 8000);
+        int n2 = Math.Clamp(run.AutotuneStage2Trials, 8, 8000);
+        int n3 = Math.Clamp(run.AutotuneStage3Trials, 4, 4000);
+        int top1 = Math.Clamp(run.AutotuneTopSeedCountStage1, 2, 12);
+        int top2Keep = Math.Clamp(run.AutotuneTopSeedCountStage2, 1, 6);
+        double divMin = Math.Clamp(run.AutotuneDiversityMinDistance, 0.12, 1.2);
+
+        var rng = new Random(run.AutotuneRandomSeed);
+        var log = new StringBuilder();
+        log.AppendLine("=== Coarse-to-fine autotune (SI-only trials; not CFD) ===");
+
+        NozzleDesignInputs baseSeed = BaselineSeed(source, template, run);
+        FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseSeed, run);
+        NozzleDesignInputs angleRef = CloneDesign(template);
+
+        var stageBests = new List<AutotuneStageBestSnapshot>();
+        var allStage1 = new List<ScoredTrial>();
+
+        for (int i = 0; i < n1; i++)
+        {
+            Knobs k = SampleKnobsFromBand(rng, run.AutotuneStage1Band, run, angleRef);
+            NozzleDesignInputs candidate = BuildCandidateFromKnobs(source, template, k, run, useSynthesisBase: run.AutotuneUseSynthesisBaseline);
+            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+            if (ev.HasDesignError)
+                continue;
+            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+            ev = WithScore(ev, score);
+            allStage1.Add(new ScoredTrial(candidate, score, ev));
+        }
+
+        if (allStage1.Count == 0)
+            return FallbackBaseline(source, baseSeed, baselineEval, run, log, stageBests);
+
+        ScoredTrial best1 = allStage1.MaxBy(t => t.Score)!;
+        stageBests.Add(new AutotuneStageBestSnapshot { Stage = 1, TrialsInStage = n1, BestScore = best1.Score, BestDesign = best1.Design });
+        log.AppendLine($"Stage 1 ({n1} trials): best score {best1.Score:F4} (broad exploration).");
+        LogDesignDeltaLine(log, "  Stage1 best vs SI baseline seed", baseSeed, best1.Design);
+
+        List<ScoredTrial> sorted1 = allStage1.OrderByDescending(t => t.Score).ToList();
+        List<NozzleDesignInputs> diverseSeeds = SelectDiverseSeeds(sorted1, top1, divMin);
+        log.AppendLine($"  Retained {diverseSeeds.Count} diverse top seeds for stage 2 (min norm distance ≥ {divMin:F2}).");
+
+        var allStage2 = new List<ScoredTrial>();
+        int seedsC = Math.Max(1, diverseSeeds.Count);
+        int basePer = n2 / seedsC;
+        int rem = n2 - basePer * seedsC;
+        for (int s = 0; s < diverseSeeds.Count; s++)
+        {
+            int count = basePer + (s < rem ? 1 : 0);
+            NozzleDesignInputs seed = diverseSeeds[s];
+            for (int i = 0; i < count; i++)
+            {
+                Knobs k = SampleKnobsFromBand(rng, run.AutotuneStage2Band, run, seed);
+                NozzleDesignInputs candidate = ApplyKnobs(CloneDesign(seed), k, run);
+                FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+                if (ev.HasDesignError)
+                    continue;
+                double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+                ev = WithScore(ev, score);
+                allStage2.Add(new ScoredTrial(candidate, score, ev));
+            }
+        }
+
+        if (allStage2.Count == 0)
+        {
+            log.AppendLine("Stage 2: no valid trials — using stage 1 winner.");
+            return FinishResult(best1.Design, best1.Score, best1.Eval, baselineEval, n1, log, stageBests);
+        }
+
+        ScoredTrial best2 = allStage2.MaxBy(t => t.Score)!;
+        stageBests.Add(new AutotuneStageBestSnapshot { Stage = 2, TrialsInStage = n2, BestScore = best2.Score, BestDesign = best2.Design });
+        log.AppendLine($"Stage 2 ({n2} trials): best score {best2.Score:F4} (refinement around diverse seeds).");
+        LogDesignDeltaLine(log, "  Stage2 best vs stage1 best", best1.Design, best2.Design);
+
+        List<ScoredTrial> sorted2 = allStage2.OrderByDescending(t => t.Score).ToList();
+        LogSecondStageRunnerUp(log, sorted2, top2Keep, best2);
+
+        NozzleDesignInputs polishCenter = best2.Design;
+        var allStage3 = new List<ScoredTrial>();
+        for (int i = 0; i < n3; i++)
+        {
+            Knobs k = SampleKnobsFromBand(rng, run.AutotuneStage3Band, run, polishCenter);
+            NozzleDesignInputs candidate = ApplyKnobs(CloneDesign(polishCenter), k, run);
+            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+            if (ev.HasDesignError)
+                continue;
+            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+            ev = WithScore(ev, score);
+            allStage3.Add(new ScoredTrial(candidate, score, ev));
+        }
+
+        if (allStage3.Count == 0)
+        {
+            log.AppendLine("Stage 3: no valid trials — using stage 2 winner.");
+            return FinishResult(best2.Design, best2.Score, best2.Eval, baselineEval, n1 + n2, log, stageBests);
+        }
+
+        ScoredTrial best3 = allStage3.MaxBy(t => t.Score)!;
+        stageBests.Add(new AutotuneStageBestSnapshot { Stage = 3, TrialsInStage = n3, BestScore = best3.Score, BestDesign = best3.Design });
+        log.AppendLine($"Stage 3 ({n3} trials): best score {best3.Score:F4} (fine polish).");
+        LogDesignDeltaLine(log, "  Stage3 best vs stage2 best", best2.Design, best3.Design);
+        log.AppendLine("Final winning design vs original template:");
+        LogDesignDeltaLine(log, "  Final vs input template", template, best3.Design);
+        log.AppendLine($"Total SI evaluations: {n1 + n2 + n3} (no voxels in search).");
+
+        return new Result
+        {
+            BestSeedDesign = best3.Design,
+            BestScore = best3.Score,
+            TrialsUsed = n1 + n2 + n3,
+            BaselineEvaluation = baselineEval,
+            BestEvaluation = best3.Eval,
+            CoarseToFineLog = log.ToString(),
+            StageBests = stageBests
+        };
+    }
+
+    private static Result FallbackBaseline(
+        SourceInputs source,
+        NozzleDesignInputs baseSeed,
+        FlowTuneEvaluation baselineEval,
+        RunConfiguration run,
+        StringBuilder log,
+        List<AutotuneStageBestSnapshot> stageBests)
+    {
+        _ = source;
+        log.AppendLine("Stage 1 produced no valid candidates — using baseline seed.");
+        double score = AutotuneScoring.ComputeScore(baselineEval, baselineEval, run);
+        FlowTuneEvaluation ev = WithScore(baselineEval, score);
+        stageBests.Add(new AutotuneStageBestSnapshot
+        {
+            Stage = 1,
+            TrialsInStage = 0,
+            BestScore = score,
+            BestDesign = baseSeed
+        });
+        return new Result
+        {
+            BestSeedDesign = baseSeed,
+            BestScore = score,
+            TrialsUsed = 0,
+            BaselineEvaluation = baselineEval,
+            BestEvaluation = ev,
+            CoarseToFineLog = log.ToString(),
+            StageBests = stageBests
+        };
+    }
+
+    private static void LogSecondStageRunnerUp(StringBuilder log, List<ScoredTrial> sorted2, int top2Keep, ScoredTrial best2)
+    {
+        if (sorted2.Count < 2)
+            return;
+        ScoredTrial second = sorted2[1];
+        log.AppendLine(
+            $"  Stage 2 runner-up #2 score {second.Score:F4} (best {best2.Score:F4}); stage 3 polishes best only (top2Keep={top2Keep} for future use).");
+    }
+
+    private static Result FinishResult(
+        NozzleDesignInputs best,
+        double score,
+        FlowTuneEvaluation ev,
+        FlowTuneEvaluation baselineEval,
+        int trials,
+        StringBuilder log,
+        List<AutotuneStageBestSnapshot> stageBests)
+    {
+        log.AppendLine($"Total SI evaluations: {trials} (no voxels in search).");
+        return new Result
+        {
+            BestSeedDesign = best,
+            BestScore = score,
+            TrialsUsed = trials,
+            BaselineEvaluation = baselineEval,
+            BestEvaluation = ev,
+            CoarseToFineLog = log.ToString(),
+            StageBests = stageBests
+        };
+    }
+
+    private static void LogDesignDeltaLine(StringBuilder sb, string label, NozzleDesignInputs a, NozzleDesignInputs b)
+    {
+        sb.AppendLine(label + ": Δ chamber D/L "
+            + $"{b.SwirlChamberDiameterMm - a.SwirlChamberDiameterMm:F2} / {b.SwirlChamberLengthMm - a.SwirlChamberLengthMm:F2} mm; "
+            + $"Δ yaw/pitch {b.InjectorYawAngleDeg - a.InjectorYawAngleDeg:F2} / {b.InjectorPitchAngleDeg - a.InjectorPitchAngleDeg:F2} deg; "
+            + $"Δ expander L/angle {b.ExpanderLengthMm - a.ExpanderLengthMm:F2} mm / {b.ExpanderHalfAngleDeg - a.ExpanderHalfAngleDeg:F2} deg.");
+    }
+
+    private static List<NozzleDesignInputs> SelectDiverseSeeds(List<ScoredTrial> sortedDesc, int n, double minNorm)
+    {
+        var picked = new List<ScoredTrial>();
+        foreach (ScoredTrial t in sortedDesc)
+        {
+            if (picked.Count >= n)
+                break;
+            if (picked.Count == 0 || picked.All(p => DesignDistanceNorm(p.Design, t.Design) >= minNorm))
+                picked.Add(t);
+        }
+
+        foreach (ScoredTrial t in sortedDesc)
+        {
+            if (picked.Count >= n)
+                break;
+            if (picked.Any(p => DesignDistanceNorm(p.Design, t.Design) < 0.025))
+                continue;
+            picked.Add(t);
+        }
+
+        return picked.Take(n).Select(t => t.Design).ToList();
+    }
+
+    private static double DesignDistanceNorm(NozzleDesignInputs a, NozzleDesignInputs b)
+    {
+        static double q(double x, double y, double scale) => Math.Pow((x - y) / Math.Max(scale, 1e-6), 2);
+        return Math.Sqrt(
+            q(a.SwirlChamberDiameterMm, b.SwirlChamberDiameterMm, 30)
+            + q(a.SwirlChamberLengthMm, b.SwirlChamberLengthMm, 40)
+            + q(a.InletDiameterMm, b.InletDiameterMm, 35)
+            + q(a.ExitDiameterMm, b.ExitDiameterMm, 35)
+            + q(a.ExpanderHalfAngleDeg, b.ExpanderHalfAngleDeg, 8)
+            + q(a.ExpanderLengthMm, b.ExpanderLengthMm, 50)
+            + q(a.StatorVaneAngleDeg, b.StatorVaneAngleDeg, 18)
+            + q(a.InjectorAxialPositionRatio, b.InjectorAxialPositionRatio, 0.35)
+            + q(a.InjectorYawAngleDeg, b.InjectorYawAngleDeg, 22)
+            + q(a.InjectorPitchAngleDeg, b.InjectorPitchAngleDeg, 10));
+    }
+
+    private static NozzleDesignInputs BaselineSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run) =>
+        run.AutotuneUseSynthesisBaseline
+            ? NozzleGeometrySynthesis.Synthesize(source, template, NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio)
+            : CloneDesign(template);
+
+    private static NozzleDesignInputs BuildCandidateFromKnobs(
+        SourceInputs source,
+        NozzleDesignInputs template,
+        Knobs k,
+        RunConfiguration run,
+        bool useSynthesisBase)
+    {
+        if (useSynthesisBase)
+            return ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr), k, run);
+        return ApplyKnobs(CloneDesign(template), k, run);
+    }
+
     private static FlowTuneEvaluation WithScore(FlowTuneEvaluation e, double score) => new()
     {
         CandidateDesign = e.CandidateDesign,
@@ -145,7 +395,8 @@ public static class NozzleDesignAutotune
         CoreMassFlowKgS = e.CoreMassFlowKgS
     };
 
-    private static Knobs SampleKnobs(Random rng, RunConfiguration run)
+    /// <summary>Legacy single-stage sampling (unchanged bands).</summary>
+    private static Knobs SampleKnobsLegacy(Random rng, RunConfiguration run, NozzleDesignInputs template)
     {
         double u(double lo, double hi) => lo + rng.NextDouble() * (hi - lo);
         bool varyEr = run.AutotuneUseSynthesisBaseline;
@@ -153,9 +404,8 @@ public static class NozzleDesignAutotune
         double dHi = Math.Max(run.AutotuneSwirlChamberDiameterScaleMin, run.AutotuneSwirlChamberDiameterScaleMax);
         double lLo = Math.Min(run.AutotuneSwirlChamberLengthScaleMin, run.AutotuneSwirlChamberLengthScaleMax);
         double lHi = Math.Max(run.AutotuneSwirlChamberLengthScaleMin, run.AutotuneSwirlChamberLengthScaleMax);
-        // Injector angles: yaw strongly affects |Vt|/|Va|; pitch nudged in a narrow band.
         double yaw = u(45.0, 80.0);
-        double pitch = u(6.0, 16.0);
+        double pitch = run.AutotuneVaryPitch ? u(6.0, 16.0) : template.InjectorPitchAngleDeg;
 
         return new Knobs(
             chamberD: u(dLo, dHi),
@@ -167,6 +417,46 @@ public static class NozzleDesignAutotune
             statorAngle: u(0.78, 1.22),
             axialPositionScale: u(0.70, 1.32),
             synthesisTargetEr: varyEr ? u(0.22, 0.62) : NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio,
+            injectorYawDeg: yaw,
+            injectorPitchDeg: pitch);
+    }
+
+    private static Knobs SampleKnobsFromBand(Random rng, in AutotunePerturbationBand b, RunConfiguration run, NozzleDesignInputs angleRef)
+    {
+        double um(double spread)
+        {
+            double s = Math.Clamp(spread, 0.008, 0.48);
+            double lo = 1.0 - s;
+            double hi = 1.0 + s;
+            return lo + rng.NextDouble() * (hi - lo);
+        }
+
+        double yaw = Math.Clamp(
+            angleRef.InjectorYawAngleDeg + (rng.NextDouble() * 2.0 - 1.0) * b.InjectorYawDegHalfSpan,
+            45.0,
+            80.0);
+        double pitch = run.AutotuneVaryPitch
+            ? Math.Clamp(
+                angleRef.InjectorPitchAngleDeg + (rng.NextDouble() * 2.0 - 1.0) * b.InjectorPitchDegHalfSpan,
+                4.0,
+                18.0)
+            : angleRef.InjectorPitchAngleDeg;
+
+        double erCenter = NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio;
+        double er = run.AutotuneUseSynthesisBaseline
+            ? Math.Clamp(erCenter + (rng.NextDouble() * 2.0 - 1.0) * b.SynthesisTargetErHalfSpan, 0.18, 0.68)
+            : erCenter;
+
+        return new Knobs(
+            chamberD: um(b.ChamberDiameterSpread),
+            chamberL: um(b.ChamberLengthSpread),
+            inlet: um(b.InletSpread),
+            exit: um(b.ExitSpread),
+            expAngle: um(b.ExpanderAngleSpread),
+            expLength: um(b.ExpanderLengthSpread),
+            statorAngle: um(b.StatorAngleSpread),
+            axialPositionScale: um(b.InjectorAxialSpread),
+            synthesisTargetEr: er,
             injectorYawDeg: yaw,
             injectorPitchDeg: pitch);
     }
@@ -203,6 +493,9 @@ public static class NozzleDesignAutotune
             ExitDiameterMm = dEx,
             StatorVaneAngleDeg = st,
             StatorVaneCount = b.StatorVaneCount,
+            StatorHubDiameterMm = b.StatorHubDiameterMm,
+            StatorAxialLengthMm = b.StatorAxialLengthMm,
+            StatorBladeChordMm = b.StatorBladeChordMm,
             WallThicknessMm = b.WallThicknessMm
         };
     }
@@ -225,6 +518,9 @@ public static class NozzleDesignAutotune
         ExitDiameterMm = d.ExitDiameterMm,
         StatorVaneAngleDeg = d.StatorVaneAngleDeg,
         StatorVaneCount = d.StatorVaneCount,
+        StatorHubDiameterMm = d.StatorHubDiameterMm,
+        StatorAxialLengthMm = d.StatorAxialLengthMm,
+        StatorBladeChordMm = d.StatorBladeChordMm,
         WallThicknessMm = d.WallThicknessMm
     };
 }

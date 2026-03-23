@@ -245,6 +245,13 @@ public static class NozzleFlowCompositionRoot
             Math.Abs(detailed.FinalTangentialVelocityMps),
             Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6)) * (180.0 / Math.PI);
 
+        double rStatorOuterMm = NozzleGeometryMetrics.ExpanderEndInnerRadiusMm(activeDesign);
+        HubStatorRecoveryContext hubCtx = HubStatorFirstOrderModel.ComputeContext(
+            activeDesign,
+            rStatorOuterMm,
+            activeDesign.StatorVaneAngleDeg,
+            impliedYawDeg);
+
         var stLossPre = StatorLossModel.Compute(
             Math.Max(lastMarch.DensityKgM3, 1e-6),
             lastMarch.VelocityMps,
@@ -262,7 +269,9 @@ public static class NozzleFlowCompositionRoot
             - ChamberPhysicsCoefficients.StatorCouplingKTurnWeight * kTurn,
             ChamberPhysicsCoefficients.StatorCouplingEtaFactorFloor,
             1.0);
-        double etaStatorEff = Math.Min(etaStatorBase * etaFactor, 0.42);
+        double etaStatorEff = Math.Min(
+            etaStatorBase * etaFactor * hubCtx.HubGeometryRecoveryFactor,
+            ChamberPhysicsCoefficients.HubStatorMaxEtaCap);
 
         var stator = new StatorRecoveryModel();
         StatorRecoveryOutput statorOut = stator.Apply(
@@ -270,6 +279,15 @@ public static class NozzleFlowCompositionRoot
             lastMarch.DensityKgM3,
             etaStatorEff,
             fracVt);
+
+        HubStatorFlowDiagnostics hubDiag = HubStatorFirstOrderModel.BuildDiagnostics(
+            hubCtx,
+            activeDesign,
+            etaStatorEff,
+            detailed.FinalTangentialVelocityMps,
+            statorOut.RemainingTangentialVelocityMps,
+            lastMarch.VelocityMps,
+            statorOut.AxialVelocityGainMps);
 
         // Swirling diffuser / expander: scale wall ΔP by recovery model (same inputs as chamber pipeline).
         double injectorSwirlSimple = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6);
@@ -425,7 +443,8 @@ public static class NozzleFlowCompositionRoot
             NetThrustN = fNet,
             Vortex = vortex,
             Chamber = chamber,
-            Coupling = couplingDiag
+            Coupling = couplingDiag,
+            HubStator = hubDiag
         };
 
         var designer = new NozzleDesigner();

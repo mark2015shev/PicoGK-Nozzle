@@ -1,5 +1,6 @@
 using PicoGK;
 using PicoGK_Run.Core;
+using PicoGK_Run.Geometry;
 using PicoGK_Run.Infrastructure;
 using PicoGK_Run.Parameters;
 
@@ -22,7 +23,16 @@ internal static class Program
             return;
         }
 
+        // Geometry-only audit (K320 hand template) — no SI, no voxels, no autotune. Example: dotnet run -- geom-report
+        if (args.Length > 0 && string.Equals(args[0], "geom-report", StringComparison.OrdinalIgnoreCase))
+        {
+            NozzleGeometryDebugReport rep = NozzleGeometryDebugReportBuilder.Build(K320Baseline.CreateDesign());
+            NozzleGeometryDebugReportBuilder.WriteReport(rep, Console.WriteLine);
+            return;
+        }
+
         // Toggle autotune (must use CreateRunWithAutotune or CreateInputWithAutotune so UseAutotune is true).
+        // Coarse-to-fine (3× SI phases, then one voxel run): K320Baseline.CreateInputWithCoarseToFineAutotune();
         bool useAutotune = true;
         NozzleInput input = useAutotune
             ? K320Baseline.CreateInputWithAutotune(trials: 300)

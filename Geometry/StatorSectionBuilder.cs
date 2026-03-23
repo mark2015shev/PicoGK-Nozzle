@@ -5,10 +5,13 @@ using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Geometry;
 
+/// <summary>
+/// Stator: annular shell + solid hub/centerbody (no cusped tip) + blades from hub OD to casing ID — reference solids only.
+/// </summary>
 public static class StatorSectionBuilder
 {
     /// <param name="upstreamInnerRadiusMm">Inner gas path radius at expander outlet (must match expander end).</param>
-    /// <param name="downstreamInnerRadiusMm">Inner radius at stator outlet (same as inlet for straight shell).</param>
+    /// <param name="downstreamInnerRadiusMm">Casing inner radius at stator outlet (annulus outer boundary).</param>
     public static Voxels Build(
         NozzleDesignInputs d,
         float xStart,
@@ -19,7 +22,9 @@ public static class StatorSectionBuilder
         float innerR = Math.Max(0.5f, upstreamInnerRadiusMm);
         downstreamInnerRadiusMm = innerR;
         float wallThicknessMm = (float)d.WallThicknessMm;
-        float length = Math.Max(10f, 0.10f * Math.Max(innerR * 2f, (float)d.ExitDiameterMm));
+
+        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerR * 2.0, d.ExitDiameterMm));
+        float length = (float)(d.StatorAxialLengthMm > 1.0 ? d.StatorAxialLengthMm : lenAuto);
 
         Vector3 p0 = new(xStart, 0f, 0f);
         Vector3 p1 = new(xStart + length, 0f, 0f);
@@ -32,16 +37,41 @@ public static class StatorSectionBuilder
         Voxels section = new(shellOuter);
         section.BoolSubtract(new Voxels(shellInner));
 
+        float hubDmm = (float)(d.StatorHubDiameterMm > 0.5 ? d.StatorHubDiameterMm : 0.28 * d.SwirlChamberDiameterMm);
+        float rHub = 0.5f * hubDmm;
+        float maxHubR = innerR * 0.82f - 0.8f;
+        rHub = Math.Clamp(rHub, 3f, Math.Max(maxHubR, 4f));
+
+        float bulletLen = Math.Clamp(0.42f * (float)d.SwirlChamberDiameterMm, 5f, 11f);
+        float tipR = Math.Max(0.85f, 0.22f * rHub);
+        Lattice nose = new();
+        nose.AddBeam(
+            new Vector3(xStart - bulletLen, 0f, 0f),
+            new Vector3(xStart, 0f, 0f),
+            tipR,
+            rHub,
+            false);
+
+        Lattice hubCyl = new();
+        hubCyl.AddBeam(p0, p1, rHub, rHub, false);
+
+        section.BoolAdd(new Voxels(nose));
+        section.BoolAdd(new Voxels(hubCyl));
+
         int vaneCount = Math.Max(1, d.StatorVaneCount);
         float vaneAngleRad = (float)(d.StatorVaneAngleDeg * Math.PI / 180.0);
         float dPhi = (2f * MathF.PI) / vaneCount;
-        float vaneStartX = xStart + 1.0f;
-        float vaneEndX = xStart + length - 1.0f;
+        float marginX = Math.Clamp(0.06f * length, 0.8f, 2.2f);
+        float vaneStartX = xStart + marginX;
+        float vaneEndX = xStart + length - marginX;
 
-        float vaneRadius = Math.Max(0.6f, 0.035f * Math.Max(innerR * 2f, (float)d.ExitDiameterMm));
-        // Keep vane beams inside the gas passage (clear of outer wall).
-        float radialMax = Math.Max(innerR - vaneRadius - 0.6f, innerR * 0.5f);
-        float radialCenter = Math.Clamp(innerR * 0.72f, vaneRadius + 0.5f, radialMax);
+        double span = innerR - rHub;
+        float chordMm = (float)(d.StatorBladeChordMm > 0.5 ? d.StatorBladeChordMm : Math.Max(3.5, 0.14 * span));
+        float vaneR = Math.Clamp(0.20f * chordMm, 0.48f, 3.2f);
+        float rStart = rHub + vaneR + 0.55f;
+        float rEnd = innerR - vaneR - 0.9f;
+        if (rEnd <= rStart + 0.5f)
+            rEnd = Math.Min(innerR - 1f, rStart + 1.5f);
 
         for (int i = 0; i < vaneCount; i++)
         {
@@ -50,11 +80,11 @@ public static class StatorSectionBuilder
             Vector3 tangent = new(0f, -MathF.Sin(phi), MathF.Cos(phi));
             Vector3 axisSkew = Vector3.Normalize((MathF.Cos(vaneAngleRad) * Vector3.UnitX) + (MathF.Sin(vaneAngleRad) * tangent));
 
-            Vector3 start = new Vector3(vaneStartX, 0f, 0f) + (radialCenter * radial);
-            Vector3 end = new Vector3(vaneEndX, 0f, 0f) + (radialCenter * radial) + (1.2f * axisSkew);
+            Vector3 start = new Vector3(vaneStartX, 0f, 0f) + (rStart * radial);
+            Vector3 end = new Vector3(vaneEndX, 0f, 0f) + (rEnd * radial) + (1.1f * axisSkew);
 
             Lattice vane = new();
-            vane.AddBeam(start, end, vaneRadius, vaneRadius, false);
+            vane.AddBeam(start, end, vaneR, vaneR, false);
             section.BoolAdd(new Voxels(vane));
         }
 

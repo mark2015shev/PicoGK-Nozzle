@@ -109,6 +109,15 @@ public static class NozzleGeometrySynthesis
             ExitDiameterMm = dExitMm,
             StatorVaneAngleDeg = statorDeg,
             StatorVaneCount = Math.Max(8, template.StatorVaneCount),
+            StatorHubDiameterMm = template.StatorHubDiameterMm > 0.5
+                ? template.StatorHubDiameterMm
+                : 0.28 * dChamberMm,
+            StatorAxialLengthMm = template.StatorAxialLengthMm > 1.0
+                ? template.StatorAxialLengthMm
+                : Math.Max(14.0, 0.11 * dChamberMm),
+            StatorBladeChordMm = template.StatorBladeChordMm > 0.5
+                ? template.StatorBladeChordMm
+                : Math.Max(4.0, 0.13 * dChamberMm),
             WallThicknessMm = template.WallThicknessMm
         };
     }

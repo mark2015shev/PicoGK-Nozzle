@@ -6,6 +6,8 @@ namespace PicoGK_Run.Infrastructure;
 /// <summary>Metadata when <see cref="RunConfiguration.UseAutotune"/> ran before the final pipeline.</summary>
 public sealed class AutotuneRunSummary
 {
+    public AutotuneStrategy Strategy { get; init; } = AutotuneStrategy.SingleStage;
+
     public int Trials { get; init; }
     public double BestScore { get; init; }
 
@@ -13,4 +15,7 @@ public sealed class AutotuneRunSummary
     public NozzleDesignInputs BaselineTemplateDesign { get; init; } = null!;
 
     public NozzleDesignInputs WinningSeedDesign { get; init; } = null!;
+
+    /// <summary>Multi-stage search log when coarse-to-fine autotune was used.</summary>
+    public string? CoarseToFineLog { get; init; }
 }

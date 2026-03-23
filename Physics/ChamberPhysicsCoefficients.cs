@@ -72,4 +72,9 @@ public static class ChamberPhysicsCoefficients
 
     /// <summary>Small swirl-energy bookkeeping weight for diffuser coupling [−].</summary>
     public static double SwirlLedgerDiffuserBookkeepingK { get; set; } = 0.08;
+
+    // --- Hub-based stator (HubStatorFirstOrderModel) ---
+    public static double HubStatorBlockagePenaltyScale { get; set; } = 1.45;
+    public static double HubStatorBlockagePenaltyCap { get; set; } = 0.52;
+    public static double HubStatorMaxEtaCap { get; set; } = 0.50;
 }

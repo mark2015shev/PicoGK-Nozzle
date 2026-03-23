@@ -22,6 +22,7 @@ internal static class ResultReporter
             AutotuneRunSummary at = result.Autotune;
             Library.Log("--- Autotune (SI search — pre-CFD) ---");
             Library.Log($"Autotune enabled:            yes");
+            Library.Log($"Autotune strategy:          {at.Strategy}");
             Library.Log($"Trials (SI-only evals):      {at.Trials}");
             Library.Log($"Best composite score [-]:    {at.BestScore:F4}");
             Library.Log("Original hand/template design (pre-autotune baseline):");
@@ -74,6 +75,13 @@ internal static class ResultReporter
         Library.Log("Injector geometry = REFERENCE MARKERS ONLY (beams): not flow passages, not meshed holes.");
         Library.Log("Future: replace with real injector port solids when modeling passages.");
 
+        NozzleGeometryDebugReport geometryAudit = NozzleGeometryDebugReportBuilder.Build(input.Design);
+        NozzleGeometryDebugReportBuilder.WriteReport(geometryAudit, line =>
+        {
+            Library.Log(line);
+            Console.WriteLine(line);
+        });
+
         Library.Log("--- Source → injector momentum assumption (HEURISTIC) ---");
         Library.Log($"V_jet ≈ {NozzlePhysicsSolver.InjectorJetVelocityDriverBlend:F2}×[V_core×(A_source/A_inj)] + {1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend:F2}×[mdot/(ρ_core×A_inj)] — source drives when A_inj≈A_source.");
         Library.Log($"V_core×(A_source/A_inj):      {s.InjectorJetVelocityAreaDriverMps:F2} m/s");
@@ -94,6 +102,9 @@ internal static class ResultReporter
             if (result.SiFlow.Coupling != null)
                 LogSiCouplingAudit(result.SiFlow);
         }
+
+        if (result.SiFlow?.HubStator != null)
+            LogHubStatorSection(result.SiFlow);
         else if (result.SiFlow?.Vortex != null)
             LogLegacyVortexOnly(result.SiFlow.Vortex);
 
@@ -178,6 +189,7 @@ internal static class ResultReporter
         Library.Log($"ExpanderLengthMm / HalfAngle: {d.ExpanderLengthMm:F2} / {d.ExpanderHalfAngleDeg:F2} deg");
         Library.Log($"ExitDiameterMm:               {d.ExitDiameterMm:F2}");
         Library.Log($"Stator vane angle / count:    {d.StatorVaneAngleDeg:F2} deg / {d.StatorVaneCount}");
+        Library.Log($"Stator hub D / L_ax / chord:  {d.StatorHubDiameterMm:F2} / {d.StatorAxialLengthMm:F2} / {d.StatorBladeChordMm:F2} mm (centerbody + blades)");
         Library.Log($"WallThicknessMm:              {d.WallThicknessMm:F2}");
     }
 
@@ -246,6 +258,24 @@ internal static class ResultReporter
         EjectorOperatingRegime.OverexpandedPoorAdmittance => "overexpanded / poor admittance",
         _ => r.ToString()
     };
+
+    private static void LogHubStatorSection(SiFlowDiagnostics sf)
+    {
+        HubStatorFlowDiagnostics h = sf.HubStator!;
+        Library.Log("--- Hub-based stator (first-order SI — not CFD) ---");
+        Library.Log($"Stator hub diameter [mm]:     {h.StatorHubDiameterMm:F2}  (solid centerbody OD)");
+        Library.Log($"Casing inner R at stator [mm]: {h.StatorOuterInnerRadiusMm:F2}");
+        Library.Log($"Span ratio (R_out−R_hub)/R_out: {h.SpanRatio:F3}");
+        Library.Log($"Blockage A_hub/A_outer_disk:   {h.BlockageAreaRatio:F3}");
+        Library.Log($"Geom recovery factor (span×(1−block pen)): {h.HubGeometryRecoveryFactor:F3}");
+        Library.Log($"Alignment report factor [-]:    {h.AlignmentFactor:F3} (see incidence coupling in stator loss; informational)");
+        Library.Log($"Effective stator η used [-]:    {h.EffectiveStatorEtaUsed:F3}");
+        Library.Log($"|Vt| before / after stator [m/s]: {h.SwirlTangentialVelocityBeforeMps:F2} / {h.SwirlTangentialVelocityAfterMps:F2}");
+        Library.Log($"Frac. swirl removed by row [-]: {h.FractionSwirlRemovedByStatorRow:F3}");
+        Library.Log($"Frac. core/bypass (model) [-]: {h.FractionSwirlCoreBypassFirstOrder:F3}");
+        Library.Log($"Frac. dissipated (model) [-]:  {h.FractionSwirlDissipatedFirstOrder:F3}");
+        Library.Log($"Frac. to axial KE (model) [-]: {h.FractionSwirlToAxialMomentumFirstOrder:F3}");
+    }
 
     private static void LogSiCouplingAudit(SiFlowDiagnostics sf)
     {

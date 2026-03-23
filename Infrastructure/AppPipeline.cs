@@ -18,7 +18,13 @@ internal sealed class AppPipeline
 
         NozzleDesignAutotune.Result tune = NozzleDesignAutotune.FindBestSeed(input.Source, input.Design, input.Run);
 
-        LogAutotuneBeforeFinalRun(tune.TrialsUsed, tune.BestScore, tune.BestSeedDesign);
+        if (!string.IsNullOrEmpty(tune.CoarseToFineLog))
+        {
+            foreach (string line in tune.CoarseToFineLog.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                Library.Log(line.TrimEnd('\r'));
+        }
+
+        LogAutotuneBeforeFinalRun(tune.TrialsUsed, tune.BestScore, tune.BestSeedDesign, input.Run);
         LogAutotuneGeometryDeltaToConsole(baselineTemplate, tune.BestSeedDesign);
 
         NozzleInput work = new NozzleInput(input.Source, tune.BestSeedDesign, input.Run.AfterAutotune());
@@ -27,10 +33,12 @@ internal sealed class AppPipeline
 
         var summary = new AutotuneRunSummary
         {
+            Strategy = input.Run.AutotuneStrategy,
             Trials = tune.TrialsUsed,
             BestScore = tune.BestScore,
             BaselineTemplateDesign = baselineTemplate,
-            WinningSeedDesign = tune.BestSeedDesign
+            WinningSeedDesign = tune.BestSeedDesign,
+            CoarseToFineLog = tune.CoarseToFineLog
         };
 
         var w = new List<string>
@@ -61,9 +69,10 @@ internal sealed class AppPipeline
         AddSegment(viewer, ref g, geometry.Exit, NozzleViewerSegmentColors.ExitHex);
     }
 
-    private static void LogAutotuneBeforeFinalRun(int trialsUsed, double bestScore, NozzleDesignInputs winning)
+    private static void LogAutotuneBeforeFinalRun(int trialsUsed, double bestScore, NozzleDesignInputs winning, RunConfiguration run)
     {
         Library.Log("=== Autotune enabled (SI search — pre-CFD) ===");
+        Library.Log($"Autotune strategy: {run.AutotuneStrategy} (same coupled SI scoring path for all trials).");
         Library.Log($"Autotune: trial count (SI-only evals): {trialsUsed}");
         Library.Log($"Autotune: best composite score [-]:      {bestScore:F4}");
         Library.Log("Autotune: winning seed geometry [mm / deg]:");
@@ -80,6 +89,7 @@ internal sealed class AppPipeline
         Library.Log($"  ExpanderLength / HalfAngle: {d.ExpanderLengthMm:F2} / {d.ExpanderHalfAngleDeg:F2}");
         Library.Log($"  ExitDiameterMm:             {d.ExitDiameterMm:F2}");
         Library.Log($"  StatorVaneAngleDeg:         {d.StatorVaneAngleDeg:F2}");
+        Library.Log($"  StatorHubDiameterMm:        {d.StatorHubDiameterMm:F2}  AxialLength: {d.StatorAxialLengthMm:F2}  BladeChord: {d.StatorBladeChordMm:F2}");
     }
 
     /// <summary>Proves at least one tuned knob moved vs the hand template (console — easy to spot in CI / terminal).</summary>
@@ -121,6 +131,9 @@ internal sealed class AppPipeline
         ExitDiameterMm = d.ExitDiameterMm,
         StatorVaneAngleDeg = d.StatorVaneAngleDeg,
         StatorVaneCount = d.StatorVaneCount,
+        StatorHubDiameterMm = d.StatorHubDiameterMm,
+        StatorAxialLengthMm = d.StatorAxialLengthMm,
+        StatorBladeChordMm = d.StatorBladeChordMm,
         WallThicknessMm = d.WallThicknessMm
     };
 

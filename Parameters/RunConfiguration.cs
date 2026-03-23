@@ -18,8 +18,38 @@ public sealed class RunConfiguration
     /// </summary>
     public bool UseAutotune { get; init; }
 
+    /// <summary>Random search layout: single pool vs three-phase coarse-to-fine.</summary>
+    public AutotuneStrategy AutotuneStrategy { get; init; } = AutotuneStrategy.SingleStage;
+
     /// <summary>Forward evaluations per autotune run (each is a full SI solve, no voxels).</summary>
     public int AutotuneTrials { get; init; } = 160;
+
+    /// <summary>Stage 1 (coarse-to-fine): broad SI trials.</summary>
+    public int AutotuneStage1Trials { get; init; } = 120;
+
+    /// <summary>Stage 2: trials split across diverse top seeds from stage 1.</summary>
+    public int AutotuneStage2Trials { get; init; } = 96;
+
+    /// <summary>Stage 3: polish trials around the best stage-2 design.</summary>
+    public int AutotuneStage3Trials { get; init; } = 48;
+
+    /// <summary>How many top-scoring candidates to keep after stage 1 (diversity filter applied).</summary>
+    public int AutotuneTopSeedCountStage1 { get; init; } = 4;
+
+    /// <summary>How many refined winners feed stage 3 (best overall used as polish center).</summary>
+    public int AutotuneTopSeedCountStage2 { get; init; } = 2;
+
+    /// <summary>Minimum normalized design-space distance between stage-1 seeds (greedy diversity). ~0.35 default.</summary>
+    public double AutotuneDiversityMinDistance { get; init; } = 0.35;
+
+    /// <summary>If false, pitch stays at the reference design value during search (yaw still varies).</summary>
+    public bool AutotuneVaryPitch { get; init; } = true;
+
+    public AutotunePerturbationBand AutotuneStage1Band { get; init; } = AutotunePerturbationBand.DefaultStage1Broad;
+
+    public AutotunePerturbationBand AutotuneStage2Band { get; init; } = AutotunePerturbationBand.DefaultStage2Focused;
+
+    public AutotunePerturbationBand AutotuneStage3Band { get; init; } = AutotunePerturbationBand.DefaultStage3Polish;
 
     /// <summary>Objective weight for ṁ_amb/ṁ_core (normalized to baseline).</summary>
     public double AutotuneWeightEntrainment { get; init; } = 0.26;
@@ -76,7 +106,18 @@ public sealed class RunConfiguration
         ShowInViewer = ShowInViewer,
         UsePhysicsInformedGeometry = false,
         UseAutotune = false,
+        AutotuneStrategy = AutotuneStrategy,
         AutotuneTrials = AutotuneTrials,
+        AutotuneStage1Trials = AutotuneStage1Trials,
+        AutotuneStage2Trials = AutotuneStage2Trials,
+        AutotuneStage3Trials = AutotuneStage3Trials,
+        AutotuneTopSeedCountStage1 = AutotuneTopSeedCountStage1,
+        AutotuneTopSeedCountStage2 = AutotuneTopSeedCountStage2,
+        AutotuneDiversityMinDistance = AutotuneDiversityMinDistance,
+        AutotuneVaryPitch = AutotuneVaryPitch,
+        AutotuneStage1Band = AutotuneStage1Band,
+        AutotuneStage2Band = AutotuneStage2Band,
+        AutotuneStage3Band = AutotuneStage3Band,
         AutotuneWeightEntrainment = AutotuneWeightEntrainment,
         AutotuneWeightThrust = AutotuneWeightThrust,
         AutotuneWeightVortexQuality = AutotuneWeightVortexQuality,

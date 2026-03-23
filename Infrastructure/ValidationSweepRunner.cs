@@ -504,6 +504,9 @@ public static class ValidationSweepRunner
             ExitDiameterMm = b.ExitDiameterMm,
             StatorVaneAngleDeg = statorVaneAngleDeg ?? b.StatorVaneAngleDeg,
             StatorVaneCount = b.StatorVaneCount,
+            StatorHubDiameterMm = b.StatorHubDiameterMm,
+            StatorAxialLengthMm = b.StatorAxialLengthMm,
+            StatorBladeChordMm = b.StatorBladeChordMm,
             WallThicknessMm = b.WallThicknessMm
         };
 }

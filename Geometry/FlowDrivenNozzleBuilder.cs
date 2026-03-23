@@ -34,6 +34,9 @@ public static class FlowDrivenNozzleBuilder
             ExitDiameterMm = Math.Max(template.ExitDiameterMm, 1.0),
             StatorVaneAngleDeg = template.StatorVaneAngleDeg,
             StatorVaneCount = template.StatorVaneCount,
+            StatorHubDiameterMm = template.StatorHubDiameterMm,
+            StatorAxialLengthMm = template.StatorAxialLengthMm,
+            StatorBladeChordMm = template.StatorBladeChordMm,
             WallThicknessMm = template.WallThicknessMm
         };
     }

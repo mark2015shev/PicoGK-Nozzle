@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 
@@ -26,6 +27,11 @@ public static class NozzleDesignHealthCheck
         if (d.ExitDiameterMm <= 0) Add("DESIGN ERROR: ExitDiameterMm must be positive.");
         if (d.WallThicknessMm <= 0) Add("DESIGN ERROR: WallThicknessMm must be positive.");
         if (d.InjectorCount < 1) Add("DESIGN ERROR: InjectorCount must be at least 1.");
+
+        double rSt = NozzleGeometryMetrics.ExpanderEndInnerRadiusMm(d);
+        double hubD = d.StatorHubDiameterMm > 0.5 ? d.StatorHubDiameterMm : 0.28 * d.SwirlChamberDiameterMm;
+        if (hubD * 0.5 >= 0.92 * rSt)
+            Add($"STATOR HUB: hub radius ({0.5 * hubD:F1} mm) is large vs stator casing inner R ({rSt:F1} mm) — span may be tiny; check StatorHubDiameterMm vs expander exit.");
 
         double slotMm2 = d.InjectorWidthMm * d.InjectorHeightMm * Math.Max(d.InjectorCount, 1);
         if (d.TotalInjectorAreaMm2 > 1e-6 && slotMm2 > 1e-6)

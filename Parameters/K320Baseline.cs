@@ -58,6 +58,9 @@ public static class K320Baseline
         ExitDiameterMm = 110.0,
         StatorVaneAngleDeg = 28.0,
         StatorVaneCount = 12,
+        StatorHubDiameterMm = 22.0,
+        StatorAxialLengthMm = 26.0,
+        StatorBladeChordMm = 7.0,
         WallThicknessMm = 3.0
     };
 
@@ -122,4 +125,43 @@ public static class K320Baseline
         CreateSource(),
         CreateDesign(),
         CreateRunWithAutotune(trials));
+
+    /// <summary>
+    /// Three-phase autotune (broad → diverse seeds → polish); same scoring as single-stage. Default stage trials: 120 / 96 / 48.
+    /// </summary>
+    public static RunConfiguration CreateRunWithCoarseToFineAutotune(
+        int stage1 = 120,
+        int stage2 = 96,
+        int stage3 = 48) =>
+        new()
+        {
+            VoxelSizeMM = 0.3f,
+            ShowInViewer = true,
+            UsePhysicsInformedGeometry = false,
+            UseAutotune = true,
+            AutotuneStrategy = AutotuneStrategy.CoarseToFine,
+            AutotuneStage1Trials = stage1,
+            AutotuneStage2Trials = stage2,
+            AutotuneStage3Trials = stage3,
+            AutotuneTopSeedCountStage1 = 4,
+            AutotuneTopSeedCountStage2 = 2,
+            AutotuneWeightEntrainment = 0.26,
+            AutotuneWeightThrust = 0.34,
+            AutotuneWeightVortexQuality = 0.18,
+            AutotuneWeightRadialPressure = 0.12,
+            AutotuneWeightBreakdownPenalty = 0.14,
+            AutotuneWeightSeparationPenalty = 0.10,
+            AutotuneWeightLossPenalty = 0.10,
+            AutotuneWeightEjectorPenalty = 0.08,
+            AutotuneWeightLowAxialPenalty = 0.06,
+            AutotuneRandomSeed = 20260213,
+            AutotuneUseSynthesisBaseline = true,
+            AutotuneSwirlChamberLengthMaxMm = 92.0,
+            AutotuneSwirlChamberLengthScaleMin = 0.80,
+            AutotuneSwirlChamberLengthScaleMax = 1.04
+        };
+
+    /// <summary>Source + design + <see cref="CreateRunWithCoarseToFineAutotune"/>.</summary>
+    public static NozzleInput CreateInputWithCoarseToFineAutotune(int stage1 = 120, int stage2 = 96, int stage3 = 48) =>
+        new(CreateSource(), CreateDesign(), CreateRunWithCoarseToFineAutotune(stage1, stage2, stage3));
 }

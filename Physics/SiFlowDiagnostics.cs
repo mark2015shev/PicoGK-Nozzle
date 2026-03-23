@@ -40,4 +40,7 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Raw vs effective coupling audit for SI thrust path (first-order).</summary>
     public SiVortexCouplingDiagnostics? Coupling { get; init; }
+
+    /// <summary>Hub-based stator span/blockage and swirl audit — not CFD.</summary>
+    public HubStatorFlowDiagnostics? HubStator { get; init; }
 }
