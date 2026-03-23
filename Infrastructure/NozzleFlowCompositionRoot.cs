@@ -44,7 +44,8 @@ public static class NozzleFlowCompositionRoot
             EntrainmentRatio = r.Solved.EntrainmentRatio,
             NetThrustN = r.SiDiag.NetThrustN,
             SourceOnlyThrustN = r.Solved.SourceOnlyThrustN,
-            VortexQualityMetric = r.SiDiag.Vortex?.VortexQualityMetric ?? 0.0,
+            VortexQualityMetric = r.SiDiag.Chamber?.TuningCompositeQuality ?? r.SiDiag.Vortex?.VortexQualityMetric ?? 0.0,
+            PhysicsMetrics = FlowTunePhysicsMetrics.FromChamber(r.SiDiag.Chamber, r.SiDiag.FinalAxialVelocityMps),
             AmbientAirMassFlowKgS = r.Solved.AmbientAirMassFlowKgPerSec,
             CoreMassFlowKgS = r.Solved.CoreMassFlowKgPerSec,
             HealthCount = r.HealthMessages.Count,
@@ -162,15 +163,29 @@ public static class NozzleFlowCompositionRoot
             return Math.Max(0.18 * a, 1e-9);
         }
 
+        double ldRatio = activeDesign.SwirlChamberLengthMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1e-6);
+        double sInjPre = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6);
+        double preBreak = SwirlDecayModel.PreMarchBreakdownRisk(
+            sInjPre,
+            ldRatio,
+            activeDesign.InjectorAxialPositionRatio);
+
         double erHint = Math.Clamp(
             0.32 + 0.28 * Math.Tanh((activeDesign.ExitDiameterMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0) - 1.05) * 1.8),
             0.22,
             1.35);
-        double swirlDecayPerStep = VortexDiagnosticsCalculator.ComputeSwirlDecayPerStepFactor(
+
+        double kTotal = SwirlDecayModel.ComputeKTotal(
             activeDesign.SwirlChamberLengthMm,
             activeDesign.SwirlChamberDiameterMm,
+            vt0,
+            va0,
             erHint,
-            DefaultMarchSteps);
+            activeDesign.InjectorAxialPositionRatio,
+            preBreak);
+
+        double chamberDM = activeDesign.SwirlChamberDiameterMm * 1e-3;
+        double swirlDecayPerStep = SwirlDecayModel.DecayPerStepFromK(kTotal, sectionLengthM, chamberDM, DefaultMarchSteps);
 
         FlowMarchDetailedResult detailed = marcher.SolveDetailed(
             inletState,
@@ -238,24 +253,29 @@ public static class NozzleFlowCompositionRoot
             ? Math.Max(0.0, (lastMarch.TotalMassFlowKgS - coreMdot) / coreMdot)
             : 0.0;
 
-        VortexFlowDiagnostics vortex = VortexDiagnosticsCalculator.Compute(
-            injectorTangentialVelocityMps: vt0,
-            injectorAxialVelocityMps: va0,
-            swirlDecayPerStepFactor: swirlDecayPerStep,
-            marchStepCount: DefaultMarchSteps,
-            primaryMassFlowKgS: coreMdot,
-            totalMassFlowEndKgS: lastMarch.TotalMassFlowKgS,
-            mixedTangentialVelocityPreStatorMps: detailed.FinalTangentialVelocityMps,
-            mixedAxialVelocityPreStatorMps: lastMarch.VelocityMps,
-            tangentialVelocityPostStatorMps: vtAfterStator,
-            mixedDensityKgM3: lastMarch.DensityKgM3,
-            chamberDiameterMm: activeDesign.SwirlChamberDiameterMm,
-            chamberLengthMm: activeDesign.SwirlChamberLengthMm,
-            injectorAxialPositionRatio: activeDesign.InjectorAxialPositionRatio,
-            solvedEntrainmentRatio: solvedEr,
-            statorOut: statorOut,
-            statorEtaUsed: etaStator,
-            statorFracVtUsed: fracVt);
+        ChamberFirstOrderPhysics chamber = ChamberPhysicsPipeline.Build(
+            activeDesign,
+            source,
+            injectorJetVelocity,
+            vt0,
+            va0,
+            swirlDecayPerStep,
+            DefaultMarchSteps,
+            kTotal,
+            detailed,
+            lastMarch,
+            statorOut,
+            etaStator,
+            fracVt,
+            steps,
+            minInletP,
+            sumReq,
+            sumAct,
+            shortfall,
+            solvedEr,
+            vtAfterStator);
+
+        VortexFlowDiagnostics vortex = ChamberPhysicsPipeline.ToLegacyVortexDiagnostics(chamber, swirlDecayPerStep);
 
         var siDiag = new SiFlowDiagnostics
         {
@@ -274,7 +294,8 @@ public static class NozzleFlowCompositionRoot
             MomentumThrustN = fMom,
             PressureThrustN = fPressureTotal,
             NetThrustN = fNet,
-            Vortex = vortex
+            Vortex = vortex,
+            Chamber = chamber
         };
 
         var designer = new NozzleDesigner();

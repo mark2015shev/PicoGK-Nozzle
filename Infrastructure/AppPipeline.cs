@@ -35,7 +35,7 @@ internal sealed class AppPipeline
 
         var w = new List<string>
         {
-            $"Autotune: {tune.TrialsUsed} SI-only evaluations, best score {tune.BestScore:F4} (weights E={input.Run.AutotuneWeightEntrainment:F2}, T={input.Run.AutotuneWeightThrust:F2}, V={input.Run.AutotuneWeightVortexQuality:F2} vortex-quality). Pre-CFD — validate in CFD."
+            $"Autotune: {tune.TrialsUsed} SI-only evaluations, best score {tune.BestScore:F4} (E/T/V/P pos.; breakdown/separation/loss/ejector/low-axial penalties — see RunConfiguration). Pre-CFD — validate in CFD."
         };
         w.AddRange(pr.SolverWarnings);
 

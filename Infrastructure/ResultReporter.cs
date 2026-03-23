@@ -80,25 +80,10 @@ internal static class ResultReporter
         Library.Log($"Continuity mdot/(ρ_core×A_inj): {s.InjectorJetVelocityContinuityCheckMps:F2} m/s");
         Library.Log($"Blended InjectorJetVelocityMps: {s.InjectorJetVelocityMps:F2} m/s (used for yaw/pitch decomposition)");
 
-        if (result.SiFlow?.Vortex != null)
-        {
-            VortexFlowDiagnostics vx = result.SiFlow.Vortex;
-            Library.Log("--- Vortex structure and pressure field (heuristic — not CFD) ---");
-            Library.Log("Radial pressure: first-order dp/dr ~ rho*Vtheta^2/r sense; wall rise vs core depression split for reporting only.");
-            Library.Log($"Vortex class:                  {vx.StructureClassLabel}");
-            Library.Log($"Core pressure depression [Pa]: {vx.CorePressureDepressionPa:F1}");
-            Library.Log($"Wall pressure rise [Pa]:      {vx.WallPressureRisePa:F1}");
-            Library.Log($"Swirl decay fraction [-]:      {vx.SwirlDecayFractionAlongChamber:F3} (primary Vtheta along chamber)");
-            Library.Log($"Remaining swirl at stator [-]: {vx.RemainingSwirlFractionAtStator:F3} (|Vt| scale vs injector |Vt|)");
-            Library.Log($"Estimated recovery fraction [-]: {vx.EstimatedRecoveryFraction:F3} (stator / axial recovery bucket)");
-            Library.Log($"Vortex quality metric [-]:     {vx.VortexQualityMetric:F3} (moderate S, stable regime, ER, recovery — tuning hook)");
-            Library.Log("Swirl budget split (four buckets, normalized — bookkeeping):");
-            Library.Log($"  for entrainment:             {vx.FractionSwirlForEntrainment:F3}");
-            Library.Log($"  remaining at stator plane:   {vx.FractionSwirlRemainingAtStator:F3}");
-            Library.Log($"  to axial recovery:           {vx.FractionSwirlToAxialRecovery:F3}");
-            Library.Log($"  dissipated / lost:           {vx.FractionSwirlDissipated:F3}");
-            Library.Log($"March swirl decay factor/step: {vx.SwirlDecayPerStepFactorUsed:F4} (audit)");
-        }
+        if (result.SiFlow?.Chamber != null)
+            LogChamberPhysicsSection(result.SiFlow);
+        else if (result.SiFlow?.Vortex != null)
+            LogLegacyVortexOnly(result.SiFlow.Vortex);
 
         Library.Log("--- Solved physics ---");
         if (result.SiFlow != null)
@@ -184,6 +169,84 @@ internal static class ResultReporter
         Library.Log($"WallThicknessMm:              {d.WallThicknessMm:F2}");
     }
 
+    private static void LogChamberPhysicsSection(SiFlowDiagnostics sf)
+    {
+        ChamberFirstOrderPhysics ch = sf.Chamber!;
+        RadialVortexPressureResult rp = ch.RadialPressure;
+        VortexStructureDiagnosticsResult vs = ch.VortexStructure;
+        SwirlBudgetResult bu = ch.SwirlBudget;
+        SwirlDiffuserRecoveryResult df = ch.DiffuserRecovery;
+        InjectorLossResult inj = ch.InjectorLoss;
+        StatorLossResult st = ch.StatorLoss;
+        EjectorRegimeResult ej = ch.EjectorRegime;
+
+        Library.Log("--- Vortex structure and pressure field (heuristic, not CFD) ---");
+        Library.Log("Interpretation: " + ch.InterpretationSummary);
+        Library.Log($"Swirl number |Vt|/|Va| [-]:     {vs.InjectorSwirlNumberSimple:F3}");
+        Library.Log($"Flux-style swirl S_flux ≈ K·S [-]: {vs.SwirlNumberFluxStyle:F3} (K={vs.FluxGeometryFactorKUsed:F2}, uniform profile assumption)");
+        Library.Log($"Vortex classification:         {vs.ClassificationLabel}");
+        Library.Log($"Breakdown risk score [-]:      {vs.BreakdownRiskScore:F3}");
+        Library.Log($"Composite vortex quality [-]:  {vs.CompositeVortexQuality:F3} (structure model)");
+        Library.Log($"Tuning composite quality [-]:   {ch.TuningCompositeQuality:F3} (autotune scalar)");
+        Library.Log("--- Radial vortex pressure (mixed forced core + free outer) ---");
+        Library.Log($"Core radius estimate [m]:      {rp.CoreRadiusM:F5}  Chamber R [m]: {rp.ChamberRadiusM:F5}");
+        Library.Log($"Wall pressure rise [Pa]:        {rp.WallPressureRisePa:F1}");
+        Library.Log($"Core pressure drop [Pa]:       {rp.CorePressureDropPa:F1}");
+        Library.Log($"Radial |Δp| scale [Pa]:        {rp.EstimatedRadialPressureDeltaPa:F1}  Model: {rp.VortexType}");
+        Library.Log($"Radial model notes:            {rp.Notes}");
+        Library.Log("--- Swirl budget (velocity scales, first-order) ---");
+        Library.Log($"Swirl injected |Vt| [m/s]:      {bu.SwirlInjectedVtMps:F2}");
+        Library.Log($"Vt primary after decay [m/s]:  {bu.SwirlAfterChamberDecayVtPrimaryMps:F2}");
+        Library.Log($"Vt mixed at chamber end [m/s]: {bu.SwirlMixedAtChamberEndVtMps:F2}");
+        Library.Log($"Swirl→entrainment metric [m/s]:{bu.SwirlUsedForEntrainmentMetric:F2}");
+        Library.Log($"Swirl into expander metric:    {bu.SwirlRemainingIntoExpanderMetric:F2}");
+        Library.Log($"Vt at stator (post-row) [m/s]: {bu.SwirlAtStatorVtMps:F2}");
+        Library.Log($"Dissipated metric [m/s]:       {bu.SwirlDissipatedOverallMetric:F2}");
+        Library.Log($"k_total decay (audit) [-]:     {bu.KTotalUsed:F4}  {bu.Notes}");
+        Library.Log("Swirl fraction buckets [-]:");
+        Library.Log($"  dissipated: {ch.FracSwirlDissipated:F3}  entrainment: {ch.FracSwirlForEntrainment:F3}  recovery: {ch.FracSwirlToAxialRecovery:F3}  rem@stator: {ch.FracSwirlRemainingAtStator:F3}");
+        Library.Log("--- Swirling diffuser / expander (heuristic) ---");
+        Library.Log($"Recovery Cp [-]:               {df.EstimatedPressureRecoveryCoefficient:F3}");
+        Library.Log($"Separation risk [-]:           {df.SeparationRiskScore:F3}");
+        Library.Log($"Effective recovery eff. [-]:   {df.EffectivePressureRecoveryEfficiency:F3}");
+        Library.Log($"Diffuser notes:                {df.Notes}");
+        Library.Log("--- Injector / stator losses (diagnostic) ---");
+        Library.Log($"Injector Δp_loss [Pa]:         {inj.EstimatedTotalPressureLossPa:F1}  Cd={inj.DischargeCoefficient:F3} K_turn={inj.TurningLossCoefficientK:F3}");
+        Library.Log($"Injector notes:                {inj.Notes}");
+        Library.Log($"Stator incidence mismatch [°]: {st.IncidenceMismatchDeg:F2}  Δp_loss [Pa]: {st.EstimatedTotalPressureLossPa:F1}  K_turn={st.TurningLossK:F3}");
+        Library.Log($"Stator recovery η reduction [-]: {st.RecoveryEfficiencyReduction:F3}  {st.Notes}");
+        Library.Log("--- Ejector operating regime (heuristic) ---");
+        Library.Log($"Regime:                        {FormatEjectorRegime(ej.Regime)}");
+        Library.Log($"Regime stress score [-]:       {ej.RegimeScore:F3}");
+        Library.Log($"Regime notes:                  {ej.Notes}");
+        if (sf.Vortex != null)
+        {
+            Library.Log($"March decay factor / step:     {sf.Vortex.SwirlDecayPerStepFactorUsed:F4} (legacy audit line)");
+        }
+    }
+
+    private static string FormatEjectorRegime(EjectorOperatingRegime r) => r switch
+    {
+        EjectorOperatingRegime.SubcriticalEntrainment => "subcritical entrainment",
+        EjectorOperatingRegime.CriticalEntrainment => "critical entrainment",
+        EjectorOperatingRegime.SecondaryChokeLimited => "secondary stream choke-limited",
+        EjectorOperatingRegime.CompoundChokingRisk => "compound / double-choking risk",
+        EjectorOperatingRegime.OverexpandedPoorAdmittance => "overexpanded / poor admittance",
+        _ => r.ToString()
+    };
+
+    private static void LogLegacyVortexOnly(VortexFlowDiagnostics vx)
+    {
+        Library.Log("--- Vortex structure and pressure field (heuristic — not CFD) [legacy compact] ---");
+        Library.Log($"Vortex class:                  {vx.StructureClassLabel}");
+        Library.Log($"Core pressure depression [Pa]: {vx.CorePressureDepressionPa:F1}");
+        Library.Log($"Wall pressure rise [Pa]:      {vx.WallPressureRisePa:F1}");
+        Library.Log($"Swirl decay fraction [-]:      {vx.SwirlDecayFractionAlongChamber:F3}");
+        Library.Log($"Remaining swirl at stator [-]: {vx.RemainingSwirlFractionAtStator:F3}");
+        Library.Log($"Vortex quality metric [-]:     {vx.VortexQualityMetric:F3}");
+        Library.Log($"  buckets E/R/R/D: {vx.FractionSwirlForEntrainment:F3} / {vx.FractionSwirlRemainingAtStator:F3} / {vx.FractionSwirlToAxialRecovery:F3} / {vx.FractionSwirlDissipated:F3}");
+    }
+
     private static void LogHeuristicAssumptions()
     {
         Library.Log("--- Documented heuristic assumptions (full list) ---");
@@ -202,7 +265,11 @@ internal static class ResultReporter
         Library.Log("- Yaw/pitch/roll: see SwirlMath XML; roll ignored for axisymmetric physics.");
         Library.Log("- AmbientTemperatureK not used in equations (P_amb, rho_amb, T_exhaust for ρ_core blend).");
         Library.Log("- Vortex diagnostics: radial pressure / core depression / swirl budget split are 1-D heuristics for controlled-vortex interpretation — not CFD vortex identification or stability.");
-        Library.Log("- Chamber swirl decay factor: L/D, diameter scale, entrainment-loading hint — tunable later against experiment or CFD.");
+        Library.Log("- Chamber swirl decay: k_total = k_wall + k_mix + k_entrain + k_instability; per-step factor = exp(-k_total·Δx/D). Coefficients in ChamberPhysicsCoefficients.");
+        Library.Log("- Radial pressure: mixed forced (core) + free-vortex shell; Ω and Γ matched at r_core. Caps in ChamberPhysicsCoefficients.RadialPressureCapPa.");
+        Library.Log("- Diffuser: Cp heuristic vs angle, L/D, area ratio; swirl can aid or hurt separation in SwirlDiffuserRecoveryModel.");
+        Library.Log("- Injector/stator losses: Δp ~ K·0.5ρV² diagnostics; do not replace blade-row CFD.");
+        Library.Log("- Ejector regime: Mach, choking flags, entrainment shortfall — classification only.");
     }
 
     private static void LogWarnings(IReadOnlyList<string> warnings)

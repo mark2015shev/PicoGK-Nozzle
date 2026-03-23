@@ -129,6 +129,7 @@ public static class NozzleDesignAutotune
         SourceOnlyThrustN = e.SourceOnlyThrustN,
         EntrainmentRatio = e.EntrainmentRatio,
         VortexQualityMetric = e.VortexQualityMetric,
+        PhysicsMetrics = e.PhysicsMetrics,
         Score = score,
         HealthCount = e.HealthCount,
         HasDesignError = e.HasDesignError,

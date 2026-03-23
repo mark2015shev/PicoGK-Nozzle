@@ -34,4 +34,7 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Chamber vortex / radial pressure / swirl budget bookkeeping (first-order, not CFD).</summary>
     public VortexFlowDiagnostics? Vortex { get; init; }
+
+    /// <summary>Extended radial / structure / diffuser / ejector / loss diagnostics — not CFD.</summary>
+    public ChamberFirstOrderPhysics? Chamber { get; init; }
 }

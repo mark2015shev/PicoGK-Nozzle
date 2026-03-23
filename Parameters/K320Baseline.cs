@@ -88,9 +88,15 @@ public static class K320Baseline
         UsePhysicsInformedGeometry = false,
         UseAutotune = true,
         AutotuneTrials = trials,
-        AutotuneWeightEntrainment = 0.38,
-        AutotuneWeightThrust = 0.40,
-        AutotuneWeightVortexQuality = 0.22,
+        AutotuneWeightEntrainment = 0.26,
+        AutotuneWeightThrust = 0.34,
+        AutotuneWeightVortexQuality = 0.18,
+        AutotuneWeightRadialPressure = 0.12,
+        AutotuneWeightBreakdownPenalty = 0.14,
+        AutotuneWeightSeparationPenalty = 0.10,
+        AutotuneWeightLossPenalty = 0.10,
+        AutotuneWeightEjectorPenalty = 0.08,
+        AutotuneWeightLowAxialPenalty = 0.06,
         AutotuneRandomSeed = 20260213,
         AutotuneUseSynthesisBaseline = true
     };

@@ -22,13 +22,31 @@ public sealed class RunConfiguration
     public int AutotuneTrials { get; init; } = 160;
 
     /// <summary>Objective weight for ṁ_amb/ṁ_core (normalized to baseline).</summary>
-    public double AutotuneWeightEntrainment { get; init; } = 0.38;
+    public double AutotuneWeightEntrainment { get; init; } = 0.26;
 
     /// <summary>Objective weight for F_net / F_source-only (with soft floor near 0.88×).</summary>
-    public double AutotuneWeightThrust { get; init; } = 0.40;
+    public double AutotuneWeightThrust { get; init; } = 0.34;
 
     /// <summary>Objective weight for controlled-vortex quality (moderate swirl, stable regime, recovery) — not axial-ejector bias.</summary>
-    public double AutotuneWeightVortexQuality { get; init; } = 0.22;
+    public double AutotuneWeightVortexQuality { get; init; } = 0.18;
+
+    /// <summary>Weight for useful radial pressure structure (core drop + wall rise), normalized vs baseline.</summary>
+    public double AutotuneWeightRadialPressure { get; init; } = 0.12;
+
+    /// <summary>Penalty weight for vortex breakdown risk [0–1].</summary>
+    public double AutotuneWeightBreakdownPenalty { get; init; } = 0.14;
+
+    /// <summary>Penalty weight for diffuser separation risk [0–1].</summary>
+    public double AutotuneWeightSeparationPenalty { get; init; } = 0.10;
+
+    /// <summary>Penalty weight for injector+stator total-pressure loss metric [0–1].</summary>
+    public double AutotuneWeightLossPenalty { get; init; } = 0.10;
+
+    /// <summary>Penalty weight for ejector regime stress score [0–1].</summary>
+    public double AutotuneWeightEjectorPenalty { get; init; } = 0.08;
+
+    /// <summary>Penalty weight for low axial momentum proxy [0–1].</summary>
+    public double AutotuneWeightLowAxialPenalty { get; init; } = 0.06;
 
     /// <summary>Seed for reproducible random search.</summary>
     public int AutotuneRandomSeed { get; init; } = 20260213;
@@ -49,6 +67,12 @@ public sealed class RunConfiguration
         AutotuneWeightEntrainment = AutotuneWeightEntrainment,
         AutotuneWeightThrust = AutotuneWeightThrust,
         AutotuneWeightVortexQuality = AutotuneWeightVortexQuality,
+        AutotuneWeightRadialPressure = AutotuneWeightRadialPressure,
+        AutotuneWeightBreakdownPenalty = AutotuneWeightBreakdownPenalty,
+        AutotuneWeightSeparationPenalty = AutotuneWeightSeparationPenalty,
+        AutotuneWeightLossPenalty = AutotuneWeightLossPenalty,
+        AutotuneWeightEjectorPenalty = AutotuneWeightEjectorPenalty,
+        AutotuneWeightLowAxialPenalty = AutotuneWeightLowAxialPenalty,
         AutotuneRandomSeed = AutotuneRandomSeed,
         AutotuneUseSynthesisBaseline = AutotuneUseSynthesisBaseline
     };
