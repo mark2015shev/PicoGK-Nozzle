@@ -69,6 +69,17 @@ public static class K320Baseline
         UseAutotune = false
     };
 
+    /// <summary>
+    /// Fast SI-only presets (no viewer) — e.g. <see cref="PicoGK_Run.Infrastructure.ValidationSweepRunner.RunDefaultK320Validation"/>.
+    /// </summary>
+    public static RunConfiguration CreateValidationRun() => new()
+    {
+        VoxelSizeMM = 0.3f,
+        ShowInViewer = false,
+        UsePhysicsInformedGeometry = false,
+        UseAutotune = false
+    };
+
     /// <summary>Same as <see cref="CreateRun"/> but enables synthesis so chamber/expander/stator/inlet follow first-order rules from the source.</summary>
     public static RunConfiguration CreateRunPhysicsInformed() => new()
     {

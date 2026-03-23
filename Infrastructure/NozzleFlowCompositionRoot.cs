@@ -9,6 +9,13 @@ using PicoGK_Run.Physics;
 
 namespace PicoGK_Run.Infrastructure;
 
+/// <summary>Outputs from <see cref="NozzleFlowCompositionRoot.EvaluateSiPathForValidation"/> (SI only).</summary>
+internal sealed record SiPathValidationPack(
+    NozzleSolvedState Solved,
+    SiFlowDiagnostics SiDiag,
+    NozzleCriticalRatiosSnapshot CriticalRatios,
+    IReadOnlyList<string> HealthMessages);
+
 /// <summary>
 /// Wires SI physics → design result → mm geometry → <see cref="PipelineRunResult"/>.
 /// </summary>
@@ -459,6 +466,15 @@ public static class NozzleFlowCompositionRoot
             health,
             designResult,
             inletState);
+    }
+
+    /// <summary>
+    /// Coupled SI solve only (no voxels/viewer) — for validation sweeps and tooling; same path as tuning eval.
+    /// </summary>
+    internal static SiPathValidationPack EvaluateSiPathForValidation(SourceInputs source, NozzleDesignInputs design)
+    {
+        SiPathSolveResult r = SolveSiPath(source, design);
+        return new SiPathValidationPack(r.Solved, r.SiDiag, r.CriticalRatios, r.HealthMessages);
     }
 
     private static IReadOnlyList<string> BuildCouplingSummaryLines(

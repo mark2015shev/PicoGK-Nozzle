@@ -13,6 +13,15 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        // First-order SI validation sweeps (no voxels/viewer; CSV under ./Output/ValidationSweeps):
+        //   dotnet run -- validate
+        // Or call: ValidationSweepRunner.RunDefaultK320Validation();
+        if (args.Length > 0 && string.Equals(args[0], "validate", StringComparison.OrdinalIgnoreCase))
+        {
+            ValidationSweepRunner.RunDefaultK320Validation();
+            return;
+        }
+
         // Toggle autotune (must use CreateRunWithAutotune or CreateInputWithAutotune so UseAutotune is true).
         bool useAutotune = true;
         NozzleInput input = useAutotune
