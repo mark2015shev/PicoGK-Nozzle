@@ -10,30 +10,37 @@ internal sealed class AppPipeline
 {
     public PipelineRunResult Run(NozzleInput input)
     {
-        NozzleInput work = input;
-        NozzleDesignAutotune.Result? tune = null;
-        RunConfiguration originalRun = input.Run;
+        if (!input.Run.UseAutotune)
+            return NozzleFlowCompositionRoot.Run(input, input.Run.ShowInViewer);
 
-        if (input.Run.UseAutotune)
-        {
-            tune = NozzleDesignAutotune.FindBestSeed(input.Source, input.Design, input.Run);
-            work = new NozzleInput(input.Source, tune.BestSeedDesign, input.Run.AfterAutotune());
-        }
+        NozzleDesignAutotune.Result tune = NozzleDesignAutotune.FindBestSeed(input.Source, input.Design, input.Run);
+        NozzleInput work = new NozzleInput(input.Source, tune.BestSeedDesign, input.Run.AfterAutotune());
 
         PipelineRunResult pr = NozzleFlowCompositionRoot.Run(work, work.Run.ShowInViewer);
 
-        if (tune == null)
-            return pr;
+        var summary = new AutotuneRunSummary
+        {
+            Trials = tune.TrialsUsed,
+            BestScore = tune.BestScore,
+            WinningSeedDesign = tune.BestSeedDesign
+        };
 
         var w = new List<string>
         {
-            $"Autotune: {tune.TrialsUsed} SI evaluations, best composite score {tune.BestScore:F4} (weights E={originalRun.AutotuneWeightEntrainment:F2}, T={originalRun.AutotuneWeightThrust:F2}; 1-D model — validate in CFD)."
+            $"Autotune: {tune.TrialsUsed} SI-only evaluations, best score {tune.BestScore:F4} (weights E={input.Run.AutotuneWeightEntrainment:F2}, T={input.Run.AutotuneWeightThrust:F2}). Pre-CFD — validate in CFD."
         };
         w.AddRange(pr.SolverWarnings);
-        return new PipelineRunResult(pr.Input, pr.Solved, pr.Geometry, w, pr.SiFlow, pr.CriticalRatios);
+
+        return new PipelineRunResult(
+            pr.Input,
+            pr.Solved,
+            pr.Geometry,
+            w,
+            pr.SiFlow,
+            pr.CriticalRatios,
+            summary);
     }
 
-    /// <summary>Used by <see cref="NozzleFlowCompositionRoot"/> after flow-driven geometry is built.</summary>
     internal static void DisplayGeometryInViewer(NozzleGeometryResult geometry)
     {
         Viewer viewer = Library.oViewer();

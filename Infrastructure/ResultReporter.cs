@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using PicoGK;
 using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
+using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 
 namespace PicoGK_Run.Infrastructure;
@@ -16,8 +17,16 @@ internal static class ResultReporter
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
         Library.Log("=== Nozzle / ejector estimate (SI flow drives geometry) ===");
-        if (result.SolverWarnings.Count > 0 && result.SolverWarnings[0].StartsWith("Autotune:", StringComparison.Ordinal))
-            Library.Log("Design: AUTOTUNED — seed chosen by random search on SI model (see first warning line). CFD validation required.");
+        if (result.Autotune != null)
+        {
+            AutotuneRunSummary at = result.Autotune;
+            Library.Log("--- Autotune (SI search — pre-CFD) ---");
+            Library.Log($"Autotune enabled:            yes");
+            Library.Log($"Trials (SI-only evals):      {at.Trials}");
+            Library.Log($"Best composite score [-]:    {at.BestScore:F4}");
+            Library.Log("Winning seed design [mm / deg]:");
+            LogDesignBlock(at.WinningSeedDesign);
+        }
         else if (input.Run.UsePhysicsInformedGeometry)
             Library.Log("Design: PHYSICS-INFORMED pre-size (NozzleGeometrySynthesis) — diameters/lengths/expander/stator from source + heuristics; template yaw/pitch/count/wall kept.");
         Library.Log("Flow: lumped isentropic jet + compressible entrainment march (NozzleFlowCompositionRoot). Not CFD.");
@@ -33,18 +42,8 @@ internal static class ResultReporter
         Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2} (reporting; not used in current solver equations)");
         Library.Log($"AmbientDensityKgPerM3:        {input.Source.AmbientDensityKgPerM3:F4}");
 
-        Library.Log("--- Design inputs ---");
-        Library.Log($"InletDiameterMm:              {input.Design.InletDiameterMm:F2}");
-        Library.Log($"SwirlChamber D x L [mm]:      {input.Design.SwirlChamberDiameterMm:F2} x {input.Design.SwirlChamberLengthMm:F2}");
-        Library.Log($"InjectorAxialPositionRatio:   {input.Design.InjectorAxialPositionRatio:F3} (0=chamber upstream, 1=chamber downstream / near expander)");
-        Library.Log($"TotalInjectorAreaMm2:         {input.Design.TotalInjectorAreaMm2:F2} (used in area-ratio + continuity blend)");
-        Library.Log($"InjectorCount:                {input.Design.InjectorCount}");
-        Library.Log($"Injector W x H [mm]:          {input.Design.InjectorWidthMm:F2} x {input.Design.InjectorHeightMm:F2} (slot check + marker size only)");
-        Library.Log($"Injector Yaw/Pitch/Roll [deg]: {input.Design.InjectorYawAngleDeg:F2} / {input.Design.InjectorPitchAngleDeg:F2} / {input.Design.InjectorRollAngleDeg:F2}");
-        Library.Log($"ExpanderLengthMm / HalfAngle: {input.Design.ExpanderLengthMm:F2} / {input.Design.ExpanderHalfAngleDeg:F2} deg");
-        Library.Log($"ExitDiameterMm:               {input.Design.ExitDiameterMm:F2}");
-        Library.Log($"Stator vane angle / count:    {input.Design.StatorVaneAngleDeg:F2} deg / {input.Design.StatorVaneCount}");
-        Library.Log($"WallThicknessMm:              {input.Design.WallThicknessMm:F2}");
+        Library.Log("--- Design inputs (final pipeline / driven geometry) ---");
+        LogDesignBlock(input.Design);
 
         if (result.CriticalRatios != null)
         {
@@ -144,6 +143,21 @@ internal static class ResultReporter
 
         LogHeuristicAssumptions();
         LogWarnings(result.SolverWarnings);
+    }
+
+    private static void LogDesignBlock(NozzleDesignInputs d)
+    {
+        Library.Log($"InletDiameterMm:              {d.InletDiameterMm:F2}");
+        Library.Log($"SwirlChamber D x L [mm]:      {d.SwirlChamberDiameterMm:F2} x {d.SwirlChamberLengthMm:F2}");
+        Library.Log($"InjectorAxialPositionRatio:   {d.InjectorAxialPositionRatio:F3} (0=upstream chamber, 1=downstream / near expander)");
+        Library.Log($"TotalInjectorAreaMm2:         {d.TotalInjectorAreaMm2:F2}");
+        Library.Log($"InjectorCount:                {d.InjectorCount}");
+        Library.Log($"Injector W x H [mm]:          {d.InjectorWidthMm:F2} x {d.InjectorHeightMm:F2}");
+        Library.Log($"Injector Yaw/Pitch/Roll [deg]: {d.InjectorYawAngleDeg:F2} / {d.InjectorPitchAngleDeg:F2} / {d.InjectorRollAngleDeg:F2}");
+        Library.Log($"ExpanderLengthMm / HalfAngle: {d.ExpanderLengthMm:F2} / {d.ExpanderHalfAngleDeg:F2} deg");
+        Library.Log($"ExitDiameterMm:               {d.ExitDiameterMm:F2}");
+        Library.Log($"Stator vane angle / count:    {d.StatorVaneAngleDeg:F2} deg / {d.StatorVaneCount}");
+        Library.Log($"WallThicknessMm:              {d.WallThicknessMm:F2}");
     }
 
     private static void LogHeuristicAssumptions()

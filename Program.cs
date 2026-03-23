@@ -13,11 +13,15 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
-        // Default: hand design. Alternatives: CreateRunPhysicsInformed(), CreateRunWithAutotune(trials: 200).
+        // Default: fixed hand design, no autotune.
         NozzleInput input = new(
             source: K320Baseline.CreateSource(),
             design: K320Baseline.CreateDesign(),
             run: K320Baseline.CreateRun());
+
+        // Autotune on the 1-D SI model (many fast evals, then one voxel build). Example:
+        // NozzleInput input = K320Baseline.CreateInputWithAutotune(trials: 200);
+        // Or: run: K320Baseline.CreateRunWithAutotune(200) with the same source/design as above.
 
         Library.Go(input.Run.VoxelSizeMM, () => Run(input));
     }

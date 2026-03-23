@@ -18,13 +18,17 @@ public sealed class PipelineRunResult
     /// <summary>Four critical ratio groups + supporting radii (heuristic design envelope).</summary>
     public NozzleCriticalRatiosSnapshot? CriticalRatios { get; }
 
+    /// <summary>Populated when autotune selected the seed before this run.</summary>
+    public AutotuneRunSummary? Autotune { get; }
+
     public PipelineRunResult(
         NozzleInput input,
         NozzleSolvedState solved,
         NozzleGeometryResult geometry,
         IReadOnlyList<string> solverWarnings,
         SiFlowDiagnostics? siFlow = null,
-        NozzleCriticalRatiosSnapshot? criticalRatios = null)
+        NozzleCriticalRatiosSnapshot? criticalRatios = null,
+        AutotuneRunSummary? autotune = null)
     {
         Input = input;
         Solved = solved;
@@ -32,5 +36,6 @@ public sealed class PipelineRunResult
         SolverWarnings = solverWarnings;
         SiFlow = siFlow;
         CriticalRatios = criticalRatios;
+        Autotune = autotune;
     }
 }

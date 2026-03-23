@@ -79,13 +79,22 @@ public static class K320Baseline
     /// Runs <c>NozzleDesignAutotune</c> before the full pipeline (many fast SI-only evaluations, then one voxel build).
     /// Tune <see cref="RunConfiguration.AutotuneTrials"/> / weights for your CFD correlation loop.
     /// </summary>
-    public static RunConfiguration CreateRunWithAutotune(int trials = 160) => new()
+    public static RunConfiguration CreateRunWithAutotune(int trials = 200) => new()
     {
         VoxelSizeMM = 0.3f,
         ShowInViewer = true,
         UsePhysicsInformedGeometry = false,
         UseAutotune = true,
         AutotuneTrials = trials,
+        AutotuneWeightEntrainment = 0.52,
+        AutotuneWeightThrust = 0.48,
+        AutotuneRandomSeed = 20260213,
         AutotuneUseSynthesisBaseline = true
     };
+
+    /// <summary>Convenience: K320 source + hand template + autotune run config.</summary>
+    public static NozzleInput CreateInputWithAutotune(int trials = 200) => new(
+        CreateSource(),
+        CreateDesign(),
+        CreateRunWithAutotune(trials));
 }

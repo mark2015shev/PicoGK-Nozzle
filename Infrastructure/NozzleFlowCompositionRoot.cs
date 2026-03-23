@@ -26,22 +26,30 @@ public static class NozzleFlowCompositionRoot
         JetState InletState);
 
     /// <summary>
-    /// Forward SI evaluation only (no voxels). For autotune / batch search.
+    /// Same SI path as <see cref="Run"/> up to health check — no voxels, no viewer, no console summary.
+    /// <paramref name="run"/> reserved for future tuning hooks (march resolution, etc.); currently unused.
     /// </summary>
-    public static FlowTuneEvaluation EvaluateDesignForTuning(SourceInputs source, NozzleDesignInputs candidateDesign)
+    internal static FlowTuneEvaluation EvaluateDesignForTuning(
+        SourceInputs source,
+        NozzleDesignInputs candidateDesign,
+        RunConfiguration run)
     {
+        _ = run;
         SiPathSolveResult r = SolveSiPath(source, candidateDesign);
         int hard = r.HealthMessages.Count(m => m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
         return new FlowTuneEvaluation
         {
+            CandidateDesign = candidateDesign,
+            DrivenDesign = r.DrivenDesign,
             EntrainmentRatio = r.Solved.EntrainmentRatio,
             NetThrustN = r.SiDiag.NetThrustN,
             SourceOnlyThrustN = r.Solved.SourceOnlyThrustN,
             AmbientAirMassFlowKgS = r.Solved.AmbientAirMassFlowKgPerSec,
             CoreMassFlowKgS = r.Solved.CoreMassFlowKgPerSec,
-            HealthIssueCount = r.HealthMessages.Count,
-            HasDesignErrors = hard > 0,
-            DrivenDesign = r.DrivenDesign
+            HealthCount = r.HealthMessages.Count,
+            HasDesignError = hard > 0,
+            HealthMessages = r.HealthMessages is List<string> list ? list : new List<string>(r.HealthMessages),
+            Score = 0.0
         };
     }
 

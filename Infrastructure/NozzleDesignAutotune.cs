@@ -6,8 +6,7 @@ using PicoGK_Run.Physics;
 namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
-/// Bounded random search over geometric scales on a synthesis (or template) baseline.
-/// Objective: weighted entrainment ratio + net thrust vs source-only thrust (1-D SI — validate in CFD).
+/// Reproducible random search over bounded geometric scales (SI forward model only — no voxels per trial).
 /// </summary>
 public static class NozzleDesignAutotune
 {
@@ -16,7 +15,9 @@ public static class NozzleDesignAutotune
         public NozzleDesignInputs BestSeedDesign { get; init; } = null!;
         public double BestScore { get; init; }
         public int TrialsUsed { get; init; }
-        public FlowTuneEvaluation? BaselineEvaluation { get; init; }
+        public FlowTuneEvaluation BaselineEvaluation { get; init; } = null!;
+        /// <summary>Best candidate with <see cref="FlowTuneEvaluation.Score"/> set.</summary>
+        public FlowTuneEvaluation? BestEvaluation { get; init; }
     }
 
     private readonly struct Knobs
@@ -28,6 +29,7 @@ public static class NozzleDesignAutotune
         public readonly double ExpAngle;
         public readonly double ExpLength;
         public readonly double StatorAngle;
+        public readonly double AxialPositionScale;
         public readonly double SynthesisTargetEr;
 
         public Knobs(
@@ -38,6 +40,7 @@ public static class NozzleDesignAutotune
             double expAngle,
             double expLength,
             double statorAngle,
+            double axialPositionScale,
             double synthesisTargetEr)
         {
             ChamberD = chamberD;
@@ -47,6 +50,7 @@ public static class NozzleDesignAutotune
             ExpAngle = expAngle;
             ExpLength = expLength;
             StatorAngle = statorAngle;
+            AxialPositionScale = axialPositionScale;
             SynthesisTargetEr = synthesisTargetEr;
         }
     }
@@ -54,28 +58,21 @@ public static class NozzleDesignAutotune
     public static Result FindBestSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run)
     {
         int trials = Math.Clamp(run.AutotuneTrials, 20, 5000);
-        double wE = Math.Clamp(run.AutotuneWeightEntrainment, 0.05, 0.95);
-        double wT = Math.Clamp(run.AutotuneWeightThrust, 0.05, 0.95);
-        double sumW = wE + wT;
-        wE /= sumW;
-        wT /= sumW;
-
         var rng = new Random(run.AutotuneRandomSeed);
 
-        NozzleDesignInputs Baseline()
+        NozzleDesignInputs BaselineSeed()
         {
             if (run.AutotuneUseSynthesisBaseline)
                 return NozzleGeometrySynthesis.Synthesize(source, template, NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio);
             return CloneDesign(template);
         }
 
-        NozzleDesignInputs baseDesign = Baseline();
-        FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseDesign);
-        double f0 = Math.Max(baselineEval.SourceOnlyThrustN, 1.0);
-        double er0 = Math.Max(baselineEval.EntrainmentRatio, 0.02);
+        NozzleDesignInputs baseSeed = BaselineSeed();
+        FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseSeed, run);
 
         double bestScore = double.NegativeInfinity;
-        NozzleDesignInputs best = baseDesign;
+        NozzleDesignInputs bestSeed = baseSeed;
+        FlowTuneEvaluation? bestEv = null;
 
         for (int i = 0; i < trials; i++)
         {
@@ -84,36 +81,52 @@ public static class NozzleDesignAutotune
                 ? ApplyKnobs(NozzleGeometrySynthesis.Synthesize(source, template, k.SynthesisTargetEr), k)
                 : ApplyKnobs(CloneDesign(template), k);
 
-            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate);
-            if (ev.HasDesignErrors)
+            FlowTuneEvaluation ev = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, candidate, run);
+            if (ev.HasDesignError)
                 continue;
 
-            double erN = ev.EntrainmentRatio / er0;
-            double thN = ev.NetThrustN / f0;
-            double thrustFloor = thN >= 0.88 ? 1.0 : 0.35 + 0.65 * (thN / 0.88);
-            double score = wE * erN + wT * thN * thrustFloor - 0.025 * ev.HealthIssueCount;
+            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+            ev = WithScore(ev, score);
 
             if (score > bestScore)
             {
                 bestScore = score;
-                best = candidate;
+                bestSeed = candidate;
+                bestEv = ev;
             }
         }
 
         if (bestScore <= double.NegativeInfinity)
         {
-            best = baseDesign;
-            bestScore = wE * (baselineEval.EntrainmentRatio / er0) + wT * (baselineEval.NetThrustN / f0);
+            bestScore = AutotuneScoring.ComputeScore(baselineEval, baselineEval, run);
+            bestSeed = baseSeed;
+            bestEv = WithScore(baselineEval, bestScore);
         }
 
         return new Result
         {
-            BestSeedDesign = best,
+            BestSeedDesign = bestSeed,
             BestScore = bestScore,
             TrialsUsed = trials,
-            BaselineEvaluation = baselineEval
+            BaselineEvaluation = baselineEval,
+            BestEvaluation = bestEv
         };
     }
+
+    private static FlowTuneEvaluation WithScore(FlowTuneEvaluation e, double score) => new()
+    {
+        CandidateDesign = e.CandidateDesign,
+        DrivenDesign = e.DrivenDesign,
+        NetThrustN = e.NetThrustN,
+        SourceOnlyThrustN = e.SourceOnlyThrustN,
+        EntrainmentRatio = e.EntrainmentRatio,
+        Score = score,
+        HealthCount = e.HealthCount,
+        HasDesignError = e.HasDesignError,
+        HealthMessages = e.HealthMessages,
+        AmbientAirMassFlowKgS = e.AmbientAirMassFlowKgS,
+        CoreMassFlowKgS = e.CoreMassFlowKgS
+    };
 
     private static Knobs SampleKnobs(Random rng, bool varyEr)
     {
@@ -126,6 +139,7 @@ public static class NozzleDesignAutotune
             expAngle: u(0.82, 1.15),
             expLength: u(0.72, 1.38),
             statorAngle: u(0.86, 1.14),
+            axialPositionScale: u(0.82, 1.18),
             synthesisTargetEr: varyEr ? u(0.22, 0.62) : NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio);
     }
 
@@ -138,13 +152,14 @@ public static class NozzleDesignAutotune
         double ang = Math.Clamp(b.ExpanderHalfAngleDeg * k.ExpAngle, 3.5, 14.0);
         double lEx = Math.Clamp(b.ExpanderLengthMm * k.ExpLength, 25.0, 240.0);
         double st = Math.Clamp(b.StatorVaneAngleDeg * k.StatorAngle, 14.0, 58.0);
+        double ax = Math.Clamp(b.InjectorAxialPositionRatio * k.AxialPositionScale, 0.08, 0.92);
 
         return new NozzleDesignInputs
         {
             InletDiameterMm = dIn,
             SwirlChamberDiameterMm = dCh,
             SwirlChamberLengthMm = lCh,
-            InjectorAxialPositionRatio = b.InjectorAxialPositionRatio,
+            InjectorAxialPositionRatio = ax,
             TotalInjectorAreaMm2 = b.TotalInjectorAreaMm2,
             InjectorCount = b.InjectorCount,
             InjectorWidthMm = b.InjectorWidthMm,
