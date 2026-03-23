@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PicoGK;
 using PicoGK_Run.Core;
@@ -15,6 +16,10 @@ internal static class ResultReporter
         double sourceDiameterMm = AreaMath.CircleDiameterFromAreaMm2(input.Source.SourceOutletAreaMm2);
 
         Library.Log("=== Nozzle / ejector estimate (SI flow drives geometry) ===");
+        if (result.SolverWarnings.Count > 0 && result.SolverWarnings[0].StartsWith("Autotune:", StringComparison.Ordinal))
+            Library.Log("Design: AUTOTUNED — seed chosen by random search on SI model (see first warning line). CFD validation required.");
+        else if (input.Run.UsePhysicsInformedGeometry)
+            Library.Log("Design: PHYSICS-INFORMED pre-size (NozzleGeometrySynthesis) — diameters/lengths/expander/stator from source + heuristics; template yaw/pitch/count/wall kept.");
         Library.Log("Flow: lumped isentropic jet + compressible entrainment march (NozzleFlowCompositionRoot). Not CFD.");
 
         Library.Log("--- Source + ambient (boundary only, no engine geometry) ---");

@@ -13,6 +13,7 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        // Default: hand design. Alternatives: CreateRunPhysicsInformed(), CreateRunWithAutotune(trials: 200).
         NozzleInput input = new(
             source: K320Baseline.CreateSource(),
             design: K320Baseline.CreateDesign(),

@@ -61,6 +61,31 @@ public static class K320Baseline
     public static RunConfiguration CreateRun() => new()
     {
         VoxelSizeMM = 0.3f,
-        ShowInViewer = true
+        ShowInViewer = true,
+        UsePhysicsInformedGeometry = false,
+        UseAutotune = false
+    };
+
+    /// <summary>Same as <see cref="CreateRun"/> but enables synthesis so chamber/expander/stator/inlet follow first-order rules from the source.</summary>
+    public static RunConfiguration CreateRunPhysicsInformed() => new()
+    {
+        VoxelSizeMM = 0.3f,
+        ShowInViewer = true,
+        UsePhysicsInformedGeometry = true,
+        UseAutotune = false
+    };
+
+    /// <summary>
+    /// Runs <c>NozzleDesignAutotune</c> before the full pipeline (many fast SI-only evaluations, then one voxel build).
+    /// Tune <see cref="RunConfiguration.AutotuneTrials"/> / weights for your CFD correlation loop.
+    /// </summary>
+    public static RunConfiguration CreateRunWithAutotune(int trials = 160) => new()
+    {
+        VoxelSizeMM = 0.3f,
+        ShowInViewer = true,
+        UsePhysicsInformedGeometry = false,
+        UseAutotune = true,
+        AutotuneTrials = trials,
+        AutotuneUseSynthesisBaseline = true
     };
 }
