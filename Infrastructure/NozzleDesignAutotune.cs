@@ -501,7 +501,9 @@ public static class NozzleDesignAutotune
         double pitch = run.AutotuneVaryPitch ? u(6.0, 16.0) : template.InjectorPitchAngleDeg;
 
         return new Knobs(
-            chamberD: run.UseDerivedSwirlChamberDiameter ? 1.0 : u(dLo, dHi),
+            chamberD: run.UseDerivedSwirlChamberDiameter && !run.AllowAutotuneDirectChamberDiameterOverride
+                ? 1.0
+                : u(dLo, dHi),
             chamberL: u(lLo, lHi),
             inlet: u(0.86, 1.24),
             exit: u(0.82, 1.26),
@@ -541,7 +543,9 @@ public static class NozzleDesignAutotune
             : erCenter;
 
         return new Knobs(
-            chamberD: run.UseDerivedSwirlChamberDiameter ? 1.0 : um(b.ChamberDiameterSpread),
+            chamberD: run.UseDerivedSwirlChamberDiameter && !run.AllowAutotuneDirectChamberDiameterOverride
+                ? 1.0
+                : um(b.ChamberDiameterSpread),
             chamberL: um(b.ChamberLengthSpread),
             inlet: um(b.InletSpread),
             exit: um(b.ExitSpread),
@@ -557,7 +561,10 @@ public static class NozzleDesignAutotune
     private static NozzleDesignInputs ApplyKnobs(NozzleDesignInputs b, in Knobs k, RunConfiguration run)
     {
         double lenCap = Math.Clamp(run.AutotuneSwirlChamberLengthMaxMm, 40.0, 220.0);
-        double dCh = Math.Clamp(b.SwirlChamberDiameterMm * k.ChamberD, 35.0, 220.0);
+        double dScale = k.ChamberD;
+        if (run.UseDerivedSwirlChamberDiameter && !run.AllowAutotuneDirectChamberDiameterOverride)
+            dScale = 1.0;
+        double dCh = Math.Clamp(b.SwirlChamberDiameterMm * dScale, 35.0, 220.0);
         double lCh = Math.Clamp(b.SwirlChamberLengthMm * k.ChamberL, 28.0, lenCap);
         double dIn = Math.Clamp(b.InletDiameterMm * k.Inlet, Math.Max(dCh * 1.0, 30.0), dCh * 1.65);
         double dEx = Math.Clamp(b.ExitDiameterMm * k.Exit, dCh * 1.02, dCh * 1.75);

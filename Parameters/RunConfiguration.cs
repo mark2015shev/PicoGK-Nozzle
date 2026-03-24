@@ -177,6 +177,19 @@ public sealed class RunConfiguration
     public double DerivedChamberTargetMaxLd { get; init; } = 1.28;
 
     /// <summary>
+    /// When false with <see cref="UseDerivedSwirlChamberDiameter"/>, autotune must not rescale bore via ChamberD knobs (tune ER / other axes only).
+    /// Set true to allow direct ChamberD multipliers to fight derived sizing.
+    /// </summary>
+    public bool AllowAutotuneDirectChamberDiameterOverride { get; init; }
+
+    /// <summary>
+    /// After autotune search, overwrite winning seed <c>SwirlChamberDiameterMm</c> with
+    /// <see cref="PicoGK_Run.Physics.SwirlChamberSizingModel.ComputeDerived"/> at <see cref="GeometrySynthesisTargetEntrainmentRatio"/>
+    /// before the final SI + voxel pass (other trial dimensions preserved). First-order continuity only — not CFD.
+    /// </summary>
+    public bool AutotuneFinalizeApplyEntrainmentDerivedChamberBore { get; init; } = true;
+
+    /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
     public RunConfiguration AfterAutotune() => new()
@@ -233,6 +246,8 @@ public sealed class RunConfiguration
         DerivedChamberMaxDiameterMultiplierVsJet = DerivedChamberMaxDiameterMultiplierVsJet,
         DerivedChamberMinDiameterMultiplierVsJet = DerivedChamberMinDiameterMultiplierVsJet,
         DerivedChamberTargetMinLd = DerivedChamberTargetMinLd,
-        DerivedChamberTargetMaxLd = DerivedChamberTargetMaxLd
+        DerivedChamberTargetMaxLd = DerivedChamberTargetMaxLd,
+        AllowAutotuneDirectChamberDiameterOverride = AllowAutotuneDirectChamberDiameterOverride,
+        AutotuneFinalizeApplyEntrainmentDerivedChamberBore = AutotuneFinalizeApplyEntrainmentDerivedChamberBore
     };
 }

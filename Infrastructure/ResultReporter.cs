@@ -30,6 +30,9 @@ internal static class ResultReporter
         if (result.ChamberSizing != null)
             LogDerivedSwirlChamberSizing(result.ChamberSizing);
 
+        if (result.ChamberDiameterAudit != null)
+            LogChamberDiameterAudit(result.ChamberDiameterAudit, result.Autotune);
+
         if (result.PhysicsStages != null || result.GeometryContinuity != null || result.SiFlow != null)
             RunReportBuilder.LogEngineeringReport(result.PhysicsStages, result.GeometryContinuity, s => Library.Log(s), result.SiFlow);
         if (result.SiFlow?.SwirlChamberHealth != null)
@@ -46,6 +49,8 @@ internal static class ResultReporter
             LogDesignBlock(at.BaselineTemplateDesign);
             Library.Log("Winning seed design (used for final SI + voxels) [mm / deg]:");
             LogDesignBlock(at.WinningSeedDesign);
+            Library.Log(
+                $"Autotune bore sizing: search used entrainment-derived bore model = {at.SearchUsedEntrainmentDerivedBoreSizing}; direct ChamberD knob override allowed = {at.SearchAllowedDirectChamberDiameterOverride}; final pass applied derived bore to seed = {at.FinalPassAppliedEntrainmentDerivedChamberBore}.");
         }
         else if (input.Run.UsePhysicsInformedGeometry)
             Library.Log("Design: PHYSICS-INFORMED pre-size (NozzleGeometrySynthesis) — diameters/lengths/expander/stator from source + heuristics; template yaw/pitch/count/wall kept.");
@@ -470,12 +475,14 @@ internal static class ResultReporter
             SwirlChamberSizingModel.DiameterMode.UserTemplate => "user-fixed (template; no synthesis)",
             SwirlChamberSizingModel.DiameterMode.SynthesisHeuristic => "synthesis-derived (jet×swirl×ER heuristic bore)",
             SwirlChamberSizingModel.DiameterMode.EntrainmentDerived => "entrainment-derived (ṁ_mix / ρ / V_axial annulus solve + injector ratio)",
+            SwirlChamberSizingModel.DiameterMode.ReferenceDerivedAtConfiguredTargetEr => "reference audit at configured target ER (compare to actual seed bore in trace below)",
             _ => d.Mode.ToString()
         };
         Library.Log("Chamber diameter source:     " + modeLabel);
         Library.Log(d.SummaryLine);
 
-        if (d.Mode == SwirlChamberSizingModel.DiameterMode.EntrainmentDerived)
+        if (d.Mode is SwirlChamberSizingModel.DiameterMode.EntrainmentDerived
+            or SwirlChamberSizingModel.DiameterMode.ReferenceDerivedAtConfiguredTargetEr)
         {
             Library.Log($"ER_target [-]:               {d.TargetEntrainmentRatio:F4}");
             Library.Log($"mdot_core [kg/s]:            {d.MdotCoreKgS:F6}");
@@ -487,7 +494,11 @@ internal static class ResultReporter
             Library.Log($"blockage_fraction φ [-]:     {d.BlockageFractionOfAnnulus:F4} (vane blockage of annulus in SI model)");
             Library.Log($"hub diameter [mm]:           {d.HubDiameterMm:F2}");
             Library.Log($"A_inj_total [mm2]:           {d.TotalInjectorAreaMm2:F2}");
-            Library.Log($"D_chamber_target [mm]:       {d.ChamberDiameterTargetMm:F2}");
+            Library.Log($"D after continuity annulus [mm]:    {d.DiameterMmAfterContinuityAnnulus:F2}");
+            Library.Log($"D after A_inj/A_bore preferred [mm]: {d.DiameterMmAfterInjectorPreferredFloor:F2}");
+            Library.Log($"D before global [35,260] clamp [mm]: {d.DiameterMmBeforeGlobalClamp:F2}");
+            Library.Log($"Reduced by max jet-diameter cap:    {d.WasReducedByMaxJetDiameterCap}");
+            Library.Log($"D_chamber final (model output) [mm]: {d.ChamberDiameterTargetMm:F2}");
             Library.Log($"D_max_cap (mult×D_jet) [mm]: {d.DerivedChamberMaxDiameterMm:F2}");
             Library.Log($"A_inj / A_bore [-]:          {d.InjectorToBoreAreaRatio:F4} (full-bore circle)");
             Library.Log($"annulus iterations:          {d.AnnulusIterationsUsed}  injector-cap iterations: {d.InjectorConstraintIterations}");
@@ -507,5 +518,24 @@ internal static class ResultReporter
             foreach (string w in d.Warnings)
                 Library.Log("  • " + w);
         }
+    }
+
+    private static void LogChamberDiameterAudit(ChamberDiameterAudit a, AutotuneRunSummary? autotune)
+    {
+        Library.Log("=== Chamber diameter trace (precedence / transparency — not CFD) ===");
+        Library.Log($"Declared primary source:     {a.DeclaredPrimarySource}");
+        Library.Log($"Input design bore [mm]:      {a.InputDesignMm:F2}  (NozzleInput.Design at start of this pipeline run)");
+        Library.Log($"After synthesis / same [mm]: {a.AfterSynthesisMm:F2}");
+        Library.Log($"Pre–SI march [mm]:           {a.PreSiSolveMm:F2}");
+        Library.Log($"Post flow-driven merge [mm]: {a.PostFlowDrivenMm:F2}");
+        Library.Log($"Used for voxel build [mm]:   {a.UsedForVoxelBuildMm:F2}");
+        if (a.ReferenceDerivedBoreAtConfiguredTargetErMm is { } refD)
+            Library.Log($"Reference derived at configured ER [mm]: {refD:F2} (see RunConfiguration.GeometrySynthesisTargetEntrainmentRatio)");
+        Library.Log($"Autotune search used derived bore model: {a.AutotuneSearchUsedDerivedBoreSizing}");
+        Library.Log($"Autotune direct ChamberD scale applied (search): {a.AutotuneAppliedDirectChamberScale}");
+        if (autotune != null)
+            Library.Log($"Autotune final pass applied derived bore to seed: {autotune.FinalPassAppliedEntrainmentDerivedChamberBore}");
+        if (!string.IsNullOrEmpty(a.Footnote))
+            Library.Log("Note: " + a.Footnote);
     }
 }

@@ -34,6 +34,9 @@ public sealed class PipelineRunResult
     /// <summary>How swirl chamber bore was chosen (user / heuristic synthesis / entrainment-derived).</summary>
     public SwirlChamberSizingModel.SizingDiagnostics? ChamberSizing { get; }
 
+    /// <summary>End-to-end bore diameter trace for this run.</summary>
+    public ChamberDiameterAudit? ChamberDiameterAudit { get; }
+
     public PipelineRunResult(
         NozzleInput input,
         NozzleSolvedState solved,
@@ -45,7 +48,8 @@ public sealed class PipelineRunResult
         NozzlePhysicsStageResult? physicsStages = null,
         GeometryContinuityReport? geometryContinuity = null,
         PipelineProfileReport? performanceProfile = null,
-        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing = null)
+        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing = null,
+        ChamberDiameterAudit? chamberDiameterAudit = null)
     {
         Input = input;
         Solved = solved;
@@ -58,5 +62,6 @@ public sealed class PipelineRunResult
         GeometryContinuity = geometryContinuity;
         PerformanceProfile = performanceProfile;
         ChamberSizing = chamberSizing;
+        ChamberDiameterAudit = chamberDiameterAudit;
     }
 }

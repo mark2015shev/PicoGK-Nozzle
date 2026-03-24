@@ -68,6 +68,8 @@ public static class NozzleFlowCompositionRoot
     {
         PipelineProfiler.ResetSession(input.Run.EnablePipelineProfiling);
 
+        double chamberDiameterInputMm = input.Design.SwirlChamberDiameterMm;
+
         NozzleDesignInputs activeDesign;
         SwirlChamberSizingModel.SizingDiagnostics? chamberSizing;
         using (PipelineProfiler.Stage("pipeline.synthesis"))
@@ -81,6 +83,17 @@ public static class NozzleFlowCompositionRoot
                     input.Run);
                 activeDesign = syn.Design;
                 chamberSizing = syn.ChamberSizing;
+            }
+            else if (input.Run.UseDerivedSwirlChamberDiameter)
+            {
+                // Final pass often skips synthesis (e.g. AfterAutotune). Still compute reference derived bore for reporting.
+                activeDesign = input.Design;
+                chamberSizing = SwirlChamberSizingModel.ComputeDerived(
+                    input.Source,
+                    input.Design,
+                    input.Run.GeometrySynthesisTargetEntrainmentRatio,
+                    input.Run,
+                    SwirlChamberSizingModel.DiameterMode.ReferenceDerivedAtConfiguredTargetEr);
             }
             else
             {
@@ -132,12 +145,53 @@ public static class NozzleFlowCompositionRoot
                 warnings.Add("Chamber sizing: " + cw);
         }
 
+        if (!input.Run.UsePhysicsInformedGeometry
+            && input.Run.UseDerivedSwirlChamberDiameter
+            && chamberSizing != null
+            && chamberSizing.Mode == SwirlChamberSizingModel.DiameterMode.ReferenceDerivedAtConfiguredTargetEr)
+        {
+            double dAct = chamberDiameterInputMm;
+            double dRef = chamberSizing.ChamberDiameterTargetMm;
+            if (Math.Abs(dAct - dRef) > 1.5)
+            {
+                warnings.Add(
+                    $"Chamber bore trace: actual input/seed D={dAct:F2} mm vs reference derived at GeometrySynthesisTargetEntrainmentRatio ({input.Run.GeometrySynthesisTargetEntrainmentRatio:F3}) D≈{dRef:F2} mm — autotune trials use per-trial ER; this is not CFD.");
+            }
+        }
+
         if (geomContinuity is { IsAcceptable: false })
             warnings.AddRange(geomContinuity.Issues);
         warnings.AddRange(path.HealthMessages);
 
         NozzleInput effectiveInput = new NozzleInput(input.Source, path.DrivenDesign, input.Run);
         PipelineProfileReport? profile = PipelineProfiler.TryBuildReport();
+
+        string declaredSource = !input.Run.UsePhysicsInformedGeometry
+            ? (input.Run.UseDerivedSwirlChamberDiameter
+                ? "input_seed (no synthesis this run; see reference derived at configured target ER in sizing section)"
+                : "template_or_hand_seed")
+            : (input.Run.UseDerivedSwirlChamberDiameter
+                ? "entrainment-derived via NozzleGeometrySynthesis (this run)"
+                : "synthesis-heuristic (jet×swirl×ER bore)");
+
+        double? refDerivedMm = input.Run.UseDerivedSwirlChamberDiameter ? chamberSizing?.ChamberDiameterTargetMm : null;
+
+        var chamberAudit = new ChamberDiameterAudit
+        {
+            InputDesignMm = chamberDiameterInputMm,
+            AfterSynthesisMm = activeDesign.SwirlChamberDiameterMm,
+            PreSiSolveMm = activeDesign.SwirlChamberDiameterMm,
+            PostFlowDrivenMm = path.DrivenDesign.SwirlChamberDiameterMm,
+            UsedForVoxelBuildMm = path.DrivenDesign.SwirlChamberDiameterMm,
+            DeclaredPrimarySource = declaredSource,
+            AutotuneSearchUsedDerivedBoreSizing = false,
+            AutotuneAppliedDirectChamberScale = false,
+            ReferenceDerivedBoreAtConfiguredTargetErMm = refDerivedMm,
+            Footnote = !input.Run.UsePhysicsInformedGeometry
+                ? "UsePhysicsInformedGeometry was false — voxel bore equals input design (e.g. autotune winning seed). Enable synthesis on the final pass only if you intend to re-run sizing (may overwrite tuned seed)."
+                : null
+        };
+
         return new PipelineRunResult(
             effectiveInput,
             path.Solved,
@@ -149,7 +203,8 @@ public static class NozzleFlowCompositionRoot
             physicsStages: path.PhysicsStages,
             geometryContinuity: geomContinuity,
             performanceProfile: profile,
-            chamberSizing: chamberSizing);
+            chamberSizing: chamberSizing,
+            chamberDiameterAudit: chamberAudit);
     }
 
     private static SiPathSolveResult SolveSiPath(

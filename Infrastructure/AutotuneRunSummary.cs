@@ -18,4 +18,13 @@ public sealed class AutotuneRunSummary
 
     /// <summary>Multi-stage search log when coarse-to-fine autotune was used.</summary>
     public string? CoarseToFineLog { get; init; }
+
+    /// <summary>True if the search run had <c>UseDerivedSwirlChamberDiameter</c> (bore from continuity model during trials when synthesis baseline on).</summary>
+    public bool SearchUsedEntrainmentDerivedBoreSizing { get; init; }
+
+    /// <summary>True if autotune was allowed to rescale bore via ChamberD knobs during search.</summary>
+    public bool SearchAllowedDirectChamberDiameterOverride { get; init; }
+
+    /// <summary>True if final pass overwrote winning seed bore via entrainment-derived model at configured target ER.</summary>
+    public bool FinalPassAppliedEntrainmentDerivedChamberBore { get; init; }
 }

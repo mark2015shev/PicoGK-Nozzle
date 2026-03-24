@@ -5,6 +5,7 @@ using PicoGK;
 using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
+using PicoGK_Run.Physics;
 
 namespace PicoGK_Run.Infrastructure;
 
@@ -32,9 +33,39 @@ internal sealed class AppPipeline
         LogAutotuneBeforeFinalRun(tune.TrialsUsed, tune.BestScore, tune.BestSeedDesign, input.Run);
         LogAutotuneGeometryDeltaToConsole(baselineTemplate, tune.BestSeedDesign);
 
-        NozzleInput work = new NozzleInput(input.Source, tune.BestSeedDesign, input.Run.AfterAutotune());
+        bool searchDerivedBore = input.Run.UseDerivedSwirlChamberDiameter && input.Run.AutotuneUseSynthesisBaseline;
+        bool searchChamberOverride = input.Run.AllowAutotuneDirectChamberDiameterOverride;
+
+        bool finalPassDerivedBore = false;
+        NozzleDesignInputs seedForFinal = tune.BestSeedDesign;
+        if (input.Run.UseDerivedSwirlChamberDiameter && input.Run.AutotuneFinalizeApplyEntrainmentDerivedChamberBore)
+        {
+            finalPassDerivedBore = true;
+            double dBefore = seedForFinal.SwirlChamberDiameterMm;
+            SwirlChamberSizingModel.SizingDiagnostics dz = SwirlChamberSizingModel.ComputeDerived(
+                input.Source,
+                seedForFinal,
+                input.Run.GeometrySynthesisTargetEntrainmentRatio,
+                input.Run);
+            seedForFinal = WithSwirlChamberBoreMm(seedForFinal, dz.ChamberDiameterTargetMm);
+            if (Math.Abs(dBefore - dz.ChamberDiameterTargetMm) > 0.2)
+            {
+                Library.Log(
+                    $"Autotune finalize: chamber bore {dBefore:F2} mm → entrainment-derived {dz.ChamberDiameterTargetMm:F2} mm at GeometrySynthesisTargetEntrainmentRatio={input.Run.GeometrySynthesisTargetEntrainmentRatio:F3} (continuity model; not CFD).");
+                foreach (string line in dz.Warnings)
+                    Library.Log("  Chamber finalize: " + line);
+            }
+        }
+
+        NozzleInput work = new NozzleInput(input.Source, seedForFinal, input.Run.AfterAutotune());
 
         PipelineRunResult pr = NozzleFlowCompositionRoot.Run(work, work.Run.ShowInViewer);
+
+        ChamberDiameterAudit? auditMerged = MergeAutotuneIntoChamberAudit(
+            pr.ChamberDiameterAudit,
+            searchDerivedBore,
+            finalPassDerivedBore,
+            searchChamberOverride);
 
         var summary = new AutotuneRunSummary
         {
@@ -42,8 +73,11 @@ internal sealed class AppPipeline
             Trials = tune.TrialsUsed,
             BestScore = tune.BestScore,
             BaselineTemplateDesign = baselineTemplate,
-            WinningSeedDesign = tune.BestSeedDesign,
-            CoarseToFineLog = tune.CoarseToFineLog
+            WinningSeedDesign = seedForFinal,
+            CoarseToFineLog = tune.CoarseToFineLog,
+            SearchUsedEntrainmentDerivedBoreSizing = searchDerivedBore,
+            SearchAllowedDirectChamberDiameterOverride = searchChamberOverride,
+            FinalPassAppliedEntrainmentDerivedChamberBore = finalPassDerivedBore
         };
 
         var w = new List<string>
@@ -63,8 +97,64 @@ internal sealed class AppPipeline
             pr.PhysicsStages,
             pr.GeometryContinuity,
             pr.PerformanceProfile,
-            pr.ChamberSizing);
+            pr.ChamberSizing,
+            auditMerged);
     }
+
+    private static ChamberDiameterAudit? MergeAutotuneIntoChamberAudit(
+        ChamberDiameterAudit? audit,
+        bool searchUsedDerivedBore,
+        bool finalPassAppliedDerivedBore,
+        bool searchAllowedDirectChamberOverride)
+    {
+        if (audit == null)
+            return null;
+        string? fn = audit.Footnote;
+        if (finalPassAppliedDerivedBore)
+        {
+            const string extra =
+                "Autotune: winning-seed bore was set from entrainment-derived model at GeometrySynthesisTargetEntrainmentRatio before the final SI+voxel pass (first-order; not CFD).";
+            fn = string.IsNullOrEmpty(fn) ? extra : fn + " " + extra;
+        }
+
+        return new ChamberDiameterAudit
+        {
+            InputDesignMm = audit.InputDesignMm,
+            AfterSynthesisMm = audit.AfterSynthesisMm,
+            PreSiSolveMm = audit.PreSiSolveMm,
+            PostFlowDrivenMm = audit.PostFlowDrivenMm,
+            UsedForVoxelBuildMm = audit.UsedForVoxelBuildMm,
+            DeclaredPrimarySource = audit.DeclaredPrimarySource,
+            AutotuneSearchUsedDerivedBoreSizing = searchUsedDerivedBore,
+            AutotuneAppliedDirectChamberScale = searchAllowedDirectChamberOverride,
+            ReferenceDerivedBoreAtConfiguredTargetErMm = audit.ReferenceDerivedBoreAtConfiguredTargetErMm,
+            Footnote = fn
+        };
+    }
+
+    private static NozzleDesignInputs WithSwirlChamberBoreMm(NozzleDesignInputs d, double swirlChamberDiameterMm) => new()
+    {
+        InletDiameterMm = d.InletDiameterMm,
+        SwirlChamberDiameterMm = swirlChamberDiameterMm,
+        SwirlChamberLengthMm = d.SwirlChamberLengthMm,
+        InjectorAxialPositionRatio = d.InjectorAxialPositionRatio,
+        TotalInjectorAreaMm2 = d.TotalInjectorAreaMm2,
+        InjectorCount = d.InjectorCount,
+        InjectorWidthMm = d.InjectorWidthMm,
+        InjectorHeightMm = d.InjectorHeightMm,
+        InjectorYawAngleDeg = d.InjectorYawAngleDeg,
+        InjectorPitchAngleDeg = d.InjectorPitchAngleDeg,
+        InjectorRollAngleDeg = d.InjectorRollAngleDeg,
+        ExpanderLengthMm = d.ExpanderLengthMm,
+        ExpanderHalfAngleDeg = d.ExpanderHalfAngleDeg,
+        ExitDiameterMm = d.ExitDiameterMm,
+        StatorVaneAngleDeg = d.StatorVaneAngleDeg,
+        StatorVaneCount = d.StatorVaneCount,
+        StatorHubDiameterMm = d.StatorHubDiameterMm,
+        StatorAxialLengthMm = d.StatorAxialLengthMm,
+        StatorBladeChordMm = d.StatorBladeChordMm,
+        WallThicknessMm = d.WallThicknessMm
+    };
 
     /// <summary>Viewer group order/colors must stay aligned with <see cref="NozzleViewerGroupCatalog"/> (audit log references same IDs).</summary>
     internal static void DisplayGeometryInViewer(NozzleGeometryResult geometry)

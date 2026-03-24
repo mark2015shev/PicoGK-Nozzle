@@ -39,7 +39,8 @@ internal static class Program
             : new(
                 source: K320Baseline.CreateSource(),
                 design: K320Baseline.CreateDesign(),
-                run: K320Baseline.CreateRun());
+                // Physics-informed + entrainment-derived bore so default `dotnet run` reflects sizing model (not hand 82 mm template).
+                run: K320Baseline.CreateRunPhysicsInformed());
 
         Library.Go(input.Run.VoxelSizeMM, () => Run(input));
     }

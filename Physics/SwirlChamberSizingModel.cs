@@ -26,7 +26,13 @@ public static class SwirlChamberSizingModel
         SynthesisHeuristic = 1,
 
         /// <summary>Continuity + injector-ratio + caps from <see cref="RunConfiguration.UseDerivedSwirlChamberDiameter"/>.</summary>
-        EntrainmentDerived = 2
+        EntrainmentDerived = 2,
+
+        /// <summary>
+        /// What-if audit: <see cref="ComputeDerived"/> at <see cref="RunConfiguration.GeometrySynthesisTargetEntrainmentRatio"/> on current seed
+        /// when this run did not re-synthesize (e.g. post-autotune final pass).
+        /// </summary>
+        ReferenceDerivedAtConfiguredTargetEr = 3
     }
 
     /// <summary>Immutable audit of the entrainment-derived sizing pass (and placeholders for other modes).</summary>
@@ -55,6 +61,17 @@ public static class SwirlChamberSizingModel
         public int AnnulusIterationsUsed { get; init; }
         public int InjectorConstraintIterations { get; init; }
 
+        /// <summary>After annulus continuity solve (before A_inj/A_bore preferred floor).</summary>
+        public double DiameterMmAfterContinuityAnnulus { get; init; }
+
+        /// <summary>After enforcing preferred A_inj/A_bore (may be larger than continuity-only).</summary>
+        public double DiameterMmAfterInjectorPreferredFloor { get; init; }
+
+        /// <summary>Before global [35,260] mm clamp and after vortex/port floors.</summary>
+        public double DiameterMmBeforeGlobalClamp { get; init; }
+
+        public bool WasReducedByMaxJetDiameterCap { get; init; }
+
         public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
 
         public string SummaryLine =>
@@ -63,6 +80,7 @@ public static class SwirlChamberSizingModel
                 DiameterMode.UserTemplate => "Chamber diameter: user / template (no synthesis).",
                 DiameterMode.SynthesisHeuristic => "Chamber diameter: synthesis heuristic (jet × swirl/ER scale; not entrainment-area derived).",
                 DiameterMode.EntrainmentDerived => $"Chamber diameter: entrainment-derived (ER={TargetEntrainmentRatio:F3}, D={ChamberDiameterTargetMm:F2} mm, A_inj/A_bore={InjectorToBoreAreaRatio:F3}).",
+                DiameterMode.ReferenceDerivedAtConfiguredTargetEr => $"Reference bore at configured target ER (audit): D={ChamberDiameterTargetMm:F2} mm — compare to actual seed bore in chamber-diameter trace.",
                 _ => "Chamber diameter: unknown mode."
             };
     }
@@ -115,7 +133,8 @@ public static class SwirlChamberSizingModel
         SourceInputs source,
         NozzleDesignInputs template,
         double targetEntrainmentRatio,
-        RunConfiguration run)
+        RunConfiguration run,
+        DiameterMode reportMode = DiameterMode.EntrainmentDerived)
     {
         var warnings = new List<string>(4);
         double mdotCore = Math.Max(source.MassFlowKgPerSec, 1e-9);
@@ -155,6 +174,8 @@ public static class SwirlChamberSizingModel
             dMm = SolveBoreDiameterMmForAnnulus(aFree, hubMm, phi);
         }
 
+        double dAfterContinuity = dMm;
+
         // Injector / bore area: increase D until A_inj/A_bore <= preferred (configurable).
         double pref = Math.Clamp(run.ChamberSizingInjToChamberPreferredMax, 0.35, 0.92);
         int injIters = 0;
@@ -170,6 +191,13 @@ public static class SwirlChamberSizingModel
             injIters++;
         }
 
+        double dAfterInjector = dMm;
+        if (dAfterInjector > dAfterContinuity + 0.15)
+        {
+            warnings.Add(
+                $"A_inj/A_bore preferred limit (≤{pref:F2}) enlarged bore vs continuity-only annulus solve: D_cont ≈ {dAfterContinuity:F2} mm → D_after_inj_floor ≈ {dAfterInjector:F2} mm (not CFD).");
+        }
+
         // Vortex / compactness: do not exceed max multiplier vs jet; optional floor from swirl.
         double yaw = template.InjectorYawAngleDeg;
         double pitch = template.InjectorPitchAngleDeg;
@@ -180,9 +208,12 @@ public static class SwirlChamberSizingModel
             yaw,
             pitch);
         double s = SwirlMath.InjectorSwirlNumber(vt, va);
+        double dBeforeCap = dMm;
         double dMax = dJetMm * Math.Max(run.DerivedChamberMaxDiameterMultiplierVsJet, 1.05);
+        bool cappedByMax = false;
         if (dMm > dMax)
         {
+            cappedByMax = true;
             warnings.Add(
                 $"Derived chamber diameter capped by DerivedChamberMaxDiameterMultiplierVsJet (D {dMm:F1} mm → {dMax:F1} mm). Entrainment target may not be achievable at stated V_axial without relaxing caps — validate in SI/CFD.");
             dMm = dMax;
@@ -194,9 +225,14 @@ public static class SwirlChamberSizingModel
         // Port lip: chamber must fit injectors (same as synthesis).
         const double injectorToBoreAreaMargin = 1.06;
         double dMinPorts = 2.0 * Math.Sqrt((aInjMm2 * injectorToBoreAreaMargin) / Math.PI);
+        if (dMm < dMinPorts - 1e-3)
+            warnings.Add($"Port lip / injector margin required D ≥ {dMinPorts:F2} mm (raised bore from {dMm:F2} mm).");
         dMm = Math.Max(dMm, dMinPorts);
 
+        double dBeforeGlobalClamp = dMm;
         dMm = Math.Clamp(dMm, 35.0, 260.0);
+        if (Math.Abs(dMm - dBeforeGlobalClamp) > 0.05)
+            warnings.Add($"Global bore clamp [35, 260] mm adjusted diameter from {dBeforeGlobalClamp:F2} mm to {dMm:F2} mm.");
 
         double aBoreFinalMm2 = Math.PI * 0.25 * dMm * dMm;
         double injRatio = aInjMm2 / Math.Max(aBoreFinalMm2, Eps);
@@ -210,7 +246,7 @@ public static class SwirlChamberSizingModel
 
         return new SizingDiagnostics
         {
-            Mode = DiameterMode.EntrainmentDerived,
+            Mode = reportMode,
             TargetEntrainmentRatio = er,
             MdotCoreKgS = mdotCore,
             MdotAmbientTargetKgS = mdotAmb,
@@ -226,6 +262,10 @@ public static class SwirlChamberSizingModel
             DerivedChamberMaxDiameterMm = dMax,
             AnnulusIterationsUsed = annulusIters,
             InjectorConstraintIterations = injIters,
+            DiameterMmAfterContinuityAnnulus = dAfterContinuity,
+            DiameterMmAfterInjectorPreferredFloor = dAfterInjector,
+            DiameterMmBeforeGlobalClamp = dBeforeGlobalClamp,
+            WasReducedByMaxJetDiameterCap = cappedByMax,
             Warnings = warnings
         };
     }
@@ -274,6 +314,10 @@ public static class SwirlChamberSizingModel
             DerivedChamberMaxDiameterMm = 0,
             AnnulusIterationsUsed = 0,
             InjectorConstraintIterations = 0,
+            DiameterMmAfterContinuityAnnulus = 0,
+            DiameterMmAfterInjectorPreferredFloor = 0,
+            DiameterMmBeforeGlobalClamp = chamberDiameterMm,
+            WasReducedByMaxJetDiameterCap = false,
             Warnings = Array.Empty<string>()
         };
     }
@@ -300,6 +344,10 @@ public static class SwirlChamberSizingModel
             DerivedChamberMaxDiameterMm = 0,
             AnnulusIterationsUsed = 0,
             InjectorConstraintIterations = 0,
+            DiameterMmAfterContinuityAnnulus = 0,
+            DiameterMmAfterInjectorPreferredFloor = 0,
+            DiameterMmBeforeGlobalClamp = d,
+            WasReducedByMaxJetDiameterCap = false,
             Warnings = Array.Empty<string>()
         };
     }
