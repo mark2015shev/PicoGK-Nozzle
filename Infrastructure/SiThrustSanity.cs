@@ -70,22 +70,30 @@ internal static class SiThrustSanity
 
         bool trip = false;
 
-        if (chamberStaticNearInjectorPa > MaxChamberAbsoluteStaticPressurePa
+        if (!double.IsFinite(chamberStaticNearInjectorPa)
+            || chamberStaticNearInjectorPa > MaxChamberAbsoluteStaticPressurePa
             || marchInletAssignedStaticPa > MaxChamberAbsoluteStaticPressurePa)
         {
             chamberPressureHardAssertionTripped = true;
             trip = true;
             Emit(
-                "SI HARD ASSERT: chamber / march inlet static > 10 bar abs — " +
-                $"P_near_injector={chamberStaticNearInjectorPa:G9} Pa, march_inlet_assigned={marchInletAssignedStaticPa:G9} Pa");
+                !double.IsFinite(chamberStaticNearInjectorPa)
+                    ? $"SI HARD ASSERT: chamber near-injector P non-finite — march_inlet_assigned={marchInletAssignedStaticPa:G9} Pa"
+                    : "SI HARD ASSERT: chamber / march inlet static > 10 bar abs — " +
+                      $"P_near_injector={chamberStaticNearInjectorPa:G9} Pa, march_inlet_assigned={marchInletAssignedStaticPa:G9} Pa");
             thrustCvValid = false;
-            thrustInvalidReason = Append(thrustInvalidReason, "Chamber or march inlet static P > 10 bar abs (invalid for this SI path).");
+            thrustInvalidReason = Append(
+                thrustInvalidReason,
+                !double.IsFinite(chamberStaticNearInjectorPa)
+                    ? "Chamber near-injector static P is non-finite (invalid march diagnostic)."
+                    : "Chamber or march inlet static P > 10 bar abs (invalid for this SI path).");
             netThrustN = 0.0;
         }
 
-        // Huge pressure thrust with low-speed, low-mdot mixed jet — march static is not credible as exit P for thrust.
+        // Huge pressure thrust with low-speed, low-mdot mixed jet — catches bogus march static (e.g. tens–hundreds of kN);
+        // first-order capped chamber P can still yield multi-kN exit-plane pressure thrust without tripping this.
         bool pressureDominatesLowMomentum =
-            Math.Abs(fP) > 250.0
+            Math.Abs(fP) > 50_000.0
             && Math.Abs(fMom) < 500.0
             && mdotExitKgS < 5.0
             && Math.Abs(vExitMps) < 25.0;

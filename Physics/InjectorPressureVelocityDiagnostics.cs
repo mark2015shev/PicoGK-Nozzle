@@ -5,8 +5,8 @@ using PicoGK_Run.Core;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// First-order injector / chamber pressure bookkeeping for reporting only — not CFD.
-/// Explicitly separates upstream total pressure (supply) from post-injector / mixed-stream static estimates.
+/// Injector / chamber pressure bookkeeping for reporting (ideal-gas injector exit static; march-coupled chamber P).
+/// Not CFD — mixing, turbulence, and 3D secondary flows are not resolved.
 /// </summary>
 public sealed class InjectorPressureVelocityDiagnostics
 {
@@ -39,8 +39,8 @@ public sealed class InjectorPressureVelocityDiagnostics
     public double InjectorTotalPressureLossModelPa { get; init; }
 
     /// <summary>
-    /// Incompressible-style estimate: P₀ − 0.5ρ(Va²+Vt²) − Δp_loss from <see cref="InjectorLossModel"/> [Pa].
-    /// Clamped; not isentropic-compressible exact.
+    /// Ideal-gas static pressure at effective |V| = √(Va²+Vt²): T = T₀ − V²/(2cₚ), P = P₀′(T/T₀)^(γ/(γ−1))
+    /// with P₀′ = P₀_upstream − Δp₀(<see cref="InjectorLossModel"/>). Same γ, cₚ as <see cref="GasProperties"/> / march.
     /// </summary>
     public double InjectorExitStaticPressureFirstOrderPa { get; init; }
 
@@ -66,6 +66,8 @@ public sealed class InjectorPressureVelocityDiagnostics
 
     public static InjectorPressureVelocityDiagnostics Compute(
         SourceInputs source,
+        GasProperties gas,
+        double injectorTotalTemperatureK,
         double ambientStaticPressurePa,
         double injectorUpstreamTotalPressurePa,
         double jetSourceReferenceStaticPressurePa,
@@ -76,6 +78,7 @@ public sealed class InjectorPressureVelocityDiagnostics
         double vtEffectiveMps,
         double injectorYawDeg,
         IReadOnlyList<FlowMarchStepResult> marchSteps,
+        IReadOnlyList<FlowStepState>? physicsMarchSteps,
         double chamberLengthM,
         double injectorAxialPositionRatio,
         RadialVortexPressureResult radialChamber,
@@ -94,9 +97,17 @@ public sealed class InjectorPressureVelocityDiagnostics
         InjectorLossResult loss = InjectorLossModel.Compute(rho, vRaw, injectorYawDeg);
         double dPLoss = loss.EstimatedTotalPressureLossPa;
 
-        // First-order: stagnation budget minus kinetic head of the injected vector minus modeled Δp₀ loss.
-        double pExit = injectorUpstreamTotalPressurePa - qComponents - dPLoss;
-        pExit = Math.Clamp(pExit, 50.0, injectorUpstreamTotalPressurePa);
+        double vMagEff = Math.Sqrt(Math.Max(0.0, va * va + vt * vt));
+        double p0AfterLoss = Math.Max(injectorUpstreamTotalPressurePa - dPLoss, 1.0);
+        double t0 = Math.Max(injectorTotalTemperatureK, 1.0);
+        (double pExit, _) = CompressibleFlowMath.StaticPressureTemperatureFromTotalStagnationAndSpeed(
+            gas,
+            p0AfterLoss,
+            t0,
+            vMagEff);
+        pExit = SiPressureGuards.ClampStaticPressurePa(pExit);
+        if (pExit > injectorUpstreamTotalPressurePa)
+            pExit = injectorUpstreamTotalPressurePa;
 
         string prDef =
             "SourceInputs.PressureRatio [-] is used as: P0_jet_upstream_total ≈ max(P_ambient_static × PressureRatio, P_ambient + 1 Pa). " +
@@ -104,14 +115,42 @@ public sealed class InjectorPressureVelocityDiagnostics
             "JetSource.StaticPressurePa is currently set to ambient static for the isentropic source helper (see JetSourceReferenceStaticPressurePa).";
 
         string pExitNote =
-            "InjectorExitStaticPressureFirstOrderPa ≈ P0_upstream − 0.5·ρ·(Va_eff²+Vt_eff²) − InjectorLossModel.EstimatedTotalPressureLossPa, clamped. " +
-            "Incompressible Bernoulli form; compressibility, real combustor static, and secondary flows are not resolved — not CFD.";
+            "Injector exit P_static: ideal gas, adiabatic energy T=T₀−V²/(2cₚ) and isentropic P=P₀′(T/T₀)^(γ/(γ−1)), " +
+            "P₀′ = P0_upstream − InjectorLossModel.EstimatedTotalPressureLossPa, V = |V_eff|, T₀ = jet source total temperature. " +
+            "Uniform inviscid core; mixing, secondary flows, and real combustor physics are not resolved — not CFD.";
 
         double ratio = Math.Clamp(injectorAxialPositionRatio, 0.0, 1.0);
         double xTargetM = ratio * chamberLengthM;
         double pNearInj = marchInletAssignedStaticPressurePa;
         string nearNote = "Fallback: march inlet assigned static (no steps).";
-        if (marchSteps != null && marchSteps.Count > 0)
+        IReadOnlyList<FlowStepState>? phys = physicsMarchSteps;
+        if (phys != null && phys.Count > 0)
+        {
+            FlowStepState bestP = phys[0];
+            double bestAbsP = double.MaxValue;
+            foreach (FlowStepState s in phys)
+            {
+                double d = Math.Abs(s.X - xTargetM);
+                if (d < bestAbsP)
+                {
+                    bestAbsP = d;
+                    bestP = s;
+                }
+            }
+
+            pNearInj = bestP.PStaticPa;
+            nearNote =
+                $"Solved P_static from march FlowStepState at x≈{bestP.X:F4} m (nearest to injector ratio×L_ch={xTargetM:F4} m); same SI closure as live march.";
+            const double pAbsReasonableMaxPaP = 5_000_000.0;
+            const double pAbsReasonableMinPaP = 20.0;
+            if (!double.IsFinite(pNearInj) || pNearInj < pAbsReasonableMinPaP || pNearInj > pAbsReasonableMaxPaP)
+            {
+                pNearInj = double.NaN;
+                nearNote =
+                    "INVALID: nearest march FlowStepState P_static is non-finite or outside [20 Pa, 5 MPa] — not replaced with a plausible clamp.";
+            }
+        }
+        else if (marchSteps != null && marchSteps.Count > 0)
         {
             FlowMarchStepResult best = marchSteps[0];
             double bestAbs = double.MaxValue;
@@ -128,6 +167,14 @@ public sealed class InjectorPressureVelocityDiagnostics
             pNearInj = best.MixedStaticPressurePa;
             nearNote =
                 $"Mixed-stream static from march step at x≈{best.AxialPositionM:F4} m (nearest to injector ratio×L_ch={xTargetM:F4} m); uniform annulus model.";
+            const double pAbsReasonableMaxPa = 5_000_000.0;
+            const double pAbsReasonableMinPa = 20.0;
+            if (!double.IsFinite(pNearInj) || pNearInj < pAbsReasonableMinPa || pNearInj > pAbsReasonableMaxPa)
+            {
+                pNearInj = double.NaN;
+                nearNote =
+                    "INVALID: nearest march MixedStaticPressurePa is non-finite or outside [20 Pa, 5 MPa] — not replaced with a plausible clamp.";
+            }
         }
 
         double coreDrop = Math.Max(0.0, radialChamber.CorePressureDropPa);
@@ -136,7 +183,7 @@ public sealed class InjectorPressureVelocityDiagnostics
 
         string formulas =
             "q_raw = 0.5·ρ·V_raw²; q_eff_scalar = 0.5·ρ·V_eff²; q_components = 0.5·ρ·(Va²+Vt²). " +
-            "P_exit_static (first-order) = P0_upstream − q_components − Δp_loss (InjectorLossModel). " +
+            "P_exit_static: CompressibleFlowMath.StaticPressureTemperatureFromTotalStagnationAndSpeed(P₀′, T₀, |V_eff|). " +
             "P_core ≈ P_ambient − CorePressureDropPa (radial vortex model). Not CFD.";
 
         return new InjectorPressureVelocityDiagnostics
@@ -149,7 +196,7 @@ public sealed class InjectorPressureVelocityDiagnostics
             InjectorJetVelocityEffectiveMps = injectorJetVelocityEffectiveMps,
             InjectorVaEffectiveMps = va,
             InjectorVtEffectiveMps = vt,
-            InjectorVelocityMagnitudeEffectiveMps = Math.Sqrt(Math.Max(0.0, va * va + vt * vt)),
+            InjectorVelocityMagnitudeEffectiveMps = vMagEff,
             InjectorDynamicPressureRawPa = qRaw,
             InjectorDynamicPressureEffectiveScalarPa = qEffScalar,
             InjectorDynamicPressureFromComponentsPa = qComponents,

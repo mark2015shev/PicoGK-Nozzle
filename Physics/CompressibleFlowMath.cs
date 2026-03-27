@@ -98,4 +98,28 @@ public static class CompressibleFlowMath
         double inner = 2.0 / (gamma - 1.0) * (1.0 / r - 1.0);
         return inner > 0 ? Math.Sqrt(inner) : 0.0;
     }
+
+    /// <summary>
+    /// Ideal calorically perfect gas, adiabatic: T = T₀ − V²/(2 cₚ), then isentropic P = P₀ (T/T₀)^(γ/(γ−1)).
+    /// Use when P₀ is the total pressure referenced at the same T₀ (e.g. after applying a modeled Δp₀ loss as a decrement to P₀ only).
+    /// Does not resolve boundary layers, mixing, or real-gas effects.
+    /// </summary>
+    public static (double StaticPressurePa, double StaticTemperatureK) StaticPressureTemperatureFromTotalStagnationAndSpeed(
+        GasProperties gas,
+        double totalPressurePa,
+        double totalTemperatureK,
+        double velocityMagnitudeMps)
+    {
+        double g = GasProperties.Gamma;
+        double cp = gas.SpecificHeatCp;
+        double p0 = Math.Max(totalPressurePa, 1.0);
+        double t0 = Math.Max(totalTemperatureK, 1.0);
+        double v = Math.Max(0.0, velocityMagnitudeMps);
+        double t = t0 - v * v / (2.0 * Math.Max(cp, 1e-6));
+        if (t < 1.0)
+            t = 1.0;
+        double p = p0 * Math.Pow(t / t0, g / (g - 1.0));
+        p = Math.Max(p, 1.0);
+        return (p, t);
+    }
 }

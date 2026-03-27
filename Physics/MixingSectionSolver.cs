@@ -31,7 +31,10 @@ public sealed class MixingSectionSolver
         return AxialMomentumFluxRateKgMps(m1, primaryVelocityMps, m2, ambientVelocityMps) / sum;
     }
 
-    /// <summary>ġ_θ = ṁ₁ v_θ1 + ṁ₂ v_θ2; V_θ,mix = ġ_θ / (ṁ₁ + ṁ₂).</summary>
+    /// <summary>
+    /// Mass-flux–weighted V_θ (legacy helper). The compressible chamber march uses explicit angular-momentum flux
+    /// in <see cref="FlowMarcher.SolveDetailed"/> instead of this closure.
+    /// </summary>
     public double ComputeMixedTangentialVelocity(
         double stream1MassFlowKgS,
         double stream1TangentialMps,

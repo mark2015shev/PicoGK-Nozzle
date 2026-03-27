@@ -74,6 +74,22 @@ public static class ChamberPhysicsCoefficients
     /// <summary>Upper clamp on entrainment mass-demand multiplier passed into <see cref="FlowMarcher"/> [-].</summary>
     public static double EntrainmentMassDemandBoostClampMax { get; set; } = 4.0;
 
+    // --- Chamber march: first-order total-pressure losses (see ChamberMarchLossModel) ---
+    /// <summary>Ė_mix loss ∝ (Δṁ/ṁ) · q̄ applied to P₀ [-].</summary>
+    public static double MarchMixingDp0OverDynamicHead { get; set; } = 0.42;
+
+    /// <summary>Wall / wetted-duct loss ∝ (Δx/D_h)·q̄ on P₀ [-].</summary>
+    public static double MarchWallDp0OverDynamicHeadPerDxOverD { get; set; } = 0.18;
+
+    /// <summary>Swirl-decay irreversibility ∝ (1−decay)·q_θ on P₀ [-].</summary>
+    public static double MarchSwirlDecayDp0OverSwirlDynamicHead { get; set; } = 0.22;
+
+    /// <summary>
+    /// Explicit first-order ceiling on mixed static P in the chamber march: P ≤ this factor × P_ambient (cold-side receiver bound).
+    /// Prevents isentropic closure from pinning against <see cref="SiPressureGuards.MaxStaticPressurePa"/> when T₀ from the hot primary is large.
+    /// </summary>
+    public static double MarchMixedStaticPressureMaxTimesAmbient { get; set; } = 9.2;
+
     /// <summary>Scales incidence term in η_stator,eff = η_base·clamp(1 − w_i·K_inc − w_t·K_turn, …).</summary>
     public static double StatorCouplingKIncidenceWeight { get; set; } = 1.0;
 

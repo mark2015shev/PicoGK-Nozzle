@@ -41,9 +41,11 @@ public static class RadialVortexPressureModel
         double capPa)
     {
         double rho = Math.Max(densityKgM3, 1e-6);
-        double rWall = Math.Max(chamberRadiusM, 1e-5);
+        double rWall = Math.Max(chamberRadiusM, 1e-4);
         double fCore = Math.Clamp(coreRadiusFraction, 0.08, 0.45);
-        double rCore = Math.Max(rWall * fCore, 1e-5);
+        double rCoreGeom = rWall * fCore;
+        double rCoreMin = Math.Max(5e-4, 0.02 * rWall);
+        double rCore = Math.Max(rCoreGeom, rCoreMin);
 
         double vtRef = Math.Min(Math.Abs(representativeTangentialVelocityMps), 420.0);
         double gamma = Math.Max(vtRef * rWall, 1e-8);

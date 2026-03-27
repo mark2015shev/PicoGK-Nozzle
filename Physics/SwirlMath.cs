@@ -66,5 +66,24 @@ public static class SwirlMath
         return angularMomentumFluxKgM2PerS2 / (r * axialMomentumFluxKgM2PerS2);
     }
 
+    /// <summary>Bulk angular-momentum flux Ġ_θ = ṁ · R_ref · V_θ,bulk [kg·m²/s²].</summary>
+    public static double AngularMomentumFluxFromBulk(double massFlowKgS, double referenceRadiusM, double bulkTangentialVelocityMps)
+    {
+        double md = Math.Max(massFlowKgS, 0.0);
+        double r = Math.Max(Math.Abs(referenceRadiusM), 1e-12);
+        return md * r * bulkTangentialVelocityMps;
+    }
+
+    /// <summary>V_θ,bulk = Ġ_θ / (ṁ · R_ref).</summary>
+    public static double BulkTangentialVelocityFromAngularMomentumFlux(
+        double angularMomentumFluxKgM2PerS2,
+        double massFlowKgS,
+        double referenceRadiusM)
+    {
+        double md = Math.Max(massFlowKgS, 1e-18);
+        double r = Math.Max(Math.Abs(referenceRadiusM), 1e-12);
+        return angularMomentumFluxKgM2PerS2 / (md * r);
+    }
+
     private static double DegreesToRad(double deg) => deg * (Math.PI / 180.0);
 }

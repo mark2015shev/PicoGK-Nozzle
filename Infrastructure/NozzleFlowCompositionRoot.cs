@@ -587,6 +587,8 @@ public static class NozzleFlowCompositionRoot
 
         InjectorPressureVelocityDiagnostics injectorPressureVelocity = InjectorPressureVelocityDiagnostics.Compute(
             source,
+            gas,
+            tTotal,
             ambient.PressurePa,
             pTotal,
             pStaticJet,
@@ -597,6 +599,7 @@ public static class NozzleFlowCompositionRoot
             vt0,
             yawPhysicsDeg,
             steps,
+            detailed.StepPhysicsStates,
             sectionLengthM,
             activeDesign.InjectorAxialPositionRatio,
             chamber.RadialPressure,
