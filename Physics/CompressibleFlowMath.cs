@@ -75,4 +75,27 @@ public static class CompressibleFlowMath
         double rho = gas.Density(p, t);
         return rho * v * areaM2;
     }
+
+    /// <summary>T₀ = T + V²/(2 cₚ).</summary>
+    public static double TotalTemperatureFromStatic(double staticTemperatureK, double velocityMps, double cp)
+    {
+        double t = Math.Max(staticTemperatureK, 1.0);
+        return t + velocityMps * velocityMps / (2.0 * Math.Max(cp, 1e-6));
+    }
+
+    /// <summary>P₀/P from Mach (isentropic).</summary>
+    public static double TotalPressureRatioFromMach(double mach, double gamma)
+    {
+        double m2 = mach * mach;
+        double inner = 1.0 + (gamma - 1.0) / 2.0 * m2;
+        return Math.Pow(inner, gamma / (gamma - 1.0));
+    }
+
+    /// <summary>Subsonic M from T/T₀: M = √[2/(γ−1)·(T₀/T − 1)].</summary>
+    public static double MachFromStaticTotalTemperatureRatio(double tStaticOverTotal, double gamma)
+    {
+        double r = Math.Clamp(tStaticOverTotal, 1e-6, 1.0);
+        double inner = 2.0 / (gamma - 1.0) * (1.0 / r - 1.0);
+        return inner > 0 ? Math.Sqrt(inner) : 0.0;
+    }
 }

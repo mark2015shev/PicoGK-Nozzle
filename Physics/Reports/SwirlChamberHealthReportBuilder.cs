@@ -24,12 +24,13 @@ public static class SwirlChamberHealthReportBuilder
         double mixedMdotChamberEndKgS,
         double expanderEntryVaMps,
         double expanderEntryVtMps,
-        double statorSwirlNumber,
+        double statorSwirlCorrelation,
         double exitVaMps,
         double thrustN,
         double etaStatorEff,
         double statorDpPa,
-        double pCoreEstPa)
+        double pCoreEstPa,
+        double? physicsInjectorYawDegrees = null)
     {
         double aBore = SwirlChamberMarchGeometry.ChamberBoreAreaMm2(design.SwirlChamberDiameterMm);
         double aInlet = SwirlChamberMarchGeometry.InletCaptureAreaMm2(design.InletDiameterMm);
@@ -70,7 +71,7 @@ public static class SwirlChamberHealthReportBuilder
         if (design.ExpanderHalfAngleDeg > 10.5)
             warns.Add("Expander cone half-angle is fairly aggressive for rotating flow — separation risk may trim effective recovery.");
 
-        if (statorSwirlNumber > 6.0 && etaStatorEff < 0.15)
+        if (statorSwirlCorrelation > 6.0 && etaStatorEff < 0.15)
             warns.Add("Stator is receiving strongly swirl-dominated flow but effective η is very low — incidence/turning model may be over-penalizing; inspect stator coupling and recovery caps.");
 
         if (sumActualEntrainmentKgS < 0.08 * Math.Max(mixedMdotChamberEndKgS, 1e-6))
@@ -93,7 +94,7 @@ public static class SwirlChamberHealthReportBuilder
             ExpanderLengthMm = design.ExpanderLengthMm,
             InjectorAxialVelocityMps = injector.AxialVelocityMps,
             InjectorTangentialVelocityMps = injector.TangentialVelocityMps,
-            InjectorYawAngleDeg = design.InjectorYawAngleDeg,
+            InjectorYawAngleDeg = physicsInjectorYawDegrees ?? design.InjectorYawAngleDeg,
             EstimatedCoreStaticPressurePa = pCoreEstPa,
             AmbientStaticPressurePa = ambient.PressurePa,
             AmbientInflowPotentialKgS = pot,
@@ -101,7 +102,7 @@ public static class SwirlChamberHealthReportBuilder
             MixedMassFlowAtChamberEndKgS = mixedMdotChamberEndKgS,
             ExpanderEntryAxialVelocityMps = expanderEntryVaMps,
             ExpanderEntryTangentialVelocityMps = expanderEntryVtMps,
-            StatorEntrySwirlNumberVtOverVa = statorSwirlNumber,
+            StatorEntrySwirlNumberVtOverVa = statorSwirlCorrelation,
             ExitAxialVelocityMps = exitVaMps,
             ThrustEstimateN = thrustN,
             StatorEffectiveEtaUsed = etaStatorEff,

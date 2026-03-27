@@ -8,6 +8,10 @@ public sealed class FlowMarchDetailedResult
     public IReadOnlyList<JetState> FlowStates { get; init; } = System.Array.Empty<JetState>();
     public IReadOnlyList<FlowMarchStepResult> StepResults { get; init; } = System.Array.Empty<FlowMarchStepResult>();
 
+    public IReadOnlyList<FlowStepState> StepPhysicsStates { get; init; } = System.Array.Empty<FlowStepState>();
+
+    public MarchClosureResult? MarchClosure { get; init; }
+
     /// <summary>Tangential velocity at end of mixing march (before stator in composition root).</summary>
     public double FinalTangentialVelocityMps { get; init; }
 

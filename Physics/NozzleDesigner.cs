@@ -8,8 +8,6 @@ namespace PicoGK_Run.Physics;
 /// </summary>
 public sealed class NozzleDesigner
 {
-    private readonly ThrustCalculator _thrust = new();
-
     public NozzleDesignResult CreateDesignResult(
         JetState inletState,
         IReadOnlyList<JetState> flowStates,
@@ -26,7 +24,7 @@ public sealed class NozzleDesigner
 
         double thrustN = siDiagnostics != null
             ? siDiagnostics.NetThrustN
-            : _thrust.ComputeThrustN(
+            : ThrustCalculator.ComputeStreamThrustN(
                 outlet.TotalMassFlowKgS,
                 outlet.VelocityMps,
                 freestreamVelocityMps,

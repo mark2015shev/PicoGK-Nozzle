@@ -12,16 +12,15 @@ public sealed class EntrainmentModel
     public double Coefficient { get; set; } = 0.07;
 
     /// <summary>
-    /// Ce = Ce_base · f(S) · f(L/D) · f(Re), with f ≥ 1 mild boosts from swirl / slenderness / Re.
-    /// S = |V_t|/|V_a| (mixed stream estimate for the step).
+    /// Ce = Ce_base · f(S) · f(L/D) · f(Re). Use flux swirl S = Ġ_θ/(R ṁ V_ax); legacy |V_t|/|V_a| is not recommended.
     /// </summary>
     public double ComputeCoefficient(
-        double swirlNumberAbs,
+        double swirlCorrelationInput,
         double chamberLdRatio,
         double reynoldsApprox,
         bool useReynoldsFactor)
     {
-        double s = Math.Max(Math.Abs(swirlNumberAbs), 0.0);
+        double s = Math.Clamp(Math.Abs(swirlCorrelationInput), 0.0, 25.0);
         double ld = Math.Max(chamberLdRatio, 0.0);
         double fS = 1.0
             + ChamberPhysicsCoefficients.EntrainmentSwirlGainK

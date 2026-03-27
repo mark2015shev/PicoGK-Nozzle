@@ -213,6 +213,7 @@ public static class NozzleFlowCompositionRoot
         RunConfiguration? runConfiguration = null)
     {
         RunConfiguration run = runConfiguration ?? new RunConfiguration();
+        double yawPhysicsDeg = run.LockInjectorYawTo90Degrees ? 90.0 : activeDesign.InjectorYawAngleDeg;
         var gas = new GasProperties();
         var ambient = new AmbientAir(
             gas,
@@ -246,12 +247,12 @@ public static class NozzleFlowCompositionRoot
         double rhoCore = rawInlet.DensityKgM3;
         double areaDriver = vCore * (sourceAreaMm2 / injectorAreaMm2);
         double continuityCheck = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
-        double injectorJetVelocityRaw = NozzlePhysicsSolver.InjectorJetVelocityDriverBlend * areaDriver
-            + (1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend) * continuityCheck;
+        double bBlend = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
+        double injectorJetVelocityRaw = bBlend * areaDriver + (1.0 - bBlend) * continuityCheck;
 
         var (vtRaw, vaRaw) = SwirlMath.ResolveInjectorComponents(
             injectorJetVelocityRaw,
-            activeDesign.InjectorYawAngleDeg,
+            yawPhysicsDeg,
             activeDesign.InjectorPitchAngleDeg);
 
         // Stage 1 — pressure-driven discharge (authoritative ṁ); yaw/pitch decomposition on effective |V|.
@@ -259,7 +260,8 @@ public static class NozzleFlowCompositionRoot
             source,
             activeDesign,
             rhoCore,
-            ambient.PressurePa);
+            ambient.PressurePa,
+            injectorYawAngleDegOverride: yawPhysicsDeg);
 
         double va0 = injectorDischarge.AxialVelocityMps;
         double vt0 = injectorDischarge.TangentialVelocityMps;
@@ -347,6 +349,7 @@ public static class NozzleFlowCompositionRoot
         double chamberDM = activeDesign.SwirlChamberDiameterMm * 1e-3;
         double swirlDecayPerStep = SwirlDecayModel.DecayPerStepFromK(kTotal, sectionLengthM, chamberDM, DefaultMarchSteps);
 
+        double rSwirlMomM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
         FlowMarchDetailedResult detailed = marcher.SolveDetailed(
             inletState,
             sectionLengthM,
@@ -359,7 +362,8 @@ public static class NozzleFlowCompositionRoot
             entrainmentMassDemandMultiplier: entrainmentBoost,
             chamberLdRatio: ldRatio,
             chamberDiameterMm: activeDesign.SwirlChamberDiameterMm,
-            useReynoldsOnEntrainmentCe: run.UseReynoldsEntrainmentFactor);
+            useReynoldsOnEntrainmentCe: run.UseReynoldsEntrainmentFactor,
+            swirlMomentRadiusM: rSwirlMomM);
 
         SwirlChamberMarchDiagnostics chamberMarchDiag = BuildSwirlChamberMarchDiagnostics(
             activeDesign,
@@ -427,8 +431,10 @@ public static class NozzleFlowCompositionRoot
             lastMarch.VelocityMps,
             statorOut.AxialVelocityGainMps);
 
-        // Swirling diffuser / expander: scale wall ΔP by recovery model (same inputs as chamber pipeline).
-        double injectorSwirlSimple = Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6);
+        // Swirling diffuser / expander: correlation uses flux swirl from final march state when available.
+        double swirlCorrExpander = detailed.StepPhysicsStates.Count > 0
+            ? detailed.StepPhysicsStates[^1].SwirlNumberFlux
+            : Math.Abs(vt0) / Math.Max(Math.Abs(va0), 1e-6);
         var diffuserCoupling = SwirlDiffuserRecoveryModel.Compute(
             activeDesign.ExpanderHalfAngleDeg,
             activeDesign.ExpanderLengthMm,
@@ -436,7 +442,7 @@ public static class NozzleFlowCompositionRoot
             activeDesign.ExitDiameterMm,
             Math.Max(lastMarch.DensityKgM3, 1e-6),
             lastMarch.VelocityMps,
-            injectorSwirlSimple,
+            swirlCorrExpander,
             detailed.FinalTangentialVelocityMps);
 
         double diffuserRecoveryMult = Math.Clamp(
@@ -523,16 +529,22 @@ public static class NozzleFlowCompositionRoot
         double inletPressureForceN = steps.Sum(s => s.PressureForceN);
         double minInletP = steps.Count > 0 ? steps.Min(s => s.InletLocalPressurePa) : ambient.PressurePa;
         double maxInletMach = steps.Count > 0 ? steps.Max(s => s.InletMach) : 0.0;
-        bool anyChoked = steps.Any(s => s.InletIsChoked);
+        bool anyChoked = steps.Any(s => s.InletIsChoked)
+            || (detailed.MarchClosure?.AnyEntrainmentChoked ?? false);
         double sumReq = steps.Sum(s => s.RequestedDeltaEntrainedMassFlowKgS);
         double sumAct = steps.Sum(s => s.DeltaEntrainedMassFlowKgS);
         double shortfall = Math.Max(0.0, sumReq - sumAct);
 
         double mdotExit = finalOutlet.TotalMassFlowKgS;
-        double fMom = mdotExit * (finalOutlet.VelocityMps - ambient.VelocityMps);
-        double fExitPlane = (finalOutlet.PressurePa - ambient.PressurePa) * finalOutlet.AreaM2;
-        double fPressureTotal = fExitPlane + inletPressureForceN + expanderForceN;
-        double fNet = fMom + fPressureTotal;
+        (double fMom, double fPressureTotal, double fNet) = ThrustCalculator.NetThrustBreakdown(
+            mdotExit,
+            finalOutlet.VelocityMps,
+            ambient.VelocityMps,
+            finalOutlet.PressurePa,
+            ambient.PressurePa,
+            finalOutlet.AreaM2,
+            inletPressureForceN,
+            expanderForceN);
 
         double solvedEr = coreMdot > 1e-12
             ? Math.Max(0.0, (lastMarch.TotalMassFlowKgS - coreMdot) / coreMdot)
@@ -572,15 +584,15 @@ public static class NozzleFlowCompositionRoot
             injectorJetVelocityEffective,
             va0,
             vt0,
-            activeDesign.InjectorYawAngleDeg,
+            yawPhysicsDeg,
             steps,
             sectionLengthM,
             activeDesign.InjectorAxialPositionRatio,
             chamber.RadialPressure,
             inletState.PressurePa);
 
-        double statorEntrySwirlNumber = Math.Abs(detailed.FinalTangentialVelocityMps)
-            / Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6);
+        double statorEntrySwirlCorrelation = detailed.MarchClosure?.FinalFluxSwirlNumber
+            ?? (Math.Abs(detailed.FinalTangentialVelocityMps) / Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6));
         SwirlChamberHealthReport swirlChamberHealth = SwirlChamberHealthReportBuilder.Build(
             activeDesign,
             ambient,
@@ -591,16 +603,19 @@ public static class NozzleFlowCompositionRoot
             lastMarch.TotalMassFlowKgS,
             lastMarch.VelocityMps,
             detailed.FinalTangentialVelocityMps,
-            statorEntrySwirlNumber,
+            statorEntrySwirlCorrelation,
             vaAfterStator,
             fNet,
             etaStatorEff,
             statorOut.RecoveredPressureRisePa,
-            pCoreEstimatedPa);
+            pCoreEstimatedPa,
+            physicsInjectorYawDegrees: yawPhysicsDeg);
 
         var siDiag = new SiFlowDiagnostics
         {
             MarchSteps = steps,
+            PhysicsStepStates = detailed.StepPhysicsStates,
+            MarchPhysicsClosure = detailed.MarchClosure,
             MinInletLocalStaticPressurePa = minInletP,
             MaxInletMach = maxInletMach,
             AnyEntrainmentStepChoked = anyChoked,

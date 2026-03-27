@@ -39,5 +39,19 @@ public static class SwirlMath
         return Math.Abs(tangentialVelocityMps) / Math.Max(Math.Abs(axialVelocityMps), 1e-6);
     }
 
+    /// <summary>
+    /// S = Ġ_θ / (R · Ġ_x); Ġ_θ = ṁ r V_θ (bulk) [kg·m²/s²], Ġ_x = ṁ V_ax [kg·m²/s²], R [m].
+    /// </summary>
+    public static double FluxSwirlNumber(
+        double angularMomentumFluxKgM2PerS2,
+        double axialMomentumFluxKgM2PerS2,
+        double referenceRadiusM)
+    {
+        double r = Math.Max(Math.Abs(referenceRadiusM), 1e-12);
+        if (Math.Abs(axialMomentumFluxKgM2PerS2) < 1e-18)
+            return 0.0;
+        return angularMomentumFluxKgM2PerS2 / (r * axialMomentumFluxKgM2PerS2);
+    }
+
     private static double DegreesToRad(double deg) => deg * (Math.PI / 180.0);
 }

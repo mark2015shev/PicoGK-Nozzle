@@ -16,8 +16,13 @@ public static class InjectorDischargeSolver
         SourceInputs source,
         NozzleDesignInputs design,
         double gasDensityKgM3,
-        double chamberReferenceStaticPressurePa)
+        double chamberReferenceStaticPressurePa,
+        double? injectorYawAngleDegOverride = null,
+        double? injectorPitchAngleDegOverride = null)
     {
+        double yawDeg = injectorYawAngleDegOverride ?? design.InjectorYawAngleDeg;
+        double pitchDeg = injectorPitchAngleDegOverride ?? design.InjectorPitchAngleDeg;
+
         double rho = Math.Max(gasDensityKgM3, 1e-9);
         double aInj = Math.Max(design.TotalInjectorAreaMm2 * 1e-6, 1e-12);
         double pCh = Math.Max(chamberReferenceStaticPressurePa, 1.0);
@@ -40,11 +45,11 @@ public static class InjectorDischargeSolver
             : VelocityMath.FromMassFlow(mdotAuth, source.AmbientDensityKgPerM3, sourceAreaM2);
         double areaDriver = vCore * (source.SourceOutletAreaMm2 / Math.Max(design.TotalInjectorAreaMm2, 1e-9));
         double continuityCheck = mdotAuth / (rho * aInj);
-        double legacyBlend = NozzlePhysicsSolver.InjectorJetVelocityDriverBlend * areaDriver
-            + (1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend) * continuityCheck;
+        double b = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
+        double legacyBlend = b * areaDriver + (1.0 - b) * continuityCheck;
 
-        double vEff = InjectorLossModel.EffectiveJetVelocityMps(vCont, rho, design.InjectorYawAngleDeg);
-        var (vt, va) = SwirlMath.ResolveInjectorComponents(vEff, design.InjectorYawAngleDeg, design.InjectorPitchAngleDeg);
+        double vEff = InjectorLossModel.EffectiveJetVelocityMps(vCont, rho, yawDeg);
+        var (vt, va) = SwirlMath.ResolveInjectorComponents(vEff, yawDeg, pitchDeg);
         double s = Math.Abs(vt) / Math.Max(Math.Abs(va), 1e-6);
 
         string notes = mdotAuth > 1e-12 && Math.Abs(mdotOrifice - mdotAuth) / mdotAuth > 0.12

@@ -86,8 +86,7 @@ public static class SwirlChamberSizingModel
     }
 
     /// <summary>
-    /// Target effective gas-passage area [m²] for mixed flow at ρ and V_axial:
-    /// A_free = ṁ_mix / (ρ V).
+    /// Continuity: effective passage area A_eff ≥ ṁ_total / (ρ_mix V_ax,target) [m²].
     /// </summary>
     public static double ComputeAFreeTargetM2(double mdotMixKgS, double rhoMixKgPerM3, double targetAxialVelocityMps)
     {

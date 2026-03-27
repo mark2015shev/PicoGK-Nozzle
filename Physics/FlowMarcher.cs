@@ -93,9 +93,8 @@ public sealed class FlowMarcher
     }
 
     /// <summary>
-    /// March with compressible entrainment intake (sonic / choked cap), mixed static pressure from mass-weighted
-    /// entrainment + core pressures, separate axial/tangential momentum, swirl decay on the primary stream.
-    /// First-order 1-D model — not CFD.
+    /// Compressible entrainment (choked cap), mass-weighted P and T, separate axial/tangential momentum mixing,
+    /// Ġ_θ = ṁ_p r V_θ,p for Ce correlation, radial equilibrium each step via <see cref="RadialVortexPressureModel"/>.
     /// </summary>
     public FlowMarchDetailedResult SolveDetailed(
         JetState inletState,
@@ -109,7 +108,8 @@ public sealed class FlowMarcher
         double entrainmentMassDemandMultiplier = 1.0,
         double chamberLdRatio = 1.0,
         double chamberDiameterMm = 50.0,
-        bool useReynoldsOnEntrainmentCe = false)
+        bool useReynoldsOnEntrainmentCe = false,
+        double swirlMomentRadiusM = double.NaN)
     {
         if (sectionLengthM <= 0 || stepCount < 1)
         {
@@ -117,6 +117,8 @@ public sealed class FlowMarcher
             {
                 FlowStates = new List<JetState> { inletState },
                 StepResults = Array.Empty<FlowMarchStepResult>(),
+                StepPhysicsStates = Array.Empty<FlowStepState>(),
+                MarchClosure = null,
                 FinalTangentialVelocityMps = primaryTangentialVelocityMps,
                 FinalAxialVelocityMps = inletState.VelocityMps,
                 FinalPrimaryTangentialVelocityMps = primaryTangentialVelocityMps
@@ -131,6 +133,7 @@ public sealed class FlowMarcher
         double primaryMdot = inletState.MassFlowKgS;
         var states = new List<JetState> { inletState };
         var stepResults = new List<FlowMarchStepResult>(stepCount);
+        var physicsSteps = new List<FlowStepState>(stepCount);
 
         JetState current = inletState;
         double pOld = Math.Max(current.PressurePa, 1.0);
@@ -138,6 +141,7 @@ public sealed class FlowMarcher
         double va = current.VelocityMps;
         double vtPrimary = primaryTangentialVelocityMps;
         double decay = Math.Clamp(swirlDecayPerStepFactor, 0.5, 1.0);
+        bool anyChoked = false;
 
         for (int step = 1; step <= stepCount; step++)
         {
@@ -148,15 +152,23 @@ public sealed class FlowMarcher
             double perimeter = Math.Max(perimeterFunction(x), 0.0);
             double aCap = Math.Max(captureAreaFunction(x), 1e-15);
 
-            double mOld = current.TotalMassFlowKgS;
-            double vtMixedForCorr = primaryMdot * vtPrimary / Math.Max(mOld, 1e-18);
-            double vMag = Math.Sqrt(va * va + vtMixedForCorr * vtMixedForCorr);
-            vMag = Math.Max(vMag, Math.Abs(va));
+            double rWallGeom = Math.Sqrt(area / Math.PI);
+            double rMom = double.IsNaN(swirlMomentRadiusM) || swirlMomentRadiusM <= 0 ? rWallGeom : swirlMomentRadiusM;
 
-            double swirlS = Math.Abs(vtMixedForCorr) / Math.Max(Math.Abs(va), 1e-6);
-            double reApprox = SwirlChamberMarchGeometry.ChamberReynoldsApprox(vMag, chamberDiameterMm);
+            double mOld = current.TotalMassFlowKgS;
+            double entrainedOld = current.EntrainedMassFlowKgS;
+            double vtOldBulk = primaryMdot * vtPrimary / Math.Max(mOld, 1e-18);
+
+            double angularMomFluxForCe = primaryMdot * rMom * vtPrimary;
+            double axialMomFluxForCe = mOld * va;
+            double sFlux = SwirlMath.FluxSwirlNumber(angularMomFluxForCe, axialMomFluxForCe, rMom);
+
+            double vMagCorr = Math.Sqrt(va * va + vtOldBulk * vtOldBulk);
+            vMagCorr = Math.Max(vMagCorr, Math.Abs(va));
+
+            double reApprox = SwirlChamberMarchGeometry.ChamberReynoldsApprox(vMagCorr, chamberDiameterMm);
             double ceStep = _entrainment.ComputeCoefficient(
-                swirlS,
+                sFlux,
                 chamberLdRatio,
                 reApprox,
                 useReynoldsOnEntrainmentCe);
@@ -164,7 +176,7 @@ public sealed class FlowMarcher
             double dmRequested = _entrainment.ComputeEntrainedMassPerLength(
                 ceStep,
                 _ambient.DensityKgM3,
-                vMag,
+                vMagCorr,
                 perimeter) * dx * boost;
 
             InletSuctionOutcome intake = _inletSuction.Solve(
@@ -175,6 +187,9 @@ public sealed class FlowMarcher
                 tOld);
 
             double dmActual = Math.Max(intake.ActualEntrainedMassFlowKgS, 0.0);
+            if (intake.IsChoked)
+                anyChoked = true;
+
             double mNew = mOld + dmActual;
             if (mNew < 1e-18)
                 mNew = mOld;
@@ -189,11 +204,8 @@ public sealed class FlowMarcher
                 : pOld;
             pNew = Math.Max(pNew, 1.0);
 
-            double vtMixed = primaryMdot * vtPrimary / Math.Max(mNew, 1e-18);
-
-            double vaNew = mNew > 1e-18
-                ? (mOld * va + dmActual * intake.EntrainmentVelocityMps) / mNew
-                : va;
+            double vaNew = _mixing.ComputeMixedVelocity(mOld, va, dmActual, intake.EntrainmentVelocityMps);
+            double vtMixed = _mixing.ComputeMixedTangentialVelocity(mOld, vtOldBulk, dmActual, 0.0);
 
             double rhoNew = _gas.Density(pNew, tNew);
             double swirlKe = 0.5 * vtMixed * vtMixed;
@@ -202,7 +214,60 @@ public sealed class FlowMarcher
                 intake.PinletLocalPa,
                 aCap);
 
-            double entrainedTotal = current.EntrainedMassFlowKgS + dmActual;
+            double entrainedTotal = entrainedOld + dmActual;
+
+            var radial = RadialVortexPressureModel.Compute(
+                rhoNew,
+                Math.Abs(vtMixed),
+                rWallGeom,
+                ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
+                ChamberPhysicsCoefficients.RadialPressureCapPa);
+
+            double pCore = Math.Max(pNew - radial.CorePressureDropPa, 1.0);
+            double pWall = pNew + radial.WallPressureRisePa;
+
+            double mu = _gas.DynamicViscosityAirPaS(tNew);
+            double dHyd = 2.0 * rWallGeom;
+            double reStep = rhoNew * vMagCorr * dHyd / Math.Max(mu, 1e-12);
+
+            var comp = CompressibleState.FromMixedStatic(_gas, pNew, tNew, vaNew, vtMixed);
+            double contRes = Math.Abs(rhoNew * area * vaNew - mNew) / Math.Max(mNew, 1e-18);
+
+            double axialMomFluxNew = mNew * vaNew;
+            double angFluxBulk = mNew * rMom * vtMixed;
+            double sFluxPost = SwirlMath.FluxSwirlNumber(angFluxBulk, axialMomFluxNew, rMom);
+
+            var stepUpdate = new FlowStepUpdate(dmActual, dmRequested, intake.MaxSupportedEntrainedMassFlowKgS);
+
+            physicsSteps.Add(new FlowStepState
+            {
+                X = x,
+                AreaM2 = area,
+                CaptureAreaM2 = aCap,
+                WettedPerimeterM = perimeter,
+                MdotPrimaryKgS = primaryMdot,
+                MdotSecondaryKgS = entrainedTotal,
+                MdotTotalKgS = mNew,
+                PStaticPa = pNew,
+                TStaticK = tNew,
+                DensityKgM3 = rhoNew,
+                PTotalPa = comp.TotalPressurePa,
+                TTotalK = comp.TotalTemperatureK,
+                VAxialMps = vaNew,
+                VTangentialMps = vtMixed,
+                VMagnitudeMps = comp.MagnitudeVelocityMps,
+                Mach = comp.MachNumber,
+                Reynolds = reStep,
+                SwirlNumberFlux = sFluxPost,
+                AngularMomentumFluxKgM2PerS2 = angFluxBulk,
+                AxialMomentumFluxKgM2PerS2 = axialMomFluxNew,
+                CorePressurePa = pCore,
+                WallPressurePa = pWall,
+                RadialPressureDeltaPa = radial.EstimatedRadialPressureDeltaPa,
+                ContinuityResidualRelative = contRes,
+                StepUpdate = stepUpdate,
+                Compressible = comp
+            });
 
             var next = new JetState(
                 axialPositionM: x,
@@ -252,10 +317,24 @@ public sealed class FlowMarcher
             ? stepResults[^1].TangentialVelocityMps
             : primaryMdot * vtPrimary / Math.Max(inletState.TotalMassFlowKgS, 1e-18);
 
+        FlowStepState? lastP = physicsSteps.Count > 0 ? physicsSteps[^1] : null;
+        MarchClosureResult? closure = lastP == null
+            ? null
+            : new MarchClosureResult
+            {
+                FinalMachBulk = lastP.Mach,
+                FinalReynolds = lastP.Reynolds,
+                AnyEntrainmentChoked = anyChoked,
+                FinalFluxSwirlNumber = lastP.SwirlNumberFlux,
+                FinalContinuityResidualRelative = lastP.ContinuityResidualRelative
+            };
+
         return new FlowMarchDetailedResult
         {
             FlowStates = states,
             StepResults = stepResults,
+            StepPhysicsStates = physicsSteps,
+            MarchClosure = closure,
             FinalTangentialVelocityMps = finalVtMixed,
             FinalAxialVelocityMps = current.VelocityMps,
             FinalPrimaryTangentialVelocityMps = vtPrimary

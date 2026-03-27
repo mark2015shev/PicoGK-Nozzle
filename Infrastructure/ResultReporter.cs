@@ -107,8 +107,9 @@ internal static class ResultReporter
             Console.WriteLine(line);
         });
 
-        Library.Log("--- Source → injector momentum assumption (HEURISTIC) ---");
-        Library.Log($"V_jet ≈ {NozzlePhysicsSolver.InjectorJetVelocityDriverBlend:F2}×[V_core×(A_source/A_inj)] + {1.0 - NozzlePhysicsSolver.InjectorJetVelocityDriverBlend:F2}×[mdot/(ρ_core×A_inj)] — source drives when A_inj≈A_source.");
+        Library.Log("--- Source → injector momentum assumption (SI driver) ---");
+        double bDr = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
+        Library.Log($"V_jet ≈ {bDr:F2}×[V_core×(A_source/A_inj)] + {1.0 - bDr:F2}×[mdot/(ρ_core×A_inj)] — SI path; legacy solver mirrors same blend.");
         Library.Log($"V_core×(A_source/A_inj):      {s.InjectorJetVelocityAreaDriverMps:F2} m/s");
         Library.Log($"Continuity mdot/(ρ_core×A_inj): {s.InjectorJetVelocityContinuityCheckMps:F2} m/s");
         Library.Log($"Blended InjectorJetVelocityMps (raw driver): {s.InjectorJetVelocityMps:F2} m/s");
@@ -153,6 +154,8 @@ internal static class ResultReporter
             Library.Log($"March steps recorded:         {sf.MarchSteps.Count}");
             if (sf.ChamberMarch != null)
                 LogSwirlChamberMarchSection(sf);
+            if (sf.PhysicsStepStates.Count > 0)
+                LogSiFirstPrinciplesTable(sf, s);
         }
 
         Library.Log($"CoreGasDensity ρ_core [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal gas when T_exhaust set; blend only)");
@@ -308,6 +311,38 @@ internal static class ResultReporter
             foreach (string w in h.PlainLanguageWarnings)
                 Library.Log("  • " + w);
         }
+    }
+
+    /// <summary>Single-place SI physics summary (chamber march end-state + thrust CV).</summary>
+    private static void LogSiFirstPrinciplesTable(SiFlowDiagnostics sf, NozzleSolvedState s)
+    {
+        FlowStepState last = sf.PhysicsStepStates[^1];
+        double injVt = sf.Coupling?.InjectorVtEffectiveMps ?? s.TangentialVelocityComponentMps;
+        double injVa = sf.Coupling?.InjectorVaEffectiveMps ?? s.AxialVelocityComponentMps;
+        double diffuserLossProxy = sf.Coupling != null
+            ? Math.Clamp(1.0 - sf.Coupling.DiffuserRecoveryMultiplier, 0.0, 1.0)
+            : double.NaN;
+        Library.Log("--- SI first-principles snapshot (end of chamber march + CV thrust) ---");
+        Library.Log($"ṁ_jet (core) [kg/s]:           {s.CoreMassFlowKgPerSec:F5}");
+        Library.Log($"ṁ_ambient (entrained) [kg/s]: {s.AmbientAirMassFlowKgPerSec:F5}");
+        Library.Log($"Entrainment ratio ṁ_amb/ṁ_core: {s.EntrainmentRatio:F4}");
+        Library.Log($"V_θ injector (effective) [m/s]: {injVt:F2}   V_a injector [m/s]: {injVa:F2}");
+        Library.Log($"V_θ chamber (mixed, pre-stator) [m/s]: {last.VTangentialMps:F2}   V_ax [m/s]: {last.VAxialMps:F2}");
+        Library.Log($"P_core / P_wall / |Δp|_rad [Pa]: {last.CorePressurePa:F1} / {last.WallPressurePa:F1} / {last.RadialPressureDeltaPa:F1}");
+        Library.Log($"Expander axial force [N]:      {sf.ExpanderAxialPressureForceN:F3}");
+        Library.Log(
+            double.IsFinite(diffuserLossProxy)
+                ? $"Diffuser loss proxy (1−recovery mult) [-]: {diffuserLossProxy:F3}"
+                : "Diffuser loss proxy: (no coupling audit)");
+        Library.Log($"Stator Δp recovery [Pa]:       {sf.StatorRecoveredPressureRisePa:F2}");
+        Library.Log($"Exit V_ax (post-stator) [m/s]: {sf.FinalAxialVelocityMps:F2}");
+        Library.Log($"Thrust net [N] (ThrustCalculator CV): {sf.NetThrustN:F3}");
+        Library.Log(
+            sf.MarchPhysicsClosure != null
+                ? $"Mach_bulk / Re_D (last step) [-]: {sf.MarchPhysicsClosure.FinalMachBulk:F4} / {sf.MarchPhysicsClosure.FinalReynolds:F1}"
+                : "Mach_bulk / Re_D: n/a");
+        Library.Log($"Choked entrainment step:       {sf.AnyEntrainmentStepChoked}");
+        Library.Log($"Flux swirl S (last step) [-]:  {last.SwirlNumberFlux:F4}  (Ġ_θ/(R·ṁV_ax))");
     }
 
     private static void LogSwirlChamberMarchSection(SiFlowDiagnostics sf)

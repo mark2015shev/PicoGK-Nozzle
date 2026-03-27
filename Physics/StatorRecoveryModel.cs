@@ -4,6 +4,7 @@ namespace PicoGK_Run.Physics;
 
 /// <summary>
 /// First-order swirl energy recovery into static pressure rise and bounded axial kinetic gain — not CFD.
+/// Inputs (V_t, ρ) must come from the final SI mixed state at stator entry, not from legacy heuristics.
 /// </summary>
 public sealed class StatorRecoveryModel
 {

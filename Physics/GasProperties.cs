@@ -79,4 +79,14 @@ public sealed class GasProperties
         double ratio = CompressibleFlowMath.StaticTemperatureRatioFromMach(m, Gamma);
         return Math.Max(totalTemperatureK * ratio, 1.0);
     }
+
+    /// <summary>Sutherland law, air [Pa·s]: μ = μ₀ (T/T₀)^3/2 (T₀+S)/(T+S).</summary>
+    public double DynamicViscosityAirPaS(double temperatureK)
+    {
+        const double mu0 = 1.716e-5;
+        const double t0 = 273.15;
+        const double sK = 110.4;
+        double t = Math.Max(temperatureK, 1.0);
+        return mu0 * Math.Pow(t / t0, 1.5) * (t0 + sK) / (t + sK);
+    }
 }

@@ -35,7 +35,7 @@ public sealed class NozzlePhysicsSolver
     private const double InletPressureThrustAreaFactorHeuristic = 0.065;
 
     /// <summary>Weight on V_core×(A_source/A_inj) in jet-speed blend; remainder is continuity mdot/(ρA).</summary>
-    public const double InjectorJetVelocityDriverBlend = 0.88;
+    public const double InjectorJetVelocityDriverBlend = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
 
     public PhysicsSolveResult Solve(NozzleInput input)
     {

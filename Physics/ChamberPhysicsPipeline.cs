@@ -80,6 +80,9 @@ public static class ChamberPhysicsPipeline
             lastMarch.VelocityMps,
             decayFrac);
 
+        double swirlCorr = detailed.StepPhysicsStates.Count > 0
+            ? detailed.StepPhysicsStates[^1].SwirlNumberFlux
+            : structure.InjectorSwirlNumberSimple;
         var diffuser = SwirlDiffuserRecoveryModel.Compute(
             design.ExpanderHalfAngleDeg,
             design.ExpanderLengthMm,
@@ -87,7 +90,7 @@ public static class ChamberPhysicsPipeline
             design.ExitDiameterMm,
             rho,
             lastMarch.VelocityMps,
-            structure.InjectorSwirlNumberSimple,
+            swirlCorr,
             detailed.FinalTangentialVelocityMps);
 
         double impliedYawDeg = Math.Atan2(

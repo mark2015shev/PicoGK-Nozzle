@@ -8,6 +8,10 @@ public sealed class SiFlowDiagnostics
 {
     public IReadOnlyList<FlowMarchStepResult> MarchSteps { get; init; } = System.Array.Empty<FlowMarchStepResult>();
 
+    public IReadOnlyList<FlowStepState> PhysicsStepStates { get; init; } = System.Array.Empty<FlowStepState>();
+
+    public MarchClosureResult? MarchPhysicsClosure { get; init; }
+
     public double MinInletLocalStaticPressurePa { get; init; }
     public double MaxInletMach { get; init; }
     public bool AnyEntrainmentStepChoked { get; init; }

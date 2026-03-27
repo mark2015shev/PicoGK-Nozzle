@@ -32,6 +32,7 @@ public sealed class SwirlChamberHealthReport
 
     public double ExpanderEntryAxialVelocityMps { get; init; }
     public double ExpanderEntryTangentialVelocityMps { get; init; }
+    /// <summary>Prefer flux swirl S from SI march; field name is legacy.</summary>
     public double StatorEntrySwirlNumberVtOverVa { get; init; }
 
     public double ExitAxialVelocityMps { get; init; }

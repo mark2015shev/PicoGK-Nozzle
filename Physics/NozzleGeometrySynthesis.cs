@@ -44,6 +44,7 @@ public static class NozzleGeometrySynthesis
         RunConfiguration? run)
     {
         targetEntrainmentRatio = Math.Clamp(targetEntrainmentRatio, 0.05, 1.2);
+        RunConfiguration runEff = run ?? new RunConfiguration();
 
         double aSourceMm2 = Math.Max(source.SourceOutletAreaMm2, 1.0);
         double dJetMm = 2.0 * Math.Sqrt(aSourceMm2 / Math.PI);
@@ -52,7 +53,7 @@ public static class NozzleGeometrySynthesis
             ? source.SourceVelocityMps
             : VelocityMath.FromMassFlow(mdot, source.AmbientDensityKgPerM3, aSourceMm2 / 1e6);
 
-        double yaw = template.InjectorYawAngleDeg;
+        double yaw = runEff.LockInjectorYawTo90Degrees ? 90.0 : template.InjectorYawAngleDeg;
         double pitch = template.InjectorPitchAngleDeg;
         var (vt, va) = SwirlMath.ResolveInjectorComponents(vCore, yaw, pitch);
         double swirlNumber = SwirlMath.InjectorSwirlNumber(vt, va);
@@ -62,7 +63,6 @@ public static class NozzleGeometrySynthesis
         const double injectorToBoreAreaMargin = 1.06;
         double dMinForPortsMm = 2.0 * Math.Sqrt((totalInjArea * injectorToBoreAreaMargin) / Math.PI);
 
-        RunConfiguration runEff = run ?? new RunConfiguration();
         SwirlChamberSizingModel.SizingDiagnostics sizingDiag;
 
         double dChamberMm;

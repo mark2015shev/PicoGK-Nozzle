@@ -497,7 +497,7 @@ public static class NozzleDesignAutotune
         double dHi = Math.Max(run.AutotuneSwirlChamberDiameterScaleMin, run.AutotuneSwirlChamberDiameterScaleMax);
         double lLo = Math.Min(run.AutotuneSwirlChamberLengthScaleMin, run.AutotuneSwirlChamberLengthScaleMax);
         double lHi = Math.Max(run.AutotuneSwirlChamberLengthScaleMin, run.AutotuneSwirlChamberLengthScaleMax);
-        double yaw = u(45.0, 80.0);
+        double yaw = run.LockInjectorYawTo90Degrees ? 90.0 : u(45.0, 80.0);
         double pitch = run.AutotuneVaryPitch ? u(6.0, 16.0) : template.InjectorPitchAngleDeg;
 
         return new Knobs(
@@ -526,10 +526,12 @@ public static class NozzleDesignAutotune
             return lo + rng.NextDouble() * (hi - lo);
         }
 
-        double yaw = Math.Clamp(
-            angleRef.InjectorYawAngleDeg + (rng.NextDouble() * 2.0 - 1.0) * b.InjectorYawDegHalfSpan,
-            45.0,
-            80.0);
+        double yaw = run.LockInjectorYawTo90Degrees
+            ? 90.0
+            : Math.Clamp(
+                angleRef.InjectorYawAngleDeg + (rng.NextDouble() * 2.0 - 1.0) * b.InjectorYawDegHalfSpan,
+                45.0,
+                80.0);
         double pitch = run.AutotuneVaryPitch
             ? Math.Clamp(
                 angleRef.InjectorPitchAngleDeg + (rng.NextDouble() * 2.0 - 1.0) * b.InjectorPitchDegHalfSpan,
@@ -572,7 +574,9 @@ public static class NozzleDesignAutotune
         double lEx = Math.Clamp(b.ExpanderLengthMm * k.ExpLength, 25.0, 240.0);
         double st = Math.Clamp(b.StatorVaneAngleDeg * k.StatorAngle, 14.0, 58.0);
         double ax = Math.Clamp(b.InjectorAxialPositionRatio * k.AxialPositionScale, 0.08, 0.92);
-        double yaw = Math.Clamp(k.InjectorYawDeg, 45.0, 80.0);
+        double yaw = run.LockInjectorYawTo90Degrees
+            ? 90.0
+            : Math.Clamp(k.InjectorYawDeg, 45.0, 80.0);
         double pitch = Math.Clamp(k.InjectorPitchDeg, 4.0, 18.0);
 
         return new NozzleDesignInputs

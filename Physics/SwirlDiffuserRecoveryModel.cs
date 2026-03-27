@@ -14,6 +14,7 @@ public sealed class SwirlDiffuserRecoveryResult
 
 public static class SwirlDiffuserRecoveryModel
 {
+    /// <param name="swirlCorrelationNumber">Prefer flux swirl S from SI march; |V_t|/|V_a| is legacy correlation only.</param>
     public static SwirlDiffuserRecoveryResult Compute(
         double halfAngleDeg,
         double expanderLengthMm,
@@ -21,7 +22,7 @@ public static class SwirlDiffuserRecoveryModel
         double exitDiameterMm,
         double rhoKgM3,
         double axialVelocityRefMps,
-        double injectorSwirlNumber,
+        double swirlCorrelationNumber,
         double mixedTangentialPreExpanderMps)
     {
         double rho = Math.Max(rhoKgM3, 1e-6);
@@ -36,7 +37,7 @@ public static class SwirlDiffuserRecoveryModel
         double baseCp = 0.18 * Math.Tanh(ld / 2.2) * (1.0 - 0.35 * Math.Tanh((halfAngleDeg - 7.0) / 8.0));
         baseCp *= Math.Clamp(1.0 - 0.12 * Math.Tanh((ar - 1.45) / 0.9), 0.55, 1.0);
 
-        double s = injectorSwirlNumber;
+        double s = swirlCorrelationNumber;
         double swirlHelp = ChamberPhysicsCoefficients.DiffuserSwirlHelpMax
                            * Math.Exp(-0.5 * Math.Pow((s - 2.8) / 1.6, 2));
         double swirlHurt = 0.14 * Math.Tanh((s - 5.2) / 2.0);

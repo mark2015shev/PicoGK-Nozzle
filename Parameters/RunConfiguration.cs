@@ -113,6 +113,9 @@ public sealed class RunConfiguration
     /// <summary>Optional Re_D factor in Ce (chamber diameter, kinematic ν).</summary>
     public bool UseReynoldsEntrainmentFactor { get; init; }
 
+    /// <summary>When true, SI path and autotune use 90° injector yaw (pure tangential injection in the axisymmetric model).</summary>
+    public bool LockInjectorYawTo90Degrees { get; init; } = true;
+
     /// <summary>Fraction of gas-path annulus area (bore − hub) removed by stator/vane frontal blockage in the SI march [0–1].</summary>
     public double ChamberVaneBlockageFractionOfAnnulus { get; init; }
 
@@ -230,6 +233,7 @@ public sealed class RunConfiguration
         UseExplicitInletCapture = UseExplicitInletCapture,
         UseSwirlEntrainmentBoost = UseSwirlEntrainmentBoost,
         UseReynoldsEntrainmentFactor = UseReynoldsEntrainmentFactor,
+        LockInjectorYawTo90Degrees = LockInjectorYawTo90Degrees,
         ChamberVaneBlockageFractionOfAnnulus = ChamberVaneBlockageFractionOfAnnulus,
         ApplySolvedGeometryHints = ApplySolvedGeometryHints,
         RunGeometryContinuityCheck = RunGeometryContinuityCheck,
