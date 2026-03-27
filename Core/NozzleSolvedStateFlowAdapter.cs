@@ -32,14 +32,11 @@ public static class NozzleSolvedStateFlowAdapter
             designInputs.InjectorYawAngleDeg,
             designInputs.InjectorPitchAngleDeg);
 
-        double injectorSwirl = SwirlMath.InjectorSwirlNumber(vTanInj, vAxInj);
-        double chamberSwirl = si?.MarchPhysicsClosure != null
-            ? si.MarchPhysicsClosure.FinalFluxSwirlNumber
-            : (si != null
-                ? SwirlMath.InjectorSwirlNumber(
-                    si.FinalTangentialVelocityMps,
-                    Math.Max(si.FinalAxialVelocityMps, 1e-6))
-                : injectorSwirl);
+        double injectorSwirlReport = si != null
+            ? Math.Max(Math.Abs(si.InjectorPlaneFluxSwirlNumber), 1e-12)
+            : SwirlMath.InjectorSwirlNumberReportOnly(vTanInj, vAxInj, vJetForInjectorSwirl);
+        double chamberSwirlReport = si?.MarchPhysicsClosure?.FinalFluxSwirlNumber
+            ?? (si != null ? Math.Max(Math.Abs(si.InjectorPlaneFluxSwirlNumber), 1e-12) : 1.0);
 
         double momentumThrust = si?.MomentumThrustN ?? outlet.TotalMassFlowKgS * outlet.VelocityMps;
         double pressureThrust = si?.PressureThrustN ?? 0.0;
@@ -68,8 +65,8 @@ public static class NozzleSolvedStateFlowAdapter
             CoreGasDensityKgPerM3 = inlet.DensityKgM3,
             TangentialVelocityComponentMps = si?.FinalTangentialVelocityMps ?? vTanInj,
             AxialVelocityComponentMps = si?.FinalAxialVelocityMps ?? outlet.VelocityMps,
-            InjectorSwirlNumber = injectorSwirl,
-            ChamberSwirlNumberForStator = chamberSwirl,
+            InjectorSwirlNumber = injectorSwirlReport,
+            ChamberSwirlNumberForStator = chamberSwirlReport,
             InletSuctionDeltaPPa = inletSuctionDeltaP,
             InletCaptureEfficiency = si != null && si.SumRequestedEntrainmentIncrementsKgS > 1e-18
                 ? Math.Min(1.09, si.SumActualEntrainmentIncrementsKgS / si.SumRequestedEntrainmentIncrementsKgS)
@@ -79,7 +76,9 @@ public static class NozzleSolvedStateFlowAdapter
             RemainingPressureRecoveryBudget = 1.0,
             SwirlPressureRisePa = si?.StatorRecoveredPressureRisePa ?? 0.0,
             ExpanderWallAxialForceN = si?.ExpanderAxialPressureForceN ?? 0.0,
-            SwirlPressureRecoveryEfficiency = si != null ? Math.Min(0.95, 0.35 + injectorSwirl * 0.02) : 0.0,
+            SwirlPressureRecoveryEfficiency = si != null
+                ? Math.Min(0.95, 0.35 + 0.02 * Math.Min(Math.Abs(si.InjectorPlaneFluxSwirlNumber), 8.0))
+                : 0.0,
             RemainingTangentialVelocityAfterPressureRecovery = si?.FinalTangentialVelocityMps ?? vTanInj,
             MomentumThrustComponentN = momentumThrust,
             PressureThrustComponentN = pressureThrust,

@@ -32,7 +32,7 @@ public static class ValidationSweepRunner
         log ??= Console.WriteLine;
         SourceInputs source = K320Baseline.CreateSource();
         NozzleDesignInputs baseline = K320Baseline.CreateDesign();
-        _ = K320Baseline.CreateValidationRun();
+        RunConfiguration validationRun = K320Baseline.CreateValidationRun();
 
         string root = csvOutputDirectory ?? Path.Combine(Environment.CurrentDirectory, "Output", "ValidationSweeps");
         Directory.CreateDirectory(root);
@@ -48,6 +48,7 @@ public static class ValidationSweepRunner
                 source,
                 root,
                 log,
+                validationRun,
                 discontinuityRelativeJumpThreshold),
             RunSweep(
                 "SwirlChamberLengthMm",
@@ -58,6 +59,7 @@ public static class ValidationSweepRunner
                 source,
                 root,
                 log,
+                validationRun,
                 discontinuityRelativeJumpThreshold,
                 reportedParameterValue: m => baseline.SwirlChamberLengthMm * m),
             RunSweep(
@@ -69,6 +71,7 @@ public static class ValidationSweepRunner
                 source,
                 root,
                 log,
+                validationRun,
                 discontinuityRelativeJumpThreshold,
                 reportedParameterValue: m => baseline.SwirlChamberDiameterMm * m),
             RunSweep(
@@ -80,6 +83,7 @@ public static class ValidationSweepRunner
                 source,
                 root,
                 log,
+                validationRun,
                 discontinuityRelativeJumpThreshold),
             RunSweep(
                 "StatorVaneAngleDeg",
@@ -90,6 +94,7 @@ public static class ValidationSweepRunner
                 source,
                 root,
                 log,
+                validationRun,
                 discontinuityRelativeJumpThreshold)
         };
 
@@ -108,6 +113,7 @@ public static class ValidationSweepRunner
         SourceInputs source,
         string csvDirectory,
         Action<string> log,
+        RunConfiguration validationRun,
         double jumpThreshold,
         Func<double, double>? reportedParameterValue = null)
     {
@@ -117,7 +123,7 @@ public static class ValidationSweepRunner
             double coord = sweepCoordinates[i];
             NozzleDesignInputs d = designForCoordinate(coord);
             double paramVal = reportedParameterValue?.Invoke(coord) ?? coord;
-            ValidationSweepCaseResult row = EvaluateToCase(sweepKey, paramVal, d, source);
+            ValidationSweepCaseResult row = EvaluateToCase(sweepKey, paramVal, d, source, validationRun);
             cases.Add(row);
         }
 
@@ -142,9 +148,10 @@ public static class ValidationSweepRunner
         string parameterName,
         double parameterValue,
         NozzleDesignInputs design,
-        SourceInputs source)
+        SourceInputs source,
+        RunConfiguration validationRun)
     {
-        SiPathValidationPack p = NozzleFlowCompositionRoot.EvaluateSiPathForValidation(source, design);
+        SiPathValidationPack p = NozzleFlowCompositionRoot.EvaluateSiPathForValidation(source, design, validationRun);
         NozzleSolvedState s = p.Solved;
         SiFlowDiagnostics si = p.SiDiag;
         ChamberFirstOrderPhysics? ch = si.Chamber;

@@ -71,7 +71,8 @@ public static class K320Baseline
         VoxelSizeMM = 0.3f,
         ShowInViewer = true,
         UsePhysicsInformedGeometry = false,
-        UseAutotune = false
+        UseAutotune = false,
+        ApplyHardSiThrustAndPressureAssertions = true
     };
 
     /// <summary>
@@ -83,7 +84,8 @@ public static class K320Baseline
         ShowInViewer = false,
         UsePhysicsInformedGeometry = false,
         UseAutotune = false,
-        EnablePipelineProfiling = false
+        EnablePipelineProfiling = false,
+        ApplyHardSiThrustAndPressureAssertions = true
     };
 
     /// <summary>Same as <see cref="CreateRun"/> but enables synthesis so chamber/expander/stator/inlet follow first-order rules from the source.</summary>
@@ -93,7 +95,8 @@ public static class K320Baseline
         ShowInViewer = true,
         UsePhysicsInformedGeometry = true,
         UseDerivedSwirlChamberDiameter = true,
-        UseAutotune = false
+        UseAutotune = false,
+        ApplyHardSiThrustAndPressureAssertions = true
     };
 
     /// <summary>
@@ -122,7 +125,8 @@ public static class K320Baseline
         // Compact swirl: cap axial chamber + tight length scale (diameter from ER when derived; else diameter scale knobs).
         AutotuneSwirlChamberLengthMaxMm = 92.0,
         AutotuneSwirlChamberLengthScaleMin = 0.80,
-        AutotuneSwirlChamberLengthScaleMax = 1.04
+        AutotuneSwirlChamberLengthScaleMax = 1.04,
+        ApplyHardSiThrustAndPressureAssertions = true
     };
 
     /// <summary>Convenience: <see cref="CreateSource"/>, <see cref="CreateDesign"/>, and <see cref="CreateRunWithAutotune"/> (viewer on for the final geometry pass).</summary>
@@ -164,7 +168,8 @@ public static class K320Baseline
             UseDerivedSwirlChamberDiameter = true,
             AutotuneSwirlChamberLengthMaxMm = 92.0,
             AutotuneSwirlChamberLengthScaleMin = 0.80,
-            AutotuneSwirlChamberLengthScaleMax = 1.04
+            AutotuneSwirlChamberLengthScaleMax = 1.04,
+            ApplyHardSiThrustAndPressureAssertions = true
         };
 
     /// <summary>Source + design + <see cref="CreateRunWithCoarseToFineAutotune"/>.</summary>
@@ -190,7 +195,8 @@ public static class K320Baseline
         PhysicsAutotuneStageACandidates = 200,
         PhysicsAutotuneStageBTopSeeds = 15,
         PhysicsAutotuneStageBLocalTrialsPerSeed = 6,
-        PhysicsAutotuneStageCPolishTrials = 24
+        PhysicsAutotuneStageCPolishTrials = 24,
+        ApplyHardSiThrustAndPressureAssertions = true
     };
 
     /// <summary>Convenience: physics five-parameter autotune then one full voxel pass.</summary>

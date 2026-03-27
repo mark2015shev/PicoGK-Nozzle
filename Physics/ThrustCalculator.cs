@@ -3,10 +3,20 @@ using System;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// SI thrust authority: momentum + exit pressure + inlet / expander pressure CV terms (same budget as composition root).
+/// Single control-volume net thrust: F = ṁ(V_exit − V_∞) + (P_exit − P_∞)A_exit.
+/// Inlet capture and expander wall forces are not part of this CV — report them elsewhere as diagnostics only.
 /// </summary>
 public static class ThrustCalculator
 {
+    /// <summary>Result of the authoritative thrust calculation with validation.</summary>
+    public readonly record struct ThrustControlVolumeResult(
+        double MomentumN,
+        double ExitPlanePressureN,
+        double NetN,
+        bool IsValid,
+        string? InvalidReason,
+        string? SoftWarning);
+
     /// <summary>ṁ(V_exit − V_∞) [N].</summary>
     public static double MomentumThrustN(
         double massFlowExitKgS,
@@ -16,7 +26,7 @@ public static class ThrustCalculator
         return Math.Max(massFlowExitKgS, 0.0) * (exitAxialVelocityMps - ambientVelocityMps);
     }
 
-    /// <summary>(P_exit − P_∞) A_exit [N].</summary>
+    /// <summary>(P_exit − P_∞) A_exit [N] — exit plane only.</summary>
     public static double ExitPlanePressureThrustN(
         double exitStaticPressurePa,
         double ambientPressurePa,
@@ -25,85 +35,73 @@ public static class ThrustCalculator
         return (exitStaticPressurePa - ambientPressurePa) * Math.Max(exitAreaM2, 0.0);
     }
 
-    public static double PressureThrustTotalN(
-        double exitStaticPressurePa,
-        double ambientPressurePa,
-        double exitAreaM2,
-        double inletAxialPressureForceN,
-        double expanderAxialPressureForceN)
-    {
-        return ExitPlanePressureThrustN(exitStaticPressurePa, ambientPressurePa, exitAreaM2)
-               + inletAxialPressureForceN
-               + expanderAxialPressureForceN;
-    }
-
-    public static (double MomentumN, double PressureN, double NetN) NetThrustBreakdown(
+    /// <summary>
+    /// Authoritative net thrust [N] from one CV. Does not add inlet suction or expander wall forces.
+    /// </summary>
+    public static ThrustControlVolumeResult ComputeControlVolumeThrustSanitized(
         double massFlowExitKgS,
         double exitAxialVelocityMps,
         double ambientVelocityMps,
         double exitStaticPressurePa,
         double ambientPressurePa,
-        double exitAreaM2,
-        double inletAxialPressureForceN,
-        double expanderAxialPressureForceN)
+        double exitAreaM2)
     {
-        double fM = MomentumThrustN(massFlowExitKgS, exitAxialVelocityMps, ambientVelocityMps);
-        double fP = PressureThrustTotalN(
-            exitStaticPressurePa,
-            ambientPressurePa,
-            exitAreaM2,
-            inletAxialPressureForceN,
-            expanderAxialPressureForceN);
-        return SanitizeBreakdown(fM, fP);
-    }
+        if (!double.IsFinite(massFlowExitKgS) || !double.IsFinite(exitAxialVelocityMps)
+            || !double.IsFinite(ambientVelocityMps) || !double.IsFinite(exitStaticPressurePa)
+            || !double.IsFinite(ambientPressurePa) || !double.IsFinite(exitAreaM2))
+        {
+            return new ThrustControlVolumeResult(0.0, 0.0, 0.0, false, "Non-finite input (ṁ, V, P, or A).", null);
+        }
 
-    /// <summary>Same CV as <see cref="NetThrustBreakdown"/> with clamped pressures and finite guards on all inputs.</summary>
-    public static (double MomentumN, double PressureN, double NetN) NetThrustBreakdownSanitized(
-        double massFlowExitKgS,
-        double exitAxialVelocityMps,
-        double ambientVelocityMps,
-        double exitStaticPressurePa,
-        double ambientPressurePa,
-        double exitAreaM2,
-        double inletAxialPressureForceN,
-        double expanderAxialPressureForceN)
-    {
-        double md = ClampFiniteNonNegative(massFlowExitKgS);
-        double ve = ClampFinite(exitAxialVelocityMps, 0.0);
-        double vinf = ClampFinite(ambientVelocityMps, 0.0);
+        if (massFlowExitKgS <= 0.0)
+        {
+            return new ThrustControlVolumeResult(0.0, 0.0, 0.0, false, "Exit mass flow ≤ 0.", null);
+        }
+
+        if (exitAreaM2 < 0.0)
+        {
+            return new ThrustControlVolumeResult(0.0, 0.0, 0.0, false, "Negative exit area.", null);
+        }
+
+        double md = massFlowExitKgS;
+        double ve = exitAxialVelocityMps;
+        double vinf = ambientVelocityMps;
         double pe = SiPressureGuards.ClampStaticPressurePa(exitStaticPressurePa);
         double p0 = SiPressureGuards.ClampStaticPressurePa(ambientPressurePa);
-        double ae = ClampFiniteNonNegative(exitAreaM2);
-        double fin = FiniteClampSigned(inletAxialPressureForceN);
-        double fex = FiniteClampSigned(expanderAxialPressureForceN);
+        double ae = Math.Max(exitAreaM2, 0.0);
+
+        string? softWarn = null;
+        if (pe < 0.4 * p0 || pe > 2.8 * p0)
+            softWarn = $"Exit static P ({pe:F0} Pa) is far from ambient ({p0:F0} Pa) — check SI state.";
+
+        double vAbs = Math.Abs(ve);
+        if (vAbs > 2200.0)
+            softWarn = (softWarn ?? "") + (softWarn != null ? " " : "") + $"|V_exit|={vAbs:F0} m/s is unusually high.";
+
         double fM = MomentumThrustN(md, ve, vinf);
-        double fP = PressureThrustTotalN(pe, p0, ae, fin, fex);
-        return SanitizeBreakdown(fM, fP);
+        double fP = ExitPlanePressureThrustN(pe, p0, ae);
+        var (net, ok) = SanitizeNet(fM, fP);
+        if (!ok)
+            return new ThrustControlVolumeResult(0.0, 0.0, 0.0, false, "Thrust components non-finite after sanitize.", null);
+
+        return new ThrustControlVolumeResult(fM, fP, net, true, null, softWarn);
     }
 
-    private static (double MomentumN, double PressureN, double NetN) SanitizeBreakdown(double fM, double fP)
+    private static (double NetN, bool Ok) SanitizeNet(double fM, double fP)
     {
         const double cap = 5e7;
-        fM = double.IsFinite(fM) ? Math.Clamp(fM, -cap, cap) : 0.0;
-        fP = double.IsFinite(fP) ? Math.Clamp(fP, -cap, cap) : 0.0;
-        double sum = fM + fP;
-        double net = double.IsFinite(sum) ? Math.Clamp(sum, -cap, cap) : 0.0;
-        return (fM, fP, net);
+        if (!double.IsFinite(fM) || !double.IsFinite(fP))
+            return (0.0, false);
+        fM = Math.Clamp(fM, -cap, cap);
+        fP = Math.Clamp(fP, -cap, cap);
+        double net = fM + fP;
+        if (!double.IsFinite(net))
+            return (0.0, false);
+        net = Math.Clamp(net, -cap, cap);
+        return (net, true);
     }
 
-    private static double ClampFinite(double x, double fallback) =>
-        double.IsFinite(x) ? x : fallback;
-
-    private static double ClampFiniteNonNegative(double x) =>
-        double.IsFinite(x) ? Math.Max(x, 0.0) : 0.0;
-
-    private static double FiniteClampSigned(double x)
-    {
-        const double cap = 5e7;
-        return double.IsFinite(x) ? Math.Clamp(x, -cap, cap) : 0.0;
-    }
-
-    /// <summary>Stream thrust F = ṁ(V−V₀) + (P−P₀)A — used when no full CV diagnostics exist.</summary>
+    /// <summary>Stream thrust when only exit-plane CV data exist (same equation as <see cref="ComputeControlVolumeThrustSanitized"/>).</summary>
     public static double ComputeStreamThrustN(
         double totalMassFlowKgS,
         double exitVelocityMps,
@@ -112,14 +110,13 @@ public static class ThrustCalculator
         double ambientPressurePa,
         double exitAreaM2)
     {
-        return NetThrustBreakdown(
+        ThrustControlVolumeResult r = ComputeControlVolumeThrustSanitized(
             totalMassFlowKgS,
             exitVelocityMps,
             freestreamVelocityMps,
             exitPressurePa,
             ambientPressurePa,
-            exitAreaM2,
-            0.0,
-            0.0).NetN;
+            exitAreaM2);
+        return r.IsValid ? r.NetN : 0.0;
     }
 }

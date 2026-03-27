@@ -53,7 +53,9 @@ public static class VortexStructureModel
         double k = ChamberPhysicsCoefficients.FluxSwirlGeometryFactorK;
         double sFluxStyleDiagnostic = k * sSimpleDiagnostic;
         double sGov = Math.Clamp(
-            double.IsFinite(injectorFluxSwirlNumber) ? Math.Abs(injectorFluxSwirlNumber) : sSimpleDiagnostic,
+            double.IsFinite(injectorFluxSwirlNumber) && Math.Abs(injectorFluxSwirlNumber) > 1e-18
+                ? Math.Abs(injectorFluxSwirlNumber)
+                : 2.0,
             0.0,
             25.0);
 

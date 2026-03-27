@@ -144,12 +144,19 @@ internal static class ResultReporter
             Library.Log($"Σ requested Δṁ_ent [kg/s]:     {sf.SumRequestedEntrainmentIncrementsKgS:F6}");
             Library.Log($"Σ actual Δṁ_ent [kg/s]:       {sf.SumActualEntrainmentIncrementsKgS:F6}");
             Library.Log($"Entrainment shortfall Σ [kg/s]: {sf.EntrainmentShortfallSumKgS:F6} (requested − actual, per-step sum)");
-            Library.Log($"Inlet axial pressure force [N]: {sf.InletAxialPressureForceN:F3} (Σ ΔP·A_capture per step, first-order)");
-            Library.Log($"Expander axial pressure force [N]: {sf.ExpanderAxialPressureForceN:F3} (ΔP_exp·A_proj, heuristic ΔP)");
+            Library.Log($"[diagnostic_force_only] Inlet axial pressure force [N]: {sf.InletAxialPressureForceN:F3} (Σ ΔP·A_capture per step — not in net thrust)");
+            Library.Log($"[diagnostic_force_only] Expander axial pressure force [N]: {sf.ExpanderAxialPressureForceN:F3} (ΔP_exp·A_proj — not in net thrust)");
             Library.Log($"Stator recovered pressure rise [Pa]: {sf.StatorRecoveredPressureRisePa:F2} (η·Δ tangential KE → p, bounded)");
-            Library.Log($"Momentum thrust [N]:          {sf.MomentumThrustN:F3} (ṁ·V_axial CV)");
-            Library.Log($"Pressure thrust [N]:          {sf.PressureThrustN:F3} (exit plane + inlet + expander terms)");
-            Library.Log($"Net thrust [N]:               {sf.NetThrustN:F3}");
+            Library.Log($"Momentum thrust [N]:          {sf.MomentumThrustN:F3} (ṁ_exit (V_exit − V_∞), single CV)");
+            Library.Log($"Pressure thrust [N]:          {sf.PressureThrustN:F3} ((P_exit − P_amb) A_exit only)");
+            Library.Log($"Net thrust [N]:               {sf.NetThrustN:F3}  (momentum + exit-plane pressure; sole authority)");
+            Library.Log($"Core momentum estimate [N]:   {sf.CoreMomentumEstimateN:F3} (ṁ_core |V_a,inj| — order-of-magnitude check)");
+            Library.Log(
+                sf.ThrustControlVolumeIsValid
+                    ? string.IsNullOrEmpty(sf.ThrustControlVolumeSoftWarning)
+                        ? "Thrust CV: valid."
+                        : $"Thrust CV: valid with soft warning — {sf.ThrustControlVolumeSoftWarning}"
+                    : $"Thrust CV: INVALID — {sf.ThrustControlVolumeInvalidReason ?? "unknown"}");
             Library.Log($"March steps recorded:         {sf.MarchSteps.Count}");
             if (sf.ChamberMarch != null)
                 LogSwirlChamberMarchSection(sf);
@@ -165,12 +172,12 @@ internal static class ResultReporter
         Library.Log("Low-pressure inlet/core region: modeled as suction/capture recovery from same swirl/pressure budget as entrainment + expander.");
         Library.Log($"InletSuctionDeltaP_Pa:        {s.InletSuctionDeltaPPa:F1} (ρ, Vt, inlet vs chamber dia; bounded)");
         Library.Log($"InletCaptureEfficiency [-]:   {s.InletCaptureEfficiency:F4} (entrainment mult vs baseline; capped ~1.09)");
-        Library.Log($"InletPressureThrustComponentN: {s.InletPressureThrustComponentN:F2} (annulus × Δp, tiny axial term, budget-debited)");
+        Library.Log($"[diagnostic_force_only] InletPressureThrustComponentN: {s.InletPressureThrustComponentN:F2} (Σ inlet capture ΔP·A — not in FinalThrustN)");
         Library.Log($"PressureRecoveryBudgetAfterInlet [-]: {s.PressureRecoveryBudgetAfterInlet:F3} (remaining before expander wall recovery)");
         Library.Log($"RemainingPressureRecoveryBudget [-]: {s.RemainingPressureRecoveryBudget:F3} (after inlet + expander tap vs Vt ref)");
         Library.Log("--- Swirl-pressure recovery (expander) — HEURISTIC, not CFD; not centrifugal thrust ---");
         Library.Log($"SwirlPressureRisePa:          {s.SwirlPressureRisePa:F1} (order rho*v_theta^2/r wall rise, bounded)");
-        Library.Log($"ExpanderWallAxialForceN:      {s.ExpanderWallAxialForceN:F2} (axial wall component only, capped)");
+        Library.Log($"[diagnostic_force_only] ExpanderWallAxialForceN: {s.ExpanderWallAxialForceN:F2} (heuristic wall ΔP·A — not in FinalThrustN)");
         Library.Log($"SwirlPressureRecoveryEff. [-]: {s.SwirlPressureRecoveryEfficiency:F3} (tangential KE fraction tapped, capped)");
         Library.Log($"Rem.TangentialAfterPR [m/s]:  {s.RemainingTangentialVelocityAfterPressureRecovery:F2} (before stator)");
         Library.Log($"Pressure loss fractions [-]:  area {s.PressureLoss.FractionFromInjectorSourceAreaMismatch:F3}, swirl {s.PressureLoss.FractionFromSwirlDissipation:F3}, short L/D {s.PressureLoss.FractionFromShortMixingLength:F3} → total {s.PressureLoss.FractionTotal:F3}");
@@ -184,8 +191,8 @@ internal static class ResultReporter
         Library.Log($"ExitVelocityMps:              {s.ExitVelocityMps:F2}");
         Library.Log($"SourceOnlyThrustN:            {s.SourceOnlyThrustN:F2} (baseline: mdot_core * V_core)");
         Library.Log($"MomentumThrustComponentN:     {s.MomentumThrustComponentN:F2} (mdot_mix * V_exit)");
-        Library.Log($"PressureThrustComponentN:     {s.PressureThrustComponentN:F2} (expander wall {s.ExpanderWallAxialForceN:F2} + inlet {s.InletPressureThrustComponentN:F2})");
-        Library.Log($"FinalThrustN:                 {s.FinalThrustN:F2} (momentum + pressure components; CV-style)");
+        Library.Log($"PressureThrustComponentN:     {s.PressureThrustComponentN:F2} ((P_exit − P_amb) A_exit when SI path)");
+        Library.Log($"FinalThrustN:                 {s.FinalThrustN:F2} (single CV: ṁ_exit (V_exit − V_∞) + (P_exit − P_amb) A_exit)");
         Library.Log($"ExtraThrustN:                 {s.ExtraThrustN:F2}");
         Library.Log($"ThrustGainRatio [-]:          {s.ThrustGainRatio:F3}");
 
@@ -328,14 +335,14 @@ internal static class ResultReporter
         Library.Log($"V_θ injector (effective) [m/s]: {injVt:F2}   V_a injector [m/s]: {injVa:F2}");
         Library.Log($"V_θ chamber (mixed, pre-stator) [m/s]: {last.VTangentialMps:F2}   V_ax [m/s]: {last.VAxialMps:F2}");
         Library.Log($"P_core / P_wall / |Δp|_rad [Pa]: {last.CorePressurePa:F1} / {last.WallPressurePa:F1} / {last.RadialPressureDeltaPa:F1}");
-        Library.Log($"Expander axial force [N]:      {sf.ExpanderAxialPressureForceN:F3}");
+        Library.Log($"[diagnostic_force_only] Expander axial force [N]: {sf.ExpanderAxialPressureForceN:F3}");
         Library.Log(
             double.IsFinite(diffuserLossProxy)
                 ? $"Diffuser loss proxy (1−recovery mult) [-]: {diffuserLossProxy:F3}"
                 : "Diffuser loss proxy: (no coupling audit)");
         Library.Log($"Stator Δp recovery [Pa]:       {sf.StatorRecoveredPressureRisePa:F2}");
         Library.Log($"Exit V_ax (post-stator) [m/s]: {sf.FinalAxialVelocityMps:F2}");
-        Library.Log($"Thrust net [N] (ThrustCalculator CV): {sf.NetThrustN:F3}");
+        Library.Log($"Thrust net [N] (single exit CV): {sf.NetThrustN:F3}  core ṁ|V_a| est [N]: {sf.CoreMomentumEstimateN:F3}");
         Library.Log(
             sf.MarchPhysicsClosure != null
                 ? $"Mach_bulk / Re_D (last step) [-]: {sf.MarchPhysicsClosure.FinalMachBulk:F4} / {sf.MarchPhysicsClosure.FinalReynolds:F1}"
@@ -403,7 +410,7 @@ internal static class ResultReporter
     {
         SiVortexCouplingDiagnostics c = sf.Coupling!;
         SwirlEnergyCouplingLedger e = c.SwirlEnergy;
-        Library.Log("--- SI coupled vortex physics (raw vs values used in thrust) — first-order, not CFD ---");
+        Library.Log("--- SI coupled vortex physics (raw vs effective flow drivers) — first-order, not CFD; net thrust = exit CV only ---");
         foreach (string line in c.CouplingSummaryLines)
             Library.Log("Summary: " + line);
         Library.Log($"Injector |V| continuity [m/s]:     {c.InjectorJetVelocityRawMps:F2}  effective (Cd·turn): {c.InjectorJetVelocityEffectiveMps:F2}");
@@ -418,7 +425,7 @@ internal static class ResultReporter
         Library.Log($"  mixed @ chamber end: {e.EThetaAfterChamberDecay_W:F1}  → entrainment debit: {e.EThetaUsedForEntrainment_W:F1}");
         Library.Log($"  diffuser bookkeeping: {e.EThetaUsedForDiffuserRecovery_W:F1}  stator recovery debit: {e.EThetaUsedForStatorRecovery_W:F1}");
         Library.Log($"  exit residual: {e.EThetaExitResidual_W:F1}  dissipated (inj+decay): {e.EThetaDissipated_W:F1}");
-        Library.Log($"Net thrust (coupled) [N]:       {sf.NetThrustN:F3}  (same path as autotune evaluation)");
+        Library.Log($"Net thrust (coupled) [N]:       {sf.NetThrustN:F3}  (exit CV only; same path as autotune)");
     }
 
     private static void LogInjectorPressureVelocitySection(InjectorPressureVelocityDiagnostics ip)

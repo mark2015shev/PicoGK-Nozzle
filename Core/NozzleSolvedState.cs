@@ -51,7 +51,7 @@ public sealed class NozzleSolvedState
     public double InletCaptureEfficiency { get; init; }
 
     /// <summary>
-    /// HEURISTIC axial force from inlet annulus × suction Δp; small, capped, debited from pressure budget.
+    /// diagnostic_force_only (SI): Σ inlet capture (P_amb−P_local)×A — shown for debugging; not added to <see cref="FinalThrustN"/>.
     /// </summary>
     public double InletPressureThrustComponentN { get; init; }
 
@@ -72,8 +72,7 @@ public sealed class NozzleSolvedState
     public double SwirlPressureRisePa { get; init; }
 
     /// <summary>
-    /// HEURISTIC axial component of resultant wall force on angled expander surfaces from
-    /// <see cref="SwirlPressureRisePa"/>; conservative caps. Same swirl-energy budget as stator.
+    /// diagnostic_force_only (SI): heuristic expander ΔP×A — not added to <see cref="FinalThrustN"/> (exit CV uses P_exit only).
     /// </summary>
     public double ExpanderWallAxialForceN { get; init; }
 
@@ -89,7 +88,7 @@ public sealed class NozzleSolvedState
     /// <summary>Control-volume momentum flux term: mdot_mix * V_exit.</summary>
     public double MomentumThrustComponentN { get; init; }
 
-    /// <summary>Sum of expander wall + inlet pressure thrust (axial CV terms), separate from momentum.</summary>
+    /// <summary>SI path: (P_exit − P_amb) A_exit only. Legacy path: expander + inlet heuristics.</summary>
     public double PressureThrustComponentN { get; init; }
 
     public PressureLossBreakdown PressureLoss { get; init; }
@@ -109,7 +108,7 @@ public sealed class NozzleSolvedState
     /// <summary>First-order: mdot_core * V_core (no mixed-stream pressure term).</summary>
     public double SourceOnlyThrustN { get; init; }
 
-    /// <summary>Momentum thrust + swirl-pressure wall term (see components).</summary>
+    /// <summary>SI path: single exit control volume ṁ(V_exit−V_∞)+(P_exit−P_amb)A. Legacy: momentum + heuristic pressure terms.</summary>
     public double FinalThrustN { get; init; }
     public double ExtraThrustN { get; init; }
     public double ThrustGainRatio { get; init; }

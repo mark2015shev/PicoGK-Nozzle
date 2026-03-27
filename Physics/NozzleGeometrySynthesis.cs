@@ -56,7 +56,12 @@ public static class NozzleGeometrySynthesis
         double yaw = runEff.LockInjectorYawTo90Degrees ? 90.0 : template.InjectorYawAngleDeg;
         double pitch = template.InjectorPitchAngleDeg;
         var (vt, va) = SwirlMath.ResolveInjectorComponents(vCore, yaw, pitch);
-        double swirlNumber = SwirlMath.InjectorSwirlNumber(vt, va);
+        double rFluxM = 0.5e-3 * Math.Max(template.SwirlChamberDiameterMm, 1.0);
+        double fluxS = SwirlMath.FluxSwirlNumber(
+            mdot * rFluxM * vt,
+            mdot * Math.Max(Math.Abs(va), 1e-3),
+            rFluxM);
+        double swirlGeomMetric = Math.Clamp(Math.Abs(fluxS), 0.25, 12.0);
 
         int nInj = Math.Max(1, template.InjectorCount);
         double totalInjArea = Math.Min(aSourceMm2 * 0.995, Math.Max(template.TotalInjectorAreaMm2, aSourceMm2 * 0.85));
@@ -87,19 +92,19 @@ public static class NozzleGeometrySynthesis
         }
 
         // --- Inlet: capture openness σ = (D_in/D_ch)² ; favor σ > 1 for ambient mouth ≥ bore (bellmouth rule in geometry).
-        double sigma = 1.22 + 0.28 * targetEntrainmentRatio - 0.06 * Math.Tanh(swirlNumber * 0.35);
+        double sigma = 1.22 + 0.28 * targetEntrainmentRatio - 0.06 * Math.Tanh(swirlGeomMetric * 0.35);
         sigma = Math.Clamp(sigma, 1.05, 2.0);
         double dInletMm = Math.Sqrt(sigma) * dChamberMm;
         dInletMm = Math.Clamp(dInletMm, dChamberMm * 1.01, dChamberMm * 1.55);
 
         // --- Exit: area scales with (1+ER) and axial speed floor (bulk continuity hint, not Navier–Stokes).
-        double vAxialHint = Math.Max(85.0, vCore / (1.35 + 0.22 * swirlNumber));
+        double vAxialHint = Math.Max(85.0, vCore / (1.35 + 0.22 * swirlGeomMetric));
         double areaScale = (1.0 + targetEntrainmentRatio) * (vCore / Math.Max(vAxialHint, 40.0));
         areaScale = Math.Clamp(areaScale, 1.12, 2.0);
         double dExitMm = Math.Clamp(dChamberMm * Math.Sqrt(areaScale * 0.92), dChamberMm * 1.05, dChamberMm * 1.62);
 
         // --- Expander: higher swirl → shallower cone to limit separation risk on rotating flow.
-        double halfAngleDeg = 14.5 / (1.0 + 0.28 * swirlNumber) - 0.35 * Math.Tanh(targetEntrainmentRatio - 0.35);
+        double halfAngleDeg = 14.5 / (1.0 + 0.28 * swirlGeomMetric) - 0.35 * Math.Tanh(targetEntrainmentRatio - 0.35);
         halfAngleDeg = Math.Clamp(halfAngleDeg, 4.5, 11.0);
         double rCh = 0.5 * dChamberMm;
         double rExit = 0.5 * dExitMm;
@@ -120,7 +125,7 @@ public static class NozzleGeometrySynthesis
 
         // --- Stator: first-order alignment — turn toward axial; scale with injector yaw and mild L/D factor.
         double ldCh = lChamberMm / Math.Max(dChamberMm, 1e-6);
-        double statorDeg = yaw * (0.32 + 0.04 * Math.Tanh(ldCh - 1.0)) + 6.0 * Math.Tanh(swirlNumber * 0.25);
+        double statorDeg = yaw * (0.32 + 0.04 * Math.Tanh(ldCh - 1.0)) + 6.0 * Math.Tanh(swirlGeomMetric * 0.25);
         statorDeg = Math.Clamp(statorDeg, 18.0, 52.0);
 
         double slotH = Math.Max(template.InjectorHeightMm, 1.0);

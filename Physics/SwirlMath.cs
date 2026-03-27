@@ -33,10 +33,23 @@ public static class SwirlMath
         return (tangential, axial);
     }
 
-    /// <summary>|Vt|/|Va| for the injection vector — design directive, not measured chamber swirl.</summary>
+    /// <summary>|Vt|/|Va| — do not use in governing physics; prefer <see cref="FluxSwirlNumber"/>.</summary>
     public static double InjectorSwirlNumber(double tangentialVelocityMps, double axialVelocityMps)
     {
         return Math.Abs(tangentialVelocityMps) / Math.Max(Math.Abs(axialVelocityMps), 1e-6);
+    }
+
+    /// <summary>
+    /// Bounded |Vt|/|Va| for logs and CSV only (avoids blow-up when |Va|→0); not a correlation input.
+    /// </summary>
+    public static double InjectorSwirlNumberReportOnly(
+        double tangentialVelocityMps,
+        double axialVelocityMps,
+        double jetSpeedReferenceMps)
+    {
+        double vJet = Math.Max(Math.Abs(jetSpeedReferenceMps), 1.0);
+        double denom = Math.Max(Math.Max(Math.Abs(axialVelocityMps), 1e-9), 0.05 * vJet);
+        return Math.Abs(tangentialVelocityMps) / denom;
     }
 
     /// <summary>

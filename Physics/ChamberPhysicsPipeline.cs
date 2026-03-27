@@ -84,7 +84,7 @@ public static class ChamberPhysicsPipeline
 
         double swirlCorr = detailed.StepPhysicsStates.Count > 0
             ? detailed.StepPhysicsStates[^1].SwirlNumberFlux
-            : structure.InjectorSwirlNumberSimple;
+            : Math.Max(Math.Abs(injectorPlaneFluxSwirlNumber), 1e-12);
         var diffuser = SwirlDiffuserRecoveryModel.Compute(
             design.ExpanderHalfAngleDeg,
             design.ExpanderLengthMm,

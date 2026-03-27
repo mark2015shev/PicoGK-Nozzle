@@ -219,6 +219,12 @@ public sealed class RunConfiguration
     public bool AutotuneFinalizeApplyEntrainmentDerivedChamberBore { get; init; } = true;
 
     /// <summary>
+    /// When true (K320-class presets), SI path applies hard invalidation: chamber/march static &gt; 10 bar abs,
+    /// pressure-thrust inconsistent with low momentum, and |F_net| &gt; 5000 N (see SiThrustSanity).
+    /// </summary>
+    public bool ApplyHardSiThrustAndPressureAssertions { get; init; }
+
+    /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
     /// </summary>
     public RunConfiguration AfterAutotune() => new()
@@ -285,6 +291,7 @@ public sealed class RunConfiguration
         PhysicsAutotuneStageCPolishTrials = PhysicsAutotuneStageCPolishTrials,
         PhysicsAutotuneStageBRelativeSpan = PhysicsAutotuneStageBRelativeSpan,
         PhysicsAutotuneStageCRelativeSpan = PhysicsAutotuneStageCRelativeSpan,
-        PhysicsAutotunePreserveWinningChamberDiameter = PhysicsAutotunePreserveWinningChamberDiameter
+        PhysicsAutotunePreserveWinningChamberDiameter = PhysicsAutotunePreserveWinningChamberDiameter,
+        ApplyHardSiThrustAndPressureAssertions = ApplyHardSiThrustAndPressureAssertions
     };
 }

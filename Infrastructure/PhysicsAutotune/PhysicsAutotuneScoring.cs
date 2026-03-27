@@ -32,6 +32,8 @@ public static class PhysicsAutotuneScoring
             invalid01 += 1.0;
         if (si != null)
         {
+            if (!si.ThrustControlVolumeIsValid)
+                invalid01 += 1.0;
             if (si.MinInletLocalStaticPressurePa < SiPressureGuards.MinStaticPressurePa)
                 invalid01 += 0.35;
             double machBulk = si.MarchPhysicsClosure?.FinalMachBulk ?? 0.0;

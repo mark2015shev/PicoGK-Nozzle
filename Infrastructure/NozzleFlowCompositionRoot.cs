@@ -541,15 +541,20 @@ public static class NozzleFlowCompositionRoot
         double shortfall = Math.Max(0.0, sumReq - sumAct);
 
         double mdotExit = finalOutlet.TotalMassFlowKgS;
-        (double fMom, double fPressureTotal, double fNet) = ThrustCalculator.NetThrustBreakdownSanitized(
+        ThrustCalculator.ThrustControlVolumeResult cv = ThrustCalculator.ComputeControlVolumeThrustSanitized(
             mdotExit,
             finalOutlet.VelocityMps,
             ambient.VelocityMps,
             finalOutlet.PressurePa,
             ambient.PressurePa,
-            finalOutlet.AreaM2,
-            inletPressureForceN,
-            expanderForceN);
+            finalOutlet.AreaM2);
+
+        double fMom = cv.MomentumN;
+        double fPressureExit = cv.ExitPlanePressureN;
+        bool thrustCvValid = cv.IsValid;
+        string? thrustInvalidReason = thrustCvValid ? null : cv.InvalidReason;
+        double fNet = thrustCvValid ? cv.NetN : 0.0;
+        double coreMomentumEstimateN = coreMdot * Math.Max(Math.Abs(va0), 1e-12);
 
         double solvedEr = coreMdot > 1e-12
             ? Math.Max(0.0, (lastMarch.TotalMassFlowKgS - coreMdot) / coreMdot)
@@ -597,8 +602,28 @@ public static class NozzleFlowCompositionRoot
             chamber.RadialPressure,
             inletState.PressurePa);
 
+        SiThrustSanity.LogCvAndApplyAssertions(
+            run,
+            cv,
+            mdotExit,
+            finalOutlet.VelocityMps,
+            finalOutlet.PressurePa,
+            ambient.PressurePa,
+            finalOutlet.AreaM2,
+            fMom,
+            fPressureExit,
+            ref fNet,
+            ref thrustCvValid,
+            ref thrustInvalidReason,
+            inletPressureForceN,
+            expanderForceN,
+            injectorPressureVelocity.ChamberStaticPressureNearInjectorPa,
+            injectorPressureVelocity.MarchInletAssignedStaticPressurePa,
+            steps,
+            out bool chamberPressureHardAssertionTripped);
+
         double statorEntrySwirlCorrelation = detailed.MarchClosure?.FinalFluxSwirlNumber
-            ?? (Math.Abs(detailed.FinalTangentialVelocityMps) / Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6));
+            ?? Math.Max(Math.Abs(sFluxInjector), 1e-12);
         SwirlChamberHealthReport swirlChamberHealth = SwirlChamberHealthReportBuilder.Build(
             activeDesign,
             ambient,
@@ -636,8 +661,19 @@ public static class NozzleFlowCompositionRoot
             FinalTangentialVelocityMps = vtAfterStator,
             FinalAxialVelocityMps = vaAfterStator,
             MomentumThrustN = fMom,
-            PressureThrustN = fPressureTotal,
+            PressureThrustN = fPressureExit,
             NetThrustN = fNet,
+            CoreMomentumEstimateN = coreMomentumEstimateN,
+            ThrustCvMdotExitKgS = mdotExit,
+            ThrustCvVExitMps = finalOutlet.VelocityMps,
+            ThrustCvPExitPa = finalOutlet.PressurePa,
+            ThrustCvPAmbientPa = ambient.PressurePa,
+            ThrustCvAExitM2 = finalOutlet.AreaM2,
+            ThrustOtherForcesAddedToNetN = 0.0,
+            ChamberPressureHardAssertionTripped = chamberPressureHardAssertionTripped,
+            ThrustControlVolumeIsValid = thrustCvValid,
+            ThrustControlVolumeInvalidReason = thrustInvalidReason,
+            ThrustControlVolumeSoftWarning = thrustCvValid ? cv.SoftWarning : null,
             Vortex = vortex,
             Chamber = chamber,
             Coupling = couplingDiag,

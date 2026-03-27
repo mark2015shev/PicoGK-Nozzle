@@ -24,6 +24,7 @@ public sealed class FlowMarchStepResult
     public double AxialVelocityMps { get; init; }
     public double SwirlKineticEnergyPerKg { get; init; }
     public double RecoveredPressureRisePa { get; init; }
+    /// <summary>diagnostic_force_only: inlet capture annulus (P_amb−P_local)×A this step — not summed into net thrust.</summary>
     public double PressureForceN { get; init; }
 
     /// <summary>Effective duct flow area (annulus minus hub/vane blockage) [m²].</summary>
