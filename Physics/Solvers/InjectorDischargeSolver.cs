@@ -39,15 +39,6 @@ public static class InjectorDischargeSolver
 
         double vCont = mdotAuth / (rho * aInj);
 
-        double sourceAreaM2 = Math.Max(source.SourceOutletAreaMm2 * 1e-6, 1e-12);
-        double vCore = source.SourceVelocityMps > 0.0
-            ? source.SourceVelocityMps
-            : VelocityMath.FromMassFlow(mdotAuth, source.AmbientDensityKgPerM3, sourceAreaM2);
-        double areaDriver = vCore * (source.SourceOutletAreaMm2 / Math.Max(design.TotalInjectorAreaMm2, 1e-9));
-        double continuityCheck = mdotAuth / (rho * aInj);
-        double b = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
-        double legacyBlend = b * areaDriver + (1.0 - b) * continuityCheck;
-
         double vEff = InjectorLossModel.EffectiveJetVelocityMps(vCont, rho, yawDeg);
         var (vt, va) = SwirlMath.ResolveInjectorComponents(vEff, yawDeg, pitchDeg);
         double s = Math.Abs(vt) / Math.Max(Math.Abs(va), 1e-6);
@@ -71,7 +62,7 @@ public static class InjectorDischargeSolver
             AxialVelocityMps = va,
             TangentialVelocityMps = vt,
             SwirlNumberVtOverVa = s,
-            LegacyBlendedDriverVelocityMps = legacyBlend,
+            LegacyBlendedDriverVelocityMps = vCont,
             Notes = notes
         };
     }

@@ -63,28 +63,10 @@ public static class NozzleGeometrySynthesis
         const double injectorToBoreAreaMargin = 1.06;
         double dMinForPortsMm = 2.0 * Math.Sqrt((totalInjArea * injectorToBoreAreaMargin) / Math.PI);
 
-        SwirlChamberSizingModel.SizingDiagnostics sizingDiag;
-
-        double dChamberMm;
-        if (runEff.UseDerivedSwirlChamberDiameter)
-        {
-            sizingDiag = SwirlChamberSizingModel.ComputeDerived(source, template, targetEntrainmentRatio, runEff);
-            dChamberMm = sizingDiag.ChamberDiameterTargetMm;
-        }
-        else
-        {
-            // --- Swirl chamber: slightly larger than jet so shear + swirl can “see” the wall (not a tight throat).
-            double chamberScale = 1.02 + 0.11 * Math.Tanh(swirlNumber * 0.45) + 0.06 * Math.Sqrt(targetEntrainmentRatio);
-            chamberScale = Math.Clamp(chamberScale, 0.92, 1.28);
-            dChamberMm = Math.Clamp(dJetMm * chamberScale, dJetMm * 0.9, dJetMm * 1.32);
-            dChamberMm = Math.Max(dChamberMm, dMinForPortsMm);
-            sizingDiag = SwirlChamberSizingModel.ForHeuristicMode(
-                dChamberMm,
-                targetEntrainmentRatio,
-                source,
-                template,
-                runEff);
-        }
+        // Chamber bore: continuity-based annulus sizing only (A_eff ≥ ṁ_mix/(ρ V_ax); hub + blockage inside model).
+        SwirlChamberSizingModel.SizingDiagnostics sizingDiag =
+            SwirlChamberSizingModel.ComputeDerived(source, template, targetEntrainmentRatio, runEff);
+        double dChamberMm = Math.Max(sizingDiag.ChamberDiameterTargetMm, dMinForPortsMm);
 
         // --- Chamber length: shorter envelope by default (compact vortex volume); still scales with D and ER.
         double lambda = 0.92 + 0.14 * (1.0 - 1.0 / (1.0 + targetEntrainmentRatio));
@@ -93,8 +75,7 @@ public static class NozzleGeometrySynthesis
         double lChamberMm = Math.Clamp(lambda * dChamberMm, 28.0, lenCap);
         lChamberMm = Math.Max(lChamberMm, Math.Min(95.0, 0.98 * dChamberMm));
 
-        if (runEff.UseDerivedSwirlChamberDiameter
-            && runEff.DerivedChamberTargetMinLd > 0.1
+        if (runEff.DerivedChamberTargetMinLd > 0.1
             && runEff.DerivedChamberTargetMaxLd > runEff.DerivedChamberTargetMinLd)
         {
             double ld0 = lChamberMm / Math.Max(dChamberMm, 1e-6);

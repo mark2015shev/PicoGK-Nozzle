@@ -33,9 +33,13 @@ public static class NozzleSolvedStateFlowAdapter
             designInputs.InjectorPitchAngleDeg);
 
         double injectorSwirl = SwirlMath.InjectorSwirlNumber(vTanInj, vAxInj);
-        double chamberSwirl = si != null
-            ? SwirlMath.InjectorSwirlNumber(si.FinalTangentialVelocityMps, Math.Max(si.FinalAxialVelocityMps, 1e-6))
-            : injectorSwirl;
+        double chamberSwirl = si?.MarchPhysicsClosure != null
+            ? si.MarchPhysicsClosure.FinalFluxSwirlNumber
+            : (si != null
+                ? SwirlMath.InjectorSwirlNumber(
+                    si.FinalTangentialVelocityMps,
+                    Math.Max(si.FinalAxialVelocityMps, 1e-6))
+                : injectorSwirl);
 
         double momentumThrust = si?.MomentumThrustN ?? outlet.TotalMassFlowKgS * outlet.VelocityMps;
         double pressureThrust = si?.PressureThrustN ?? 0.0;

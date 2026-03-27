@@ -107,12 +107,11 @@ internal static class ResultReporter
             Console.WriteLine(line);
         });
 
-        Library.Log("--- Source → injector momentum assumption (SI driver) ---");
-        double bDr = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
-        Library.Log($"V_jet ≈ {bDr:F2}×[V_core×(A_source/A_inj)] + {1.0 - bDr:F2}×[mdot/(ρ_core×A_inj)] — SI path; legacy solver mirrors same blend.");
-        Library.Log($"V_core×(A_source/A_inj):      {s.InjectorJetVelocityAreaDriverMps:F2} m/s");
-        Library.Log($"Continuity mdot/(ρ_core×A_inj): {s.InjectorJetVelocityContinuityCheckMps:F2} m/s");
-        Library.Log($"Blended InjectorJetVelocityMps (raw driver): {s.InjectorJetVelocityMps:F2} m/s");
+        Library.Log("--- Injector (SI authority = InjectorDischargeSolver) ---");
+        Library.Log("Reference |V| = ṁ/(ρ A_inj) from discharge; no velocity blend in the live path.");
+        Library.Log($"V_core×(A_source/A_inj) diagnostic [m/s]: {s.InjectorJetVelocityAreaDriverMps:F2}");
+        Library.Log($"Continuity ṁ/(ρ A_inj) at injector [m/s]: {s.InjectorJetVelocityContinuityCheckMps:F2}");
+        Library.Log($"InjectorJetVelocityMps (reported):       {s.InjectorJetVelocityMps:F2}");
         if (result.SiFlow?.Coupling != null)
         {
             SiVortexCouplingDiagnostics c = result.SiFlow.Coupling;
@@ -407,7 +406,7 @@ internal static class ResultReporter
         Library.Log("--- SI coupled vortex physics (raw vs values used in thrust) — first-order, not CFD ---");
         foreach (string line in c.CouplingSummaryLines)
             Library.Log("Summary: " + line);
-        Library.Log($"Injector |V| raw [m/s]:           {c.InjectorJetVelocityRawMps:F2}  effective: {c.InjectorJetVelocityEffectiveMps:F2}");
+        Library.Log($"Injector |V| continuity [m/s]:     {c.InjectorJetVelocityRawMps:F2}  effective (Cd·turn): {c.InjectorJetVelocityEffectiveMps:F2}");
         Library.Log($"Injector Vt/Va raw [m/s]:        {c.InjectorVtRawMps:F2} / {c.InjectorVaRawMps:F2}");
         Library.Log($"Injector Vt/Va effective [m/s]:  {c.InjectorVtEffectiveMps:F2} / {c.InjectorVaEffectiveMps:F2}");
         Library.Log($"Entrainment demand boost B [-]: {c.EntrainmentDemandBoostFactor:F4}  Δp_core useful [Pa]: {c.DeltaPCoreUsefulForEntrainmentPa:F1}");
@@ -432,7 +431,7 @@ internal static class ResultReporter
         Library.Log($"JetSourceReferenceStaticPressurePa [Pa]:  {ip.JetSourceReferenceStaticPressurePa:F1} (static passed into JetSource — currently ambient)");
         Library.Log($"MarchInletAssignedStaticPressurePa [Pa]:  {ip.MarchInletAssignedStaticPressurePa:F1} (JetState.PressurePa at march start)");
         Library.Log("Velocities [m/s]:");
-        Library.Log($"  Injector jet raw (blend driver):       {ip.InjectorJetVelocityRawMps:F2}");
+        Library.Log($"  Injector |V| continuity (ṁ/ρA):        {ip.InjectorJetVelocityRawMps:F2}");
         Library.Log($"  Injector jet effective (Cd·√(1−K)):    {ip.InjectorJetVelocityEffectiveMps:F2}");
         Library.Log($"  Va_effective / Vt_effective:            {ip.InjectorVaEffectiveMps:F2} / {ip.InjectorVtEffectiveMps:F2}");
         Library.Log($"  |V|_effective from components:         {ip.InjectorVelocityMagnitudeEffectiveMps:F2}");

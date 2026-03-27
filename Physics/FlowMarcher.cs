@@ -179,10 +179,23 @@ public sealed class FlowMarcher
                 vMagCorr,
                 perimeter) * dx * boost;
 
+            double pMixClamped = Math.Clamp(pOld, 1.0, _ambient.PressurePa * 0.99999);
+            double mdotChokedCeiling = _gas.ChokedMassFlux(_ambient.PressurePa, _ambient.TemperatureK) * aCap;
+            double mdotPressureLimited = CompressibleFlowMath.MassFlowFromStagnationToStaticPressure(
+                _gas,
+                _ambient.PressurePa,
+                _ambient.TemperatureK,
+                pMixClamped,
+                aCap);
+            mdotPressureLimited = Math.Max(0.0, mdotPressureLimited);
+            double dmDemandCapped = Math.Min(
+                dmRequested,
+                Math.Min(mdotPressureLimited, Math.Max(mdotChokedCeiling, 0.0)));
+
             InletSuctionOutcome intake = _inletSuction.Solve(
                 _gas,
                 _ambient,
-                dmRequested,
+                dmDemandCapped,
                 aCap,
                 tOld);
 
@@ -194,20 +207,24 @@ public sealed class FlowMarcher
             if (mNew < 1e-18)
                 mNew = mOld;
 
-            double tNew = mNew > 1e-18
-                ? (mOld * tOld + dmActual * Math.Max(_ambient.TemperatureK, 1.0)) / mNew
-                : tOld;
-            tNew = Math.Max(tNew, 1.0);
-
-            double pNew = mNew > 1e-18
-                ? (mOld * pOld + dmActual * Math.Max(intake.PinletLocalPa, 1.0)) / mNew
-                : pOld;
-            pNew = Math.Max(pNew, 1.0);
+            double cp = _gas.SpecificHeatCp;
+            double h0Old = cp * tOld + 0.5 * (va * va + vtOldBulk * vtOldBulk);
+            double tAmb = Math.Max(_ambient.TemperatureK, 1.0);
+            double vEnt = intake.EntrainmentVelocityMps;
+            double h0Amb = cp * tAmb + 0.5 * vEnt * vEnt;
+            double h0Mix = mNew > 1e-18 ? (mOld * h0Old + dmActual * h0Amb) / mNew : h0Old;
 
             double vaNew = _mixing.ComputeMixedVelocity(mOld, va, dmActual, intake.EntrainmentVelocityMps);
             double vtMixed = _mixing.ComputeMixedTangentialVelocity(mOld, vtOldBulk, dmActual, 0.0);
 
-            double rhoNew = _gas.Density(pNew, tNew);
+            double vmag2 = vaNew * vaNew + vtMixed * vtMixed;
+            double tNew = h0Mix - 0.5 * vmag2 / cp;
+            tNew = Math.Max(tNew, 1.0);
+
+            double vaAbs = Math.Max(Math.Abs(vaNew), 1e-4);
+            double rhoNew = mNew / (area * vaAbs);
+            double pNew = rhoNew * GasProperties.R * tNew;
+            pNew = Math.Max(pNew, 1.0);
             double swirlKe = 0.5 * vtMixed * vtMixed;
             double dFN = PressureForceMath.InletCaptureAnnulusAxialForce(
                 _ambient.PressurePa,
@@ -237,7 +254,11 @@ public sealed class FlowMarcher
             double angFluxBulk = mNew * rMom * vtMixed;
             double sFluxPost = SwirlMath.FluxSwirlNumber(angFluxBulk, axialMomFluxNew, rMom);
 
-            var stepUpdate = new FlowStepUpdate(dmActual, dmRequested, intake.MaxSupportedEntrainedMassFlowKgS);
+            var stepUpdate = new FlowStepUpdate(
+                dmActual,
+                dmRequested,
+                intake.MaxSupportedEntrainedMassFlowKgS,
+                mdotPressureLimited);
 
             physicsSteps.Add(new FlowStepState
             {

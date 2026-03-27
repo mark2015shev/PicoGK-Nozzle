@@ -34,8 +34,10 @@ public sealed class NozzlePhysicsSolver
     /// <summary>HEURISTIC: axial projection on inlet annulus (capture area) for suction thrust; keep small.</summary>
     private const double InletPressureThrustAreaFactorHeuristic = 0.065;
 
-    /// <summary>Weight on V_core×(A_source/A_inj) in jet-speed blend; remainder is continuity mdot/(ρA).</summary>
-    public const double InjectorJetVelocityDriverBlend = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
+    /// <summary>
+    /// Legacy heuristic blend only — used inside this solver’s reference path, not the SI composition root.
+    /// </summary>
+    public const double InjectorJetVelocityDriverBlend = 0.88;
 
     public PhysicsSolveResult Solve(NozzleInput input)
     {

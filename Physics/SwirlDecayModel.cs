@@ -22,10 +22,10 @@ public sealed class SwirlBudgetResult
 /// </summary>
 public static class SwirlDecayModel
 {
-    /// <summary>Heuristic breakdown risk [0,1] before march from swirl intensity and geometry.</summary>
-    public static double PreMarchBreakdownRisk(double injectorSwirlNumber, double chamberLd, double injectorAxialRatio)
+    /// <summary>First-order breakdown risk [0,1]; prefer flux swirl S, not |V_t|/|V_a|, as correlation input.</summary>
+    public static double PreMarchBreakdownRisk(double swirlCorrelation, double chamberLd, double injectorAxialRatio)
     {
-        double s = injectorSwirlNumber;
+        double s = Math.Clamp(Math.Abs(swirlCorrelation), 0.0, 25.0);
         double g1 = Math.Clamp((s - 4.2) / 2.4, 0.0, 1.0);
         double g2 = Math.Clamp((2.4 - chamberLd) / 1.6, 0.0, 1.0);
         double g3 = Math.Clamp((0.92 - injectorAxialRatio) / 0.55, 0.0, 1.0);
@@ -35,8 +35,7 @@ public static class SwirlDecayModel
     public static double ComputeKTotal(
         double chamberLengthMm,
         double chamberDiameterMm,
-        double uThetaInjector,
-        double uAxialInjector,
+        double swirlCorrelationForMixing,
         double entrainmentRatioHint,
         double injectorAxialPositionRatio,
         double preMarchBreakdownRisk01)
@@ -44,7 +43,7 @@ public static class SwirlDecayModel
         double dM = Math.Max(chamberDiameterMm * 1e-3, 1e-4);
         double ld = chamberDiameterMm > 1e-6 ? chamberLengthMm / chamberDiameterMm : 1.0;
         double er = Math.Clamp(entrainmentRatioHint, 0.0, 3.0);
-        double s = Math.Abs(uThetaInjector) / Math.Max(Math.Abs(uAxialInjector), 1e-6);
+        double s = Math.Clamp(Math.Abs(swirlCorrelationForMixing), 0.0, 25.0);
 
         double kWall = ChamberPhysicsCoefficients.DecayCWall
                        * ChamberPhysicsCoefficients.DecayFRoughness

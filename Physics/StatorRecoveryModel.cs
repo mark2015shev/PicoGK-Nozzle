@@ -4,14 +4,37 @@ namespace PicoGK_Run.Physics;
 
 /// <summary>
 /// First-order swirl energy recovery into static pressure rise and bounded axial kinetic gain — not CFD.
-/// Inputs (V_t, ρ) must come from the final SI mixed state at stator entry, not from legacy heuristics.
+/// Prefer <see cref="Apply(StatorRecoverySiInput, double, double)"/> so stator entry is explicitly tied to SI march state.
 /// </summary>
+public readonly record struct StatorRecoverySiInput(
+    double TangentialVelocityMps,
+    double AxialVelocityMps,
+    double StaticDensityKgM3,
+    double StaticTemperatureK);
+
 public sealed class StatorRecoveryModel
 {
-    /// <summary>
-    /// Recovered specific energy ≈ η · 0.5 · (Vt_in² - Vt_out²); split between pressure and axial velocity.
-    /// </summary>
+    /// <summary>SI stator entry: mixed tangential speed, axial speed, and statics at chamber exit plane.</summary>
     public StatorRecoveryOutput Apply(
+        in StatorRecoverySiInput si,
+        double etaStator,
+        double fractionOfTangentialRetained)
+    {
+        return ApplyCore(si.TangentialVelocityMps, si.StaticDensityKgM3, etaStator, fractionOfTangentialRetained);
+    }
+
+    /// <summary>Legacy three-argument entry; same physics as <see cref="Apply(in StatorRecoverySiInput, double, double)"/>.</summary>
+    public StatorRecoveryOutput Apply(
+        double tangentialVelocityInMps,
+        double densityKgM3,
+        double etaStator,
+        double fractionOfTangentialRetained)
+    {
+        return ApplyCore(tangentialVelocityInMps, densityKgM3, etaStator, fractionOfTangentialRetained);
+    }
+
+    /// <summary>Recovered specific energy ≈ η · 0.5 · (Vt_in² - Vt_out²); split between pressure and axial velocity.</summary>
+    private static StatorRecoveryOutput ApplyCore(
         double tangentialVelocityInMps,
         double densityKgM3,
         double etaStator,

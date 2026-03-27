@@ -3,8 +3,8 @@ using System;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Injector jet direction in the chamber cylindrical frame (x = axial downstream).
-/// <b>Not CFD-calibrated.</b>
+/// Injector direction decomposition and swirl metrics.
+/// Governing SI chamber correlations use <see cref="FluxSwirlNumber"/>; <see cref="InjectorSwirlNumber"/> is diagnostic only.
 /// </summary>
 public static class SwirlMath
 {

@@ -19,7 +19,7 @@ public sealed class InjectorDischargeResult
     public double AxialVelocityMps { get; init; }
     public double TangentialVelocityMps { get; init; }
     public double SwirlNumberVtOverVa { get; init; }
-    /// <summary>Legacy area-ratio + continuity blend (audit only) [m/s].</summary>
+    /// <summary>Equals <see cref="VelocityMagnitudeFromContinuityMps"/>; legacy field name retained for callers.</summary>
     public double LegacyBlendedDriverVelocityMps { get; init; }
     public string Notes { get; init; } = "";
 }

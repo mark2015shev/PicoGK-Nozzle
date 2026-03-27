@@ -245,17 +245,10 @@ public static class NozzleFlowCompositionRoot
             ? source.SourceVelocityMps
             : VelocityMath.FromMassFlow(coreMdot, source.AmbientDensityKgPerM3, sourceAreaM2);
         double rhoCore = rawInlet.DensityKgM3;
-        double areaDriver = vCore * (sourceAreaMm2 / injectorAreaMm2);
-        double continuityCheck = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
-        double bBlend = SiFlowPhysicsConstants.InjectorJetVelocityDriverBlend;
-        double injectorJetVelocityRaw = bBlend * areaDriver + (1.0 - bBlend) * continuityCheck;
+        double areaDriverDiagnostic = vCore * (sourceAreaMm2 / injectorAreaMm2);
+        double continuityAtInjectorMps = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
 
-        var (vtRaw, vaRaw) = SwirlMath.ResolveInjectorComponents(
-            injectorJetVelocityRaw,
-            yawPhysicsDeg,
-            activeDesign.InjectorPitchAngleDeg);
-
-        // Stage 1 — pressure-driven discharge (authoritative ṁ); yaw/pitch decomposition on effective |V|.
+        // Stage 1 — authoritative injector: pressure-driven ṁ + continuity |V| = ṁ/(ρA), then yaw/pitch + loss model.
         InjectorDischargeResult injectorDischarge = InjectorDischargeSolver.Solve(
             source,
             activeDesign,
@@ -263,10 +256,22 @@ public static class NozzleFlowCompositionRoot
             ambient.PressurePa,
             injectorYawAngleDegOverride: yawPhysicsDeg);
 
+        double injectorJetVelocityRaw = injectorDischarge.VelocityMagnitudeFromContinuityMps;
+        var (vtRaw, vaRaw) = SwirlMath.ResolveInjectorComponents(
+            injectorJetVelocityRaw,
+            yawPhysicsDeg,
+            activeDesign.InjectorPitchAngleDeg);
+
         double va0 = injectorDischarge.AxialVelocityMps;
         double vt0 = injectorDischarge.TangentialVelocityMps;
         double injectorJetVelocityEffective = injectorDischarge.EffectiveVelocityMagnitudeMps;
         double sInjPre = injectorDischarge.SwirlNumberVtOverVa;
+
+        double rInjFluxM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
+        double sFluxInjector = SwirlMath.FluxSwirlNumber(
+            coreMdot * rInjFluxM * vt0,
+            coreMdot * va0,
+            rInjFluxM);
 
         // Pre-march radial picture on effective swirl — bounded entrainment boost (does not add free static head in march).
         double rWallM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
@@ -328,7 +333,7 @@ public static class NozzleFlowCompositionRoot
 
         double ldRatio = activeDesign.SwirlChamberLengthMm / Math.Max(activeDesign.SwirlChamberDiameterMm, 1e-6);
         double preBreak = SwirlDecayModel.PreMarchBreakdownRisk(
-            sInjPre,
+            sFluxInjector,
             ldRatio,
             activeDesign.InjectorAxialPositionRatio);
 
@@ -340,8 +345,7 @@ public static class NozzleFlowCompositionRoot
         double kTotal = SwirlDecayModel.ComputeKTotal(
             activeDesign.SwirlChamberLengthMm,
             activeDesign.SwirlChamberDiameterMm,
-            vt0,
-            va0,
+            sFluxInjector,
             erHint,
             activeDesign.InjectorAxialPositionRatio,
             preBreak);
@@ -416,11 +420,12 @@ public static class NozzleFlowCompositionRoot
             ChamberPhysicsCoefficients.HubStatorMaxEtaCap);
 
         var stator = new StatorRecoveryModel();
-        StatorRecoveryOutput statorOut = stator.Apply(
+        var statorSiIn = new StatorRecoverySiInput(
             detailed.FinalTangentialVelocityMps,
+            lastMarch.VelocityMps,
             lastMarch.DensityKgM3,
-            etaStatorEff,
-            fracVt);
+            lastMarch.TemperatureK);
+        StatorRecoveryOutput statorOut = stator.Apply(in statorSiIn, etaStatorEff, fracVt);
 
         HubStatorFlowDiagnostics hubDiag = HubStatorFirstOrderModel.BuildDiagnostics(
             hubCtx,
@@ -656,8 +661,8 @@ public static class NozzleFlowCompositionRoot
             finalOutlet,
             source,
             drivenDesign,
-            areaDriver,
-            continuityCheck,
+            areaDriverDiagnostic,
+            continuityAtInjectorMps,
             injectorJetVelocityRaw,
             siDiag);
 
