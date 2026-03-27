@@ -7,6 +7,10 @@ public sealed class NozzlePhysicsStageResult
 {
     public InjectorDischargeResult? Stage1Injector { get; init; }
 
+    /// <summary>Injector-plane flux swirl S = Ġθ/(R·ġx) — governing stage-2 metric.</summary>
+    public double Stage2InjectorFluxSwirlNumber { get; init; }
+
+    /// <summary>Same as <see cref="Stage2InjectorFluxSwirlNumber"/> (legacy property name).</summary>
     public double Stage2SwirlNumberAtInjector { get; init; }
 
     public double Stage3CorePressureDropPa { get; init; }

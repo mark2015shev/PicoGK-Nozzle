@@ -206,7 +206,8 @@ public static class SwirlChamberSizingModel
                 : VelocityMath.FromMassFlow(mdotCore, source.AmbientDensityKgPerM3, aSourceMm2 / 1e6),
             yaw,
             pitch);
-        double s = SwirlMath.InjectorSwirlNumber(vt, va);
+        double rFluxM = 0.5e-3 * Math.Max(Math.Max(template.SwirlChamberDiameterMm, dMm), 1.0);
+        double sFlux = SwirlMath.FluxSwirlNumber(mdotCore * rFluxM * vt, mdotCore * va, rFluxM);
         double dBeforeCap = dMm;
         double dMax = dJetMm * Math.Max(run.DerivedChamberMaxDiameterMultiplierVsJet, 1.05);
         bool cappedByMax = false;
@@ -218,7 +219,7 @@ public static class SwirlChamberSizingModel
             dMm = dMax;
         }
 
-        double dMinVortex = dJetMm * Math.Clamp(run.DerivedChamberMinDiameterMultiplierVsJet + 0.12 * Math.Tanh(s * 0.5), 0.75, 1.15);
+        double dMinVortex = dJetMm * Math.Clamp(run.DerivedChamberMinDiameterMultiplierVsJet + 0.12 * Math.Tanh(sFlux * 0.35), 0.75, 1.15);
         dMm = Math.Max(dMm, dMinVortex);
 
         // Port lip: chamber must fit injectors (same as synthesis).

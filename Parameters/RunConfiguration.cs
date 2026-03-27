@@ -139,6 +139,32 @@ public sealed class RunConfiguration
     /// <summary>0 = use <see cref="Environment.ProcessorCount"/>.</summary>
     public int AutotuneMaxDegreeOfParallelism { get; init; }
 
+    // --- Physics-controlled five-parameter autotune (see AutotuneStrategy.PhysicsControlledFiveParameter) ---
+
+    /// <summary>Stage A coarse random trials (clamped 100–300 in runner).</summary>
+    public int PhysicsAutotuneStageACandidates { get; init; } = 200;
+
+    /// <summary>Top seeds carried from stage A to local refinement B (10–20).</summary>
+    public int PhysicsAutotuneStageBTopSeeds { get; init; } = 15;
+
+    /// <summary>Local perturbation trials per stage-B seed.</summary>
+    public int PhysicsAutotuneStageBLocalTrialsPerSeed { get; init; } = 6;
+
+    /// <summary>Stage C polish trials around best stage-B design.</summary>
+    public int PhysicsAutotuneStageCPolishTrials { get; init; } = 24;
+
+    /// <summary>Relative ± span for stage-B local search (fraction of each parameter).</summary>
+    public double PhysicsAutotuneStageBRelativeSpan { get; init; } = 0.04;
+
+    /// <summary>Narrower relative ± span for stage-C polish.</summary>
+    public double PhysicsAutotuneStageCRelativeSpan { get; init; } = 0.015;
+
+    /// <summary>
+    /// When true, autotune does not overwrite the winning swirl chamber diameter with entrainment-derived bore before the final voxel pass
+    /// (preserves direct tuned D_ch). Five-parameter physics autotune also skips that finalize step.
+    /// </summary>
+    public bool PhysicsAutotunePreserveWinningChamberDiameter { get; init; }
+
     // --- Swirl chamber bore sizing (first-order continuity / area; not CFD) ---
 
     /// <summary>
@@ -252,6 +278,13 @@ public sealed class RunConfiguration
         DerivedChamberTargetMinLd = DerivedChamberTargetMinLd,
         DerivedChamberTargetMaxLd = DerivedChamberTargetMaxLd,
         AllowAutotuneDirectChamberDiameterOverride = AllowAutotuneDirectChamberDiameterOverride,
-        AutotuneFinalizeApplyEntrainmentDerivedChamberBore = AutotuneFinalizeApplyEntrainmentDerivedChamberBore
+        AutotuneFinalizeApplyEntrainmentDerivedChamberBore = AutotuneFinalizeApplyEntrainmentDerivedChamberBore,
+        PhysicsAutotuneStageACandidates = PhysicsAutotuneStageACandidates,
+        PhysicsAutotuneStageBTopSeeds = PhysicsAutotuneStageBTopSeeds,
+        PhysicsAutotuneStageBLocalTrialsPerSeed = PhysicsAutotuneStageBLocalTrialsPerSeed,
+        PhysicsAutotuneStageCPolishTrials = PhysicsAutotuneStageCPolishTrials,
+        PhysicsAutotuneStageBRelativeSpan = PhysicsAutotuneStageBRelativeSpan,
+        PhysicsAutotuneStageCRelativeSpan = PhysicsAutotuneStageCRelativeSpan,
+        PhysicsAutotunePreserveWinningChamberDiameter = PhysicsAutotunePreserveWinningChamberDiameter
     };
 }

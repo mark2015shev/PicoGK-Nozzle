@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using PicoGK_Run.Core;
+using PicoGK_Run.Infrastructure.PhysicsAutotune;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 
@@ -28,6 +29,9 @@ public static class NozzleDesignAutotune
         public string? CoarseToFineLog { get; init; }
 
         public IReadOnlyList<AutotuneStageBestSnapshot>? StageBests { get; init; }
+
+        /// <summary>Populated for <see cref="AutotuneStrategy.PhysicsControlledFiveParameter"/>.</summary>
+        public CandidatePhysicsAutotuneResult? PhysicsAutotuneBestDetail { get; init; }
     }
 
     public sealed class AutotuneStageBestSnapshot
@@ -81,10 +85,14 @@ public static class NozzleDesignAutotune
 
     private sealed record ScoredTrial(NozzleDesignInputs Design, double Score, FlowTuneEvaluation Eval);
 
-    public static Result FindBestSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run) =>
-        run.AutotuneStrategy == AutotuneStrategy.CoarseToFine
+    public static Result FindBestSeed(SourceInputs source, NozzleDesignInputs template, RunConfiguration run)
+    {
+        if (run.AutotuneStrategy == AutotuneStrategy.PhysicsControlledFiveParameter)
+            return PhysicsAutotuneRunner.Run(source, template, run);
+        return run.AutotuneStrategy == AutotuneStrategy.CoarseToFine
             ? FindBestSeedCoarseToFine(source, template, run)
             : FindBestSeedSingleStage(source, template, run);
+    }
 
     private static Result FindBestSeedSingleStage(SourceInputs source, NozzleDesignInputs template, RunConfiguration run)
     {
@@ -485,7 +493,8 @@ public static class NozzleDesignAutotune
         HasDesignError = e.HasDesignError,
         HealthMessages = e.HealthMessages,
         AmbientAirMassFlowKgS = e.AmbientAirMassFlowKgS,
-        CoreMassFlowKgS = e.CoreMassFlowKgS
+        CoreMassFlowKgS = e.CoreMassFlowKgS,
+        SiDiagnostics = e.SiDiagnostics
     };
 
     /// <summary>Legacy single-stage sampling (unchanged bands).</summary>

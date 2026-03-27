@@ -170,4 +170,30 @@ public static class K320Baseline
     /// <summary>Source + design + <see cref="CreateRunWithCoarseToFineAutotune"/>.</summary>
     public static NozzleInput CreateInputWithCoarseToFineAutotune(int stage1 = 120, int stage2 = 96, int stage3 = 48) =>
         new(CreateSource(), CreateDesign(), CreateRunWithCoarseToFineAutotune(stage1, stage2, stage3));
+
+    /// <summary>
+    /// Five-parameter physics autotune (staged A/B/C), SI scoring only, yaw locked 90°, no synthesis in search, no derived-bore finalize.
+    /// </summary>
+    public static RunConfiguration CreateRunWithPhysicsFiveParameterAutotune() => new()
+    {
+        VoxelSizeMM = 0.3f,
+        ShowInViewer = true,
+        UsePhysicsInformedGeometry = false,
+        UseAutotune = true,
+        AutotuneStrategy = AutotuneStrategy.PhysicsControlledFiveParameter,
+        LockInjectorYawTo90Degrees = true,
+        UseDerivedSwirlChamberDiameter = false,
+        AllowAutotuneDirectChamberDiameterOverride = true,
+        AutotuneFinalizeApplyEntrainmentDerivedChamberBore = false,
+        PhysicsAutotunePreserveWinningChamberDiameter = true,
+        AutotuneUseSynthesisBaseline = false,
+        PhysicsAutotuneStageACandidates = 200,
+        PhysicsAutotuneStageBTopSeeds = 15,
+        PhysicsAutotuneStageBLocalTrialsPerSeed = 6,
+        PhysicsAutotuneStageCPolishTrials = 24
+    };
+
+    /// <summary>Convenience: physics five-parameter autotune then one full voxel pass.</summary>
+    public static NozzleInput CreateInputWithPhysicsFiveParameterAutotune() =>
+        new(CreateSource(), CreateDesign(), CreateRunWithPhysicsFiveParameterAutotune());
 }

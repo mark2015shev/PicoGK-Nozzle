@@ -18,6 +18,7 @@ public static class SwirlChamberHealthReportBuilder
         NozzleDesignInputs design,
         AmbientAir ambient,
         InjectorDischargeResult injector,
+        double injectorPlaneFluxSwirlNumber,
         double aCaptureM2,
         double aFreeChamberMm2,
         double sumActualEntrainmentKgS,
@@ -44,7 +45,7 @@ public static class SwirlChamberHealthReportBuilder
             pCoreEstPa,
             aCaptureM2,
             ambient.DensityKgM3,
-            injector.SwirlNumberVtOverVa);
+            injectorPlaneFluxSwirlNumber);
 
         var warns = new List<string>();
 
@@ -95,6 +96,7 @@ public static class SwirlChamberHealthReportBuilder
             InjectorAxialVelocityMps = injector.AxialVelocityMps,
             InjectorTangentialVelocityMps = injector.TangentialVelocityMps,
             InjectorYawAngleDeg = physicsInjectorYawDegrees ?? design.InjectorYawAngleDeg,
+            InjectorPlaneFluxSwirlNumber = injectorPlaneFluxSwirlNumber,
             EstimatedCoreStaticPressurePa = pCoreEstPa,
             AmbientStaticPressurePa = ambient.PressurePa,
             AmbientInflowPotentialKgS = pot,

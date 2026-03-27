@@ -24,6 +24,9 @@ public sealed class SwirlChamberHealthReport
     public double InjectorTangentialVelocityMps { get; init; }
     public double InjectorYawAngleDeg { get; init; }
 
+    /// <summary>Injector-plane flux swirl S = Ġθ/(R·ġx) used for ambient-potential amplification (not |Vt|/|Va|).</summary>
+    public double InjectorPlaneFluxSwirlNumber { get; init; }
+
     public double EstimatedCoreStaticPressurePa { get; init; }
     public double AmbientStaticPressurePa { get; init; }
     public double AmbientInflowPotentialKgS { get; init; }

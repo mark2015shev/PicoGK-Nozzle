@@ -3,11 +3,20 @@ using System;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Simple momentum mixing between two streams. Future: pressure-loss, heat transfer, compressibility.
+/// Explicit mass-weighted axial / tangential momentum mixing (control-volume increments). Pressure-gradient axial impulse is not added here.
 /// </summary>
 public sealed class MixingSectionSolver
 {
-    /// <summary>V_a,mix = (ṁ₁ v_a1 + ṁ₂ v_a2) / (ṁ₁ + ṁ₂).</summary>
+    /// <summary>ġ_x = ṁ₁ v_a1 + ṁ₂ v_a2 [kg·m/s²] before dividing by total ṁ.</summary>
+    public static double AxialMomentumFluxRateKgMps(
+        double primaryMassFlowKgS,
+        double primaryAxialVelocityMps,
+        double entrainedMassFlowKgS,
+        double entrainedAxialVelocityMps) =>
+        Math.Max(primaryMassFlowKgS, 0.0) * primaryAxialVelocityMps
+        + Math.Max(entrainedMassFlowKgS, 0.0) * entrainedAxialVelocityMps;
+
+    /// <summary>V_a,mix = ġ_x / (ṁ₁ + ṁ₂).</summary>
     public double ComputeMixedVelocity(
         double primaryMassFlowKgS,
         double primaryVelocityMps,
@@ -19,10 +28,10 @@ public sealed class MixingSectionSolver
         double sum = m1 + m2;
         if (sum < 1e-18)
             return 0.0;
-        return (m1 * primaryVelocityMps + m2 * ambientVelocityMps) / sum;
+        return AxialMomentumFluxRateKgMps(m1, primaryVelocityMps, m2, ambientVelocityMps) / sum;
     }
 
-    /// <summary>V_θ,mix = (ṁ₁ v_θ1 + ṁ₂ v_θ2) / (ṁ₁ + ṁ₂).</summary>
+    /// <summary>ġ_θ = ṁ₁ v_θ1 + ṁ₂ v_θ2; V_θ,mix = ġ_θ / (ṁ₁ + ṁ₂).</summary>
     public double ComputeMixedTangentialVelocity(
         double stream1MassFlowKgS,
         double stream1TangentialMps,

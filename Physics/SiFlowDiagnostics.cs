@@ -6,6 +6,9 @@ namespace PicoGK_Run.Physics;
 /// <summary>Aggregated first-order SI march outputs for reporting (not CFD).</summary>
 public sealed class SiFlowDiagnostics
 {
+    /// <summary>Injector-plane flux swirl S = Ġθ/(R·ġx) used in governing correlations and stage ledger.</summary>
+    public double InjectorPlaneFluxSwirlNumber { get; init; }
+
     public IReadOnlyList<FlowMarchStepResult> MarchSteps { get; init; } = System.Array.Empty<FlowMarchStepResult>();
 
     public IReadOnlyList<FlowStepState> PhysicsStepStates { get; init; } = System.Array.Empty<FlowStepState>();

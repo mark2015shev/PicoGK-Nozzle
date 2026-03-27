@@ -8,13 +8,13 @@ public static class AmbientInflowSolver
         double coreStaticPressurePa,
         double captureAreaM2,
         double ambientDensityKgM3,
-        double swirlNumberAbs,
+        double injectorPlaneFluxSwirlNumberAbs,
         double gain = 0.22) =>
         SwirlAmbientEntrainmentSolver.ComputeSwirlDrivenAmbientPotentialKgS(
             ambientPressurePa,
             coreStaticPressurePa,
             captureAreaM2,
             ambientDensityKgM3,
-            swirlNumberAbs,
+            injectorPlaneFluxSwirlNumberAbs,
             gain);
 }

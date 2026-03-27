@@ -13,10 +13,12 @@ public sealed class NozzleCriticalRatiosSnapshot
     public double CaptureToChamberAreaRatio { get; init; }
 
     /// <summary>
-    /// <b>R2 — Swirl injection intensity.</b> S = |V_t|/|V_ax| at the injector from yaw/pitch (same as physics swirl number).
-    /// Too low → weak vortex / suction tendency; very high → little axial jet, hard to feed the chamber.
+    /// <b>R2 (diagnostic only).</b> |V_t|/|V_ax| from yaw/pitch at a reference speed — not used for SI health when flux is available.
     /// </summary>
     public double InjectorSwirlNumber { get; init; }
+
+    /// <summary>Injector-plane flux swirl S from SI solve when available; governing swirl intensity for health checks.</summary>
+    public double? InjectorPlaneFluxSwirlNumber { get; init; }
 
     /// <summary>
     /// <b>R3 — Chamber slenderness.</b> Λ = L_chamber / D_chamber. Mixing and entrainment length vs diameter.

@@ -58,10 +58,13 @@ public static class RadialVortexPressureModel
         double pFreeShell = 0.5 * rho * gamma * gamma * Math.Max(inv1 - inv2, 0.0);
 
         double wallVsAxis = pForcedCore + pFreeShell;
-        wallVsAxis = Math.Min(wallVsAxis, capPa);
+        wallVsAxis = Math.Clamp(Math.Min(wallVsAxis, capPa), 0.0, capPa);
 
         double coreDrop = Math.Clamp(0.58 * wallVsAxis + 0.08 * rho * vtRef * vtRef, 0.0, capPa * 1.05);
-        double deltaMag = Math.Sqrt(wallVsAxis * wallVsAxis + coreDrop * coreDrop);
+        double deltaMag = Math.Clamp(
+            Math.Sqrt(wallVsAxis * wallVsAxis + coreDrop * coreDrop),
+            0.0,
+            capPa * 1.1);
 
         string notes =
             "Mixed forced core + free outer; Omega=Gamma/r_core^2; Gamma≈Vt_ref*R_wall. Caps applied. Not CFD.";

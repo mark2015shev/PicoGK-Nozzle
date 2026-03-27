@@ -224,7 +224,7 @@ public sealed class FlowMarcher
             double vaAbs = Math.Max(Math.Abs(vaNew), 1e-4);
             double rhoNew = mNew / (area * vaAbs);
             double pNew = rhoNew * GasProperties.R * tNew;
-            pNew = Math.Max(pNew, 1.0);
+            pNew = SiPressureGuards.ClampStaticPressurePa(pNew);
             double swirlKe = 0.5 * vtMixed * vtMixed;
             double dFN = PressureForceMath.InletCaptureAnnulusAxialForce(
                 _ambient.PressurePa,

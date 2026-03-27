@@ -47,11 +47,21 @@ public static class NozzleDesignHealthCheck
         if (r.CaptureToChamberAreaRatio > 2.5)
             Add($"R1 CAPTURE (σ={r.CaptureToChamberAreaRatio:F2}): inlet >> chamber on paper — verify lip/flare and wall thickness; capture rule may force cylindrical entrance.");
 
-        // R2
-        if (r.InjectorSwirlNumber < 0.35)
-            Add($"R2 SWIRL (S={r.InjectorSwirlNumber:F2}): |Vt|/|Va| is low — weak tangential injection; vortex / suction mechanism may be marginal.");
-        if (r.InjectorSwirlNumber > 5.0)
-            Add($"R2 SWIRL (S={r.InjectorSwirlNumber:F2}): very high — almost no axial injection component; check yaw/pitch.");
+        // R2 — governing flux S from SI; skip template |Vt|/|Va| for ~90° tangential injectors (ratio is non-physical).
+        if (r.InjectorPlaneFluxSwirlNumber is { } sFlux)
+        {
+            if (sFlux < 0.12)
+                Add($"R2 FLUX SWIRL (S={sFlux:F3}): low Ġθ/(R·ġx) at injector — weak swirl transport in the SI model.");
+            if (sFlux > 18.0)
+                Add($"R2 FLUX SWIRL (S={sFlux:F3}): very high — check entrainment caps and breakdown risk in diagnostics.");
+        }
+        else if (Math.Abs(d.InjectorYawAngleDeg - 90.0) > 8.0)
+        {
+            if (r.InjectorSwirlNumber < 0.35)
+                Add($"R2 SWIRL (diagnostic |Vt|/|Va|={r.InjectorSwirlNumber:F2}): low — weak tangential component vs axial at template yaw.");
+            if (r.InjectorSwirlNumber > 5.0)
+                Add($"R2 SWIRL (diagnostic |Vt|/|Va|={r.InjectorSwirlNumber:F2}): very high — check yaw/pitch.");
+        }
 
         // R3
         if (r.ChamberSlendernessLD < 0.45)

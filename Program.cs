@@ -31,8 +31,8 @@ internal static class Program
             return;
         }
 
-        // Autotune off by default — it optimizes surrogate SI scores; enable only after physics path is trusted.
-        // To run search: useAutotune = true with CreateInputWithAutotune / CreateInputWithCoarseToFineAutotune.
+        // Autotune off by default. Options: CreateInputWithAutotune, CreateInputWithCoarseToFineAutotune,
+        // or CreateInputWithPhysicsFiveParameterAutotune (five geometry dims, staged A/B/C, SI score only).
         bool useAutotune = false;
         NozzleInput input = useAutotune
             ? K320Baseline.CreateInputWithAutotune(trials: 300)

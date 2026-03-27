@@ -38,7 +38,10 @@ internal sealed class AppPipeline
 
         bool finalPassDerivedBore = false;
         NozzleDesignInputs seedForFinal = tune.BestSeedDesign;
-        if (input.Run.UseDerivedSwirlChamberDiameter && input.Run.AutotuneFinalizeApplyEntrainmentDerivedChamberBore)
+        bool skipDerivedBoreFinalize = input.Run.AutotuneStrategy == AutotuneStrategy.PhysicsControlledFiveParameter
+            || input.Run.PhysicsAutotunePreserveWinningChamberDiameter;
+
+        if (input.Run.UseDerivedSwirlChamberDiameter && input.Run.AutotuneFinalizeApplyEntrainmentDerivedChamberBore && !skipDerivedBoreFinalize)
         {
             finalPassDerivedBore = true;
             double dBefore = seedForFinal.SwirlChamberDiameterMm;

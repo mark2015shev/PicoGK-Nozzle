@@ -15,6 +15,7 @@ public static class ChamberPhysicsPipeline
         double injectorJetVelocityMps,
         double vtInjector,
         double vaInjector,
+        double injectorPlaneFluxSwirlNumber,
         double swirlDecayPerStep,
         int marchSteps,
         double kTotalUsed,
@@ -70,6 +71,7 @@ public static class ChamberPhysicsPipeline
         var structure = VortexStructureModel.Compute(
             vtInjector,
             vaInjector,
+            injectorPlaneFluxSwirlNumber,
             ld,
             design.InjectorAxialPositionRatio,
             design.ExpanderHalfAngleDeg,

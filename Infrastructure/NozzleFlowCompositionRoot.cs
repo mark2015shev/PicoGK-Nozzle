@@ -60,6 +60,7 @@ public static class NozzleFlowCompositionRoot
             HealthCount = r.HealthMessages.Count,
             HasDesignError = hard > 0,
             HealthMessages = r.HealthMessages is List<string> list ? list : new List<string>(r.HealthMessages),
+            SiDiagnostics = r.SiDiag,
             Score = 0.0
         };
     }
@@ -265,7 +266,6 @@ public static class NozzleFlowCompositionRoot
         double va0 = injectorDischarge.AxialVelocityMps;
         double vt0 = injectorDischarge.TangentialVelocityMps;
         double injectorJetVelocityEffective = injectorDischarge.EffectiveVelocityMagnitudeMps;
-        double sInjPre = injectorDischarge.SwirlNumberVtOverVa;
 
         double rInjFluxM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
         double sFluxInjector = SwirlMath.FluxSwirlNumber(
@@ -541,7 +541,7 @@ public static class NozzleFlowCompositionRoot
         double shortfall = Math.Max(0.0, sumReq - sumAct);
 
         double mdotExit = finalOutlet.TotalMassFlowKgS;
-        (double fMom, double fPressureTotal, double fNet) = ThrustCalculator.NetThrustBreakdown(
+        (double fMom, double fPressureTotal, double fNet) = ThrustCalculator.NetThrustBreakdownSanitized(
             mdotExit,
             finalOutlet.VelocityMps,
             ambient.VelocityMps,
@@ -561,6 +561,7 @@ public static class NozzleFlowCompositionRoot
             injectorJetVelocityRaw,
             vt0,
             va0,
+            sFluxInjector,
             swirlDecayPerStep,
             DefaultMarchSteps,
             kTotal,
@@ -602,6 +603,7 @@ public static class NozzleFlowCompositionRoot
             activeDesign,
             ambient,
             injectorDischarge,
+            sFluxInjector,
             aCaptureM2,
             aFreeChamberMm2,
             sumAct,
@@ -618,6 +620,7 @@ public static class NozzleFlowCompositionRoot
 
         var siDiag = new SiFlowDiagnostics
         {
+            InjectorPlaneFluxSwirlNumber = sFluxInjector,
             MarchSteps = steps,
             PhysicsStepStates = detailed.StepPhysicsStates,
             MarchPhysicsClosure = detailed.MarchClosure,
@@ -686,12 +689,13 @@ public static class NozzleFlowCompositionRoot
             pCoreEstimatedPa,
             aCaptureM2,
             ambient.DensityKgM3,
-            sInjPre);
+            sFluxInjector);
 
         var physicsStages = new NozzlePhysicsStageResult
         {
             Stage1Injector = injectorDischarge,
-            Stage2SwirlNumberAtInjector = sInjPre,
+            Stage2InjectorFluxSwirlNumber = sFluxInjector,
+            Stage2SwirlNumberAtInjector = sFluxInjector,
             Stage3CorePressureDropPa = radialPreMarch.CorePressureDropPa,
             Stage3WallPressureRisePa = radialPreMarch.WallPressureRisePa,
             Stage3EstimatedCoreStaticPressurePa = pCoreEstimatedPa,
@@ -826,7 +830,8 @@ public static class NozzleFlowCompositionRoot
         Console.WriteLine($"Estimated exit velocity [m/s]: {d.EstimatedExitVelocityMps:F2}");
         Console.WriteLine($"Estimated total mass flow [kg/s]: {d.EstimatedTotalMassFlowKgS:F4}");
         Console.WriteLine($"Estimated thrust [N]:       {d.EstimatedThrustN:F2} (momentum + pressure CV terms, first-order)");
-        Console.WriteLine($"Min inlet static (entrain.) [Pa]: {si.MinInletLocalStaticPressurePa:F1}");
+        Console.WriteLine(
+            $"Min inlet static (entrain.) [Pa]: {si.MinInletLocalStaticPressurePa:F1} ({SiPressureGuards.PaToBar(si.MinInletLocalStaticPressurePa):F4} bar)");
         Console.WriteLine($"Max entrainment Mach [-]:   {si.MaxInletMach:F3}  Choked step: {si.AnyEntrainmentStepChoked}");
         Console.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}");
         Console.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}");

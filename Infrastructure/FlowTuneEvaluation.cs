@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using PicoGK_Run.Parameters;
+using PicoGK_Run.Physics;
+
 namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
@@ -33,4 +35,7 @@ public sealed class FlowTuneEvaluation
 
     public double AmbientAirMassFlowKgS { get; init; }
     public double CoreMassFlowKgS { get; init; }
+
+    /// <summary>Populated for autotune / tooling — same object as full-run SI diagnostics.</summary>
+    public SiFlowDiagnostics? SiDiagnostics { get; init; }
 }

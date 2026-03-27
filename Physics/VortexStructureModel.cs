@@ -30,9 +30,13 @@ public sealed class VortexStructureDiagnosticsResult
 /// <summary>Heuristic vortex structure / stability — not CFD.</summary>
 public static class VortexStructureModel
 {
+    /// <param name="injectorFluxSwirlNumber">
+    /// Governing correlation input S = Ġθ/(R·Ġx) at the injector plane. Breakdown / classify use this, not |Vt|/|Va|.
+    /// </param>
     public static VortexStructureDiagnosticsResult Compute(
         double vtInjector,
         double vaInjector,
+        double injectorFluxSwirlNumber,
         double chamberLd,
         double injectorAxialPositionRatio,
         double expanderHalfAngleDeg,
@@ -45,16 +49,20 @@ public static class VortexStructureModel
     {
         double va = Math.Max(Math.Abs(vaInjector), 1e-6);
         double vt = Math.Abs(vtInjector);
-        double sSimple = vt / va;
+        double sSimpleDiagnostic = vt / va;
         double k = ChamberPhysicsCoefficients.FluxSwirlGeometryFactorK;
-        double sFlux = k * sSimple;
+        double sFluxStyleDiagnostic = k * sSimpleDiagnostic;
+        double sGov = Math.Clamp(
+            double.IsFinite(injectorFluxSwirlNumber) ? Math.Abs(injectorFluxSwirlNumber) : sSimpleDiagnostic,
+            0.0,
+            25.0);
 
         double machAx = Math.Clamp(Math.Abs(mixedAxialVelocityPreStatorMps) / 340.0, 0.0, 0.95);
         double depN = Math.Clamp(corePressureDropPa / 25_000.0, 0.0, 2.5);
         double radN = Math.Clamp(radialDeltaPa / 35_000.0, 0.0, 2.2);
 
         double breakdown = Math.Clamp(
-            0.32 * Math.Tanh((sSimple - 4.0) / 2.2)
+            0.32 * Math.Tanh((sGov - 4.0) / 2.2)
             + 0.22 * Math.Tanh((4.0 - chamberLd) / 2.0)
             + 0.18 * Math.Tanh(depN - 0.55)
             + 0.14 * Math.Tanh((remainingSwirlFractionAtStator - 0.82) / 0.2)
@@ -62,7 +70,7 @@ public static class VortexStructureModel
             0.0,
             1.0);
 
-        VortexStabilityClassification cls = Classify(sSimple, breakdown, chamberLd, entrainmentRatio, machAx);
+        VortexStabilityClassification cls = Classify(sGov, breakdown, chamberLd, entrainmentRatio, machAx);
 
         double w1 = ChamberPhysicsCoefficients.StructureQualityWCoreDrop;
         double w2 = ChamberPhysicsCoefficients.StructureQualityWEntrainment;
@@ -92,31 +100,31 @@ public static class VortexStructureModel
 
         return new VortexStructureDiagnosticsResult
         {
-            InjectorSwirlNumberSimple = sSimple,
-            SwirlNumberFluxStyle = sFlux,
+            InjectorSwirlNumberSimple = sSimpleDiagnostic,
+            SwirlNumberFluxStyle = sFluxStyleDiagnostic,
             FluxGeometryFactorKUsed = k,
             BreakdownRiskScore = breakdown,
             Classification = cls,
             ClassificationLabel = Label(cls),
             CompositeVortexQuality = q,
-            Notes = "S_flux uses uniform u_x, u_theta assumption; breakdown risk is heuristic only."
+            Notes = "Breakdown/classify use injector-plane flux S; |Vt|/|Va| fields are diagnostic only."
         };
     }
 
     private static VortexStabilityClassification Classify(
-        double sSimple,
+        double fluxSwirlCorrelation,
         double breakdownRisk,
         double ld,
         double er,
         double machAxial)
     {
-        if (breakdownRisk > 0.72 || (sSimple > 6.2 && ld < 2.0))
+        if (breakdownRisk > 0.72 || (fluxSwirlCorrelation > 6.2 && ld < 2.0))
             return VortexStabilityClassification.LikelyUnstable;
-        if (breakdownRisk > 0.48 || sSimple > 5.4)
+        if (breakdownRisk > 0.48 || fluxSwirlCorrelation > 5.4)
             return VortexStabilityClassification.BreakdownRisk;
-        if (sSimple >= 3.0 && er > 0.35 && machAxial > 0.12)
+        if (fluxSwirlCorrelation >= 3.0 && er > 0.35 && machAxial > 0.12)
             return VortexStabilityClassification.StrongSwirl;
-        if (sSimple >= 1.35 && breakdownRisk < 0.38)
+        if (fluxSwirlCorrelation >= 1.35 && breakdownRisk < 0.38)
             return VortexStabilityClassification.StableUseful;
         return VortexStabilityClassification.StableLow;
     }

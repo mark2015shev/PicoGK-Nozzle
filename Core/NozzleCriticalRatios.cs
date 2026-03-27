@@ -52,6 +52,9 @@ public static class NozzleCriticalRatios
         {
             CaptureToChamberAreaRatio = sigma,
             InjectorSwirlNumber = swirlNumber,
+            InjectorPlaneFluxSwirlNumber = si != null && si.InjectorPlaneFluxSwirlNumber > 0
+                ? si.InjectorPlaneFluxSwirlNumber
+                : null,
             ChamberSlendernessLD = ld,
             InjectorPortToChamberAreaRatio = portToChamber,
             ExpanderHalfAngleDeg = d.ExpanderHalfAngleDeg,

@@ -7,5 +7,11 @@ public enum AutotuneStrategy
     SingleStage,
 
     /// <summary>Three phases: broad exploration → refine top seeds → polish best (same scoring path throughout).</summary>
-    CoarseToFine
+    CoarseToFine,
+
+    /// <summary>
+    /// Stages A→B→C: only five geometry parameters (chamber D/L, inlet capture, expander half-angle, stator angle);
+    /// injector yaw fixed 90°; no synthesis baseline in search; physics-based score via PhysicsAutotuneScoring.
+    /// </summary>
+    PhysicsControlledFiveParameter
 }
