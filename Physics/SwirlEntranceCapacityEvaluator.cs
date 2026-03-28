@@ -8,6 +8,22 @@ namespace PicoGK_Run.Physics;
 /// </summary>
 public static class SwirlEntranceCapacityEvaluator
 {
+    /// <summary>
+    /// ṁ_max ≈ ρ_mix A_eff M_lim a_mix(T_mix) — first-order bulk passage limit for subsonic |V| ~ V_req in the 1-D model.
+    /// </summary>
+    public static double MaxMdotForBulkMachLimit(
+        GasProperties gas,
+        double rhoMixKgM3,
+        double tStaticMixK,
+        double effectiveAreaM2,
+        double machLimit)
+    {
+        if (effectiveAreaM2 <= 0.0 || rhoMixKgM3 <= 0.0 || machLimit <= 0.0)
+            return 0.0;
+        double a = gas.SpeedOfSound(Math.Max(tStaticMixK, 1.0));
+        return rhoMixKgM3 * effectiveAreaM2 * machLimit * a;
+    }
+
     public static SwirlEntranceCapacityResult EvaluateAtStation(
         GasProperties gas,
         MixedFlowStationState mix,

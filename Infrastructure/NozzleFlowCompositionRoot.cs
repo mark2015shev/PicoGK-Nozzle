@@ -378,7 +378,8 @@ public static class NozzleFlowCompositionRoot
             activeDesign.SwirlChamberDiameterMm,
             run.UseReynoldsEntrainmentFactor,
             rSwirlMomM,
-            run.ValidateMarchStepInvariants);
+            run.ValidateMarchStepInvariants,
+            aChamberBoreMm2 * 1e-6);
 
         IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
         JetState lastMarch = detailed.FlowStates[^1];
@@ -675,6 +676,7 @@ public static class NozzleFlowCompositionRoot
             MinInletLocalStaticPressurePa = minInletP,
             MaxInletMach = maxInletMach,
             AnyEntrainmentStepChoked = anyChoked,
+            EntrainmentStepsLimitedBySwirlPassageCapacity = detailed.EntrainmentStepsLimitedBySwirlPassageCapacity,
             SumRequestedEntrainmentIncrementsKgS = sumReq,
             SumActualEntrainmentIncrementsKgS = sumAct,
             EntrainmentShortfallSumKgS = shortfall,
@@ -839,7 +841,8 @@ public static class NozzleFlowCompositionRoot
         double chamberDiameterMm,
         bool useReynoldsOnEntrainmentCe,
         double swirlMomentRadiusM,
-        bool validateMarchStepInvariants) =>
+        bool validateMarchStepInvariants,
+        double chamberFullBoreAreaM2) =>
         marcher.SolveDetailed(
             inletState,
             sectionLengthM,
@@ -854,7 +857,10 @@ public static class NozzleFlowCompositionRoot
             chamberDiameterMm,
             useReynoldsOnEntrainmentCe,
             swirlMomentRadiusM,
-            validateMarchStepInvariants);
+            validateMarchStepInvariants,
+            chamberFullBoreAreaM2,
+            capEntrainmentToSwirlPassageMach: true,
+            swirlPassageMachLimitsForEntrainmentCap: null);
 
     private static void CapacityPhase_LogSwirlEntranceCapacity(
         SwirlChamberMarchDiagnostics chamberMarchDiag,

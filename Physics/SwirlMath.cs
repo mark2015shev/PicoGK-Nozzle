@@ -34,7 +34,10 @@ public static class SwirlMath
         return (tangential, axial);
     }
 
-    /// <summary>|Vt|/|Va| — legacy only; explodes when Va→0 (e.g. 90° injector). Prefer <see cref="InjectorSwirlDirective"/>.</summary>
+    /// <summary>
+    /// |Vt|/|Va| — <b>legacy heuristic solver only</b> (see <c>NozzlePhysicsSolver</c>); explodes when Va→0.
+    /// Live SI march / entrainment / critical ratios use <see cref="InjectorSwirlDirective"/> and flux correlations.
+    /// </summary>
     public static double InjectorSwirlNumber(double tangentialVelocityMps, double axialVelocityMps)
     {
         return Math.Abs(tangentialVelocityMps) / Math.Max(Math.Abs(axialVelocityMps), 1e-6);

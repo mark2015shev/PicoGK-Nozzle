@@ -26,7 +26,11 @@ public sealed class RadialVortexPressureResult
     public string Notes { get; init; } = "";
 }
 
-/// <summary>First-order radial pressure structure in a swirl chamber — not CFD.</summary>
+/// <summary>
+/// <b>Secondary field model only:</b> derives Δp_core, Δp_wall vs bulk chamber static from ρ, V_t, and geometry.
+/// Bulk <c>P_static</c> must come from the chamber march (<see cref="CompressibleFlowMath.BulkChamberThermoFromStagnationAndSpeedMagnitude"/>);
+/// this class never overrides bulk pressure.
+/// </summary>
 public static class RadialVortexPressureModel
 {
     /// <summary>

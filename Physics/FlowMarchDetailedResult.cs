@@ -23,4 +23,7 @@ public sealed class FlowMarchDetailedResult
 
     /// <summary>Primary-stream tangential speed after last decay step (before mixed Vt recomputation).</summary>
     public double FinalPrimaryTangentialVelocityMps { get; init; }
+
+    /// <summary>Count of march steps where entrainment demand was cut by swirl-passage bulk Mach ceiling.</summary>
+    public int EntrainmentStepsLimitedBySwirlPassageCapacity { get; init; }
 }

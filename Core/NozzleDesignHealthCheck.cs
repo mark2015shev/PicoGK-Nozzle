@@ -88,6 +88,9 @@ public static class NozzleDesignHealthCheck
         {
             if (si.AnyEntrainmentStepChoked)
                 Add("SI FLOW: at least one entrainment step hit choked intake — model capped ambient pull; real hardware may differ.");
+            if (si.AnyEntrainmentLimitedBySwirlPassageCapacity)
+                Add(
+                    $"SI FLOW: {si.EntrainmentStepsLimitedBySwirlPassageCapacity} march step(s) capped entrainment so bulk Mach through min(capture, annulus, bore) stays ≤ caution limit — mixed flow demand exceeds passage capacity in the 1-D model.");
             if (si.SumRequestedEntrainmentIncrementsKgS > 1e-9)
             {
                 double sf = si.EntrainmentShortfallSumKgS / si.SumRequestedEntrainmentIncrementsKgS;

@@ -7,12 +7,16 @@ public readonly struct FlowStepUpdate
         double deltaSecondaryMassFlowKgS,
         double requestedEntrainmentDeltaKgS,
         double ambientChokedMassFlowLimitKgS,
-        double ambientToMixedStaticPressureLimitedKgS)
+        double ambientToMixedStaticPressureLimitedKgS,
+        double swirlPassageMdotCeilingKgS = double.NaN,
+        bool entrainmentCappedBySwirlPassageMach = false)
     {
         DeltaSecondaryMassFlowKgS = deltaSecondaryMassFlowKgS;
         RequestedEntrainmentDeltaKgS = requestedEntrainmentDeltaKgS;
         AmbientChokedMassFlowLimitKgS = ambientChokedMassFlowLimitKgS;
         AmbientToMixedStaticPressureLimitedKgS = ambientToMixedStaticPressureLimitedKgS;
+        SwirlPassageMdotCeilingKgS = swirlPassageMdotCeilingKgS;
+        EntrainmentCappedBySwirlPassageMach = entrainmentCappedBySwirlPassageMach;
     }
 
     /// <summary>Δṁ_secondary this step [kg/s] (increment to entrained stream).</summary>
@@ -29,4 +33,10 @@ public readonly struct FlowStepUpdate
     /// Actual = min(demand, this, choked); geometry is encoded in A_capture.
     /// </summary>
     public double AmbientToMixedStaticPressureLimitedKgS { get; }
+
+    /// <summary>Subsonic bulk Mach ceiling from <see cref="SwirlEntranceCapacityLimits"/>; NaN if capacity cap disabled this step.</summary>
+    public double SwirlPassageMdotCeilingKgS { get; }
+
+    /// <summary>True when requested entrainment was reduced to respect swirl-passage Mach limit.</summary>
+    public bool EntrainmentCappedBySwirlPassageMach { get; }
 }

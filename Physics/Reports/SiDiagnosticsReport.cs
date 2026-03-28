@@ -58,6 +58,7 @@ public sealed class SiDiagnosticsReport
             FinalMachBulk = si.MarchPhysicsClosure?.FinalMachBulk ?? double.NaN,
             FinalContinuityResidualRelative = si.MarchPhysicsClosure?.FinalContinuityResidualRelative ?? double.NaN,
             AnyEntrainmentChoked = si.AnyEntrainmentStepChoked,
+            EntrainmentStepsCappedBySwirlPassage = si.EntrainmentStepsLimitedBySwirlPassageCapacity,
             SumRequestedEntrainmentKgS = si.SumRequestedEntrainmentIncrementsKgS,
             SumActualEntrainmentKgS = si.SumActualEntrainmentIncrementsKgS
         };
@@ -205,6 +206,7 @@ public sealed class ChamberMarchSummary
     public double FinalMachBulk { get; init; }
     public double FinalContinuityResidualRelative { get; init; }
     public bool AnyEntrainmentChoked { get; init; }
+    public int EntrainmentStepsCappedBySwirlPassage { get; init; }
     public double SumRequestedEntrainmentKgS { get; init; }
     public double SumActualEntrainmentKgS { get; init; }
 }

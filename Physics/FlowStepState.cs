@@ -15,7 +15,11 @@ public sealed class FlowStepState
     public double PStaticPa { get; init; }
     public double TStaticK { get; init; }
     public double DensityKgM3 { get; init; }
+
+    /// <summary>Chamber bulk total pressure after named Δp₀ losses at this station (authoritative for bulk isentropic closure).</summary>
     public double PTotalPa { get; init; }
+
+    /// <summary>Chamber bulk total temperature from mixed h₀ (authoritative with <see cref="PTotalPa"/> for bulk closure).</summary>
     public double TTotalK { get; init; }
 
     public double VAxialMps { get; init; }

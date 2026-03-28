@@ -25,6 +25,12 @@ public sealed class SiFlowDiagnostics
     public double MaxInletMach { get; init; }
     public bool AnyEntrainmentStepChoked { get; init; }
 
+    /// <summary>March steps where ṁ was capped so bulk Mach through min(A_capture,A_annulus,A_bore) ≤ MachCautionMax.</summary>
+    public int EntrainmentStepsLimitedBySwirlPassageCapacity { get; init; }
+
+    /// <summary>True when at least one march step reduced entrainment demand due to swirl-passage capacity.</summary>
+    public bool AnyEntrainmentLimitedBySwirlPassageCapacity => EntrainmentStepsLimitedBySwirlPassageCapacity > 0;
+
     /// <summary>Sum of per-step requested entrainment increments [kg/s] (Σ Δṁ_req).</summary>
     public double SumRequestedEntrainmentIncrementsKgS { get; init; }
 

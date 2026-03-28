@@ -6,9 +6,12 @@ namespace PicoGK_Run.Physics;
 /// </summary>
 public static class ChamberPhysicsCoefficients
 {
-    // --- Radial vortex pressure (RadialVortexPressureModel) ---
+    // --- Radial vortex pressure (RadialVortexPressureModel) — secondary shaping only; never bulk authority ---
     public static double RadialCoreRadiusFractionOfWall { get; set; } = 0.24;
-    public static double RadialPressureCapPa { get; set; } = 85_000.0;
+    public static double RadialPressureCapPa { get; set; } = 120_000.0;
+
+    /// <summary>Upper bound on radial integral pressure scale before bulk-relative shaping clamps (Pa).</summary>
+    public static double RadialPressureCapAbsoluteMaxPa { get; set; } = 380_000.0;
 
     // --- Swirl decay (SwirlDecayModel): k_total = k_wall + k_mix + k_ent + k_inst ---
     public static double DecayCWall { get; set; } = 0.038;

@@ -15,4 +15,7 @@ public sealed class MarchClosureResult
     public double FinalEntrainmentSwirlCorrelation { get; init; }
 
     public double FinalContinuityResidualRelative { get; init; }
+
+    /// <summary>Steps where ṁ was capped so implied bulk Mach through min(A_capture,A_annulus,A_bore) stayed ≤ limit.</summary>
+    public int EntrainmentStepsLimitedBySwirlPassageCapacity { get; init; }
 }

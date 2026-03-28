@@ -51,4 +51,42 @@ public readonly record struct CompressibleState(
             Math.Max(p0, 1.0),
             h0);
     }
+
+    /// <summary>
+    /// Bulk chamber station: statics from authoritative P₀, T₀ (after modeled losses) and (V_a, V_t) with |V| = √(V_a² + V_t²).
+    /// Total pressure on the returned state matches <paramref name="totalPressurePaAfterLosses"/> (not recomputed from static).
+    /// </summary>
+    public static CompressibleState FromAuthoritativeBulkStagnation(
+        GasProperties gas,
+        double totalPressurePaAfterLosses,
+        double totalTemperatureK,
+        double axialVelocityMps,
+        double tangentialVelocityMps)
+    {
+        double va = axialVelocityMps;
+        double vt = tangentialVelocityMps;
+        double vmag = Math.Sqrt(va * va + vt * vt);
+        var (p, t, mach, rho) = CompressibleFlowMath.BulkChamberThermoFromStagnationAndSpeedMagnitude(
+            gas,
+            totalPressurePaAfterLosses,
+            totalTemperatureK,
+            vmag);
+        double a = gas.SpeedOfSound(t);
+        double cp = gas.SpecificHeatCp;
+        double t0 = Math.Max(totalTemperatureK, 1.0);
+        double p0 = Math.Max(totalPressurePaAfterLosses, 1.0);
+        double h0 = cp * t0;
+        return new CompressibleState(
+            p,
+            t,
+            rho,
+            va,
+            vt,
+            vmag,
+            a,
+            mach,
+            t0,
+            p0,
+            h0);
+    }
 }

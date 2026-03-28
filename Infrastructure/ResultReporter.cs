@@ -55,6 +55,8 @@ internal static class ResultReporter
         else if (input.Run.UsePhysicsInformedGeometry)
             Library.Log("Design: PHYSICS-INFORMED pre-size (NozzleGeometrySynthesis) — diameters/lengths/expander/stator from source + heuristics; template yaw/pitch/count/wall kept.");
         Library.Log("Flow: lumped isentropic jet + compressible entrainment march (NozzleFlowCompositionRoot). Not CFD.");
+        Library.Log(
+            "LIVE SOURCE AUTHORITY: derived discharge (ṁ, A, |V|, T) only — PressureRatio is legacy/diagnostic and does not drive SI physics.");
 
         Library.Log("--- Source + ambient (boundary only, no engine geometry) ---");
         Library.Log($"SourceOutletAreaMm2 [mm2]:    {input.Source.SourceOutletAreaMm2:F2} (authoritative)");
@@ -90,8 +92,8 @@ internal static class ResultReporter
             Library.Log("--- Four critical ratios (design envelope — heuristic, not CFD) ---");
             Library.Log("R1 σ = A_inlet/A_chamber (capture openness vs bore):");
             Library.Log($"    CaptureToChamberAreaRatio [-]: {cr.CaptureToChamberAreaRatio:F3}");
-            Library.Log("R2 S = |Vt|/|Va| at injector (swirl injection intensity):");
-            Library.Log($"    InjectorSwirlNumber [-]:       {cr.InjectorSwirlNumber:F3}");
+            Library.Log("R2 injector swirl descriptor = |Vt|/|V| (finite at 90° yaw; not |Vt|/|Va|):");
+            Library.Log($"    InjectorSwirlDirective [-]:    {cr.InjectorSwirlNumber:F3}");
             Library.Log("R3 Λ = L_chamber / D_chamber (mixing slenderness):");
             Library.Log($"    ChamberSlendernessLD [-]:      {cr.ChamberSlendernessLD:F3}");
             Library.Log($"    A_inj / A_chamber [-]:         {cr.InjectorPortToChamberAreaRatio:F3}");
@@ -150,6 +152,8 @@ internal static class ResultReporter
             Library.Log($"Min inlet static P (entrainment solve) [Pa]: {sf.MinInletLocalStaticPressurePa:F1}");
             Library.Log($"Max inlet Mach (entrained stream) [-]: {sf.MaxInletMach:F4}");
             Library.Log($"Any entrainment step choked: {sf.AnyEntrainmentStepChoked}");
+            Library.Log(
+                $"Swirl-passage ṁ cap steps:      {sf.EntrainmentStepsLimitedBySwirlPassageCapacity}  (any: {sf.AnyEntrainmentLimitedBySwirlPassageCapacity})");
             Library.Log($"Σ requested Δṁ_ent [kg/s]:     {sf.SumRequestedEntrainmentIncrementsKgS:F6}");
             Library.Log($"Σ actual Δṁ_ent [kg/s]:       {sf.SumActualEntrainmentIncrementsKgS:F6}");
             Library.Log($"Entrainment shortfall Σ [kg/s]: {sf.EntrainmentShortfallSumKgS:F6} (requested − actual, per-step sum)");
@@ -361,6 +365,8 @@ internal static class ResultReporter
                 ? $"Mach_bulk / Re_D (last step) [-]: {sf.MarchPhysicsClosure.FinalMachBulk:F4} / {sf.MarchPhysicsClosure.FinalReynolds:F1}"
                 : "Mach_bulk / Re_D: n/a");
         Library.Log($"Choked entrainment step:       {sf.AnyEntrainmentStepChoked}");
+        Library.Log(
+            $"Entrainment capped by passage: {sf.EntrainmentStepsLimitedBySwirlPassageCapacity} step(s)  (Mach≤caution vs min areas)");
         Library.Log(
             $"Swirl correlation (last step) [-]: {last.SwirlNumberFlux:F4}  (bounded flux or |Vt|/|V| path; chamber bulk ratio {last.ChamberSwirlBulkRatio:F4})");
         if (sf.ChamberMarch?.SwirlEntranceCapacityStations != null)

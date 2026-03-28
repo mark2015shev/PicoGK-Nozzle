@@ -3,6 +3,11 @@ namespace PicoGK_Run.Core;
 /// <summary>
 /// Source boundary + ambient freestream for a nozzle / ejector analysis.
 /// The engine is not modeled as geometry—only these scalars drive the solver.
+/// <para>
+/// <b>Live SI authority (frozen contract):</b> mass flow, source outlet area, and velocity magnitude define discharge via
+/// ρ = ṁ/(A·|V|), static temperature from exhaust temperature (total vs static per flags), P_static = ρ R T_static, and derived P₀
+/// for diagnostics only. <see cref="PressureRatio"/> is never used for live march, thrust, or entrainment.
+/// </para>
 /// <see cref="SourceOutletAreaMm2"/> is the authoritative source flow area.
 /// </summary>
 public sealed class SourceInputs

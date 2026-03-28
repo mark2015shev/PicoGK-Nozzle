@@ -20,4 +20,10 @@ public static class ChamberAerodynamicsConfiguration
 
     /// <summary>P_static must not exceed P_total by more than this relative amount (lab frame).</summary>
     public const double StaticMustNotExceedTotalRelativeTolerance = 2e-4;
+
+    /// <summary>
+    /// Radial integral cap Pa = max(<see cref="ChamberPhysicsCoefficients.RadialPressureCapPa"/>, K·½ρV_t²) before P₀/ambient shaping clamps
+    /// — keeps secondary core/wall deltas visible when swirl dynamic pressure is large (does not change bulk P_static).
+    /// </summary>
+    public const double RadialIntegralCapTimesSwirlDynamicPressure = 6.0;
 }
