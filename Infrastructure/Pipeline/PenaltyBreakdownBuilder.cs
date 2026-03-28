@@ -1,0 +1,178 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using PicoGK_Run.Geometry;
+using PicoGK_Run.Parameters;
+using PicoGK_Run.Physics;
+
+namespace PicoGK_Run.Infrastructure.Pipeline;
+
+/// <summary>Maps SI diagnostics + continuity into numeric penalty structs for the unified objective.</summary>
+public static class PenaltyBreakdownBuilder
+{
+    public const double HealthPenaltyPerMessage = 0.04;
+
+    public static PhysicsPenaltyBreakdown BuildPhysics(
+        SiFlowDiagnostics? si,
+        FlowTunePhysicsMetrics metrics,
+        IReadOnlyList<string> healthMessages,
+        int designErrorCount,
+        double finalTotalMassFlowKgS = 0.0)
+    {
+        if (si == null)
+        {
+            return new PhysicsPenaltyBreakdown(
+                0, 0, 0.5, 0.3, metrics.SeparationRisk01 * 0.4, 0.2, 0, 0.3,
+                0.8, 0.2, 0.2, 0.3,
+                HealthPenaltyPerMessage * Math.Max(healthMessages.Count, 0));
+        }
+
+        double massBal = 0.0;
+        if (si.MarchPhysicsClosure != null)
+        {
+            double rel = Math.Abs(si.MarchPhysicsClosure.FinalContinuityResidualRelative);
+            massBal = Math.Clamp(rel * 2.5, 0.0, 0.85);
+        }
+
+        double momBal = 0.0;
+        if (!si.ThrustControlVolumeIsValid)
+            momBal += 0.55;
+        double mdotExit = si.ThrustCvMdotExitKgS;
+        if (mdotExit > 1e-9 && finalTotalMassFlowKgS > 1e-9)
+        {
+            double r = Math.Abs(mdotExit - finalTotalMassFlowKgS) / finalTotalMassFlowKgS;
+            momBal += Math.Clamp(r * 0.4, 0.0, 0.35);
+        }
+
+        double contRes = massBal * 0.35;
+
+        double choke = si.AnyEntrainmentStepChoked ? 0.45 : 0.0;
+
+        double sep = Math.Clamp(metrics.SeparationRisk01, 0.0, 1.0) * 0.35;
+
+        double residVt = Math.Abs(si.FinalTangentialVelocityMps);
+        double exSwirl = Math.Clamp(residVt / 180.0, 0.0, 1.0) * 0.28;
+
+        int capSteps = si.EntrainmentStepsLimitedBySwirlPassageCapacity;
+        double govClip = capSteps > 0
+            ? Math.Clamp(0.12 + 0.03 * capSteps, 0.12, 0.95)
+            : 0.0;
+
+        double shortfall = 0.0;
+        if (si.SumRequestedEntrainmentIncrementsKgS > 1e-9)
+        {
+            double sf = si.EntrainmentShortfallSumKgS / si.SumRequestedEntrainmentIncrementsKgS;
+            shortfall = Math.Clamp(sf, 0.0, 1.2) * 0.55;
+        }
+
+        double thrustInv = si.ThrustControlVolumeIsValid ? 0.0 : 0.6;
+
+        double lowP = 0.0;
+        if (si.PhysicsStepStates.Count > 0)
+        {
+            double pLast = si.PhysicsStepStates[^1].PStaticPa;
+            if (pLast > 0 && pLast < 3_000.0)
+                lowP = 0.28;
+        }
+
+        double machBand = 0.0;
+        double machBulk = si.MarchPhysicsClosure?.FinalMachBulk ?? 0.0;
+        if (machBulk > 0.92 || si.MaxInletMach > 0.98)
+            machBand = 0.32;
+
+        double capCls = 0.0;
+        if (si.ChamberMarch?.SwirlEntranceCapacityStations is { } cap)
+        {
+            capCls = cap.CombinedClassification switch
+            {
+                SwirlEntranceCapacityClassification.Warning => 0.22,
+                SwirlEntranceCapacityClassification.FailRestrictive => 0.55,
+                SwirlEntranceCapacityClassification.FailChoking => 0.85,
+                _ => 0.0
+            };
+        }
+
+        int nonDesignHealth = healthMessages.Count(m => !m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
+        double healthPen = HealthPenaltyPerMessage * nonDesignHealth + 0.35 * designErrorCount;
+
+        return new PhysicsPenaltyBreakdown(
+            massBal, momBal, contRes, choke, sep, exSwirl, govClip, shortfall, thrustInv, lowP, machBand, capCls, healthPen);
+    }
+
+    /// <summary>
+    /// Downstream mismatch: normalized |R_nominal_cone − R_declared_exit| / R_chamber (template inconsistency),
+    /// plus infeasible / length-clamp surcharges so autotune avoids overshoot-and-correct designs.
+    /// </summary>
+    public const double DownstreamMismatchScale = 0.95;
+
+    public static GeometryPenaltyBreakdown BuildGeometry(
+        GeometryContinuityReport? report,
+        DownstreamGeometryTargets? downstream = null,
+        RunConfiguration? run = null)
+    {
+        double contPen = 0.0;
+        int n = 0;
+        if (report is { IsAcceptable: false })
+        {
+            n = report.Issues.Count;
+            contPen = Math.Clamp(0.15 * n, 0.15, 1.2);
+        }
+
+        double dMis = 0.0;
+        if (downstream != null)
+        {
+            double rCh = Math.Max(downstream.ChamberInnerRadiusMm, 1e-3);
+            // Constant-area mode: penalize template (nominal L + angle) vs declared exit — drives self-consistent CAD.
+            if (run?.EnablePostStatorExitTaper != true)
+            {
+                double normConeExit =
+                    Math.Abs(downstream.NominalConeOutletInnerRadiusMm - downstream.DeclaredExitInnerRadiusMm) / rCh;
+                dMis += DownstreamMismatchScale * Math.Clamp(normConeExit, 0.0, 1.8);
+            }
+
+            if (downstream.ConeCannotReachDeclaredExit)
+                dMis += 0.85;
+            if (downstream.ExpanderLengthClampedToMax)
+            {
+                double normBuilt =
+                    Math.Abs(downstream.RecoveryAnnulusRadiusMm - downstream.DeclaredExitInnerRadiusMm) / rCh;
+                dMis += 0.55 * Math.Clamp(normBuilt, 0.0, 1.2);
+            }
+        }
+
+        return new GeometryPenaltyBreakdown(contPen, n, dMis);
+    }
+
+    public static ConstraintViolationBreakdown BuildConstraints(
+        SiFlowDiagnostics? si,
+        GeometryContinuityReport? continuity,
+        bool hasDesignError,
+        IReadOnlyList<string> healthMessages,
+        double finalTotalMassFlowKgS = 0.0,
+        DownstreamGeometryTargets? downstream = null,
+        RunConfiguration? run = null)
+    {
+        var reasons = new List<string>();
+        if (hasDesignError)
+            reasons.Add("DESIGN_ERROR");
+        if (si != null)
+        {
+            if (!double.IsFinite(si.NetThrustN) || !double.IsFinite(finalTotalMassFlowKgS))
+                reasons.Add("NON_FINITE_SI");
+            if (si.ChamberMarch?.SwirlEntranceCapacityStations?.CombinedClassification
+                == SwirlEntranceCapacityClassification.FailChoking)
+                reasons.Add("CAPACITY_FAIL_CHOKING");
+            if (si.AnyEntrainmentStepChoked && si.MaxInletMach > 0.99)
+                reasons.Add("SEVERE_CHOKING");
+        }
+        if (continuity is { IsAcceptable: false })
+            reasons.Add("GEOMETRY_CONTINUITY_FAIL");
+
+        if (downstream?.ConeCannotReachDeclaredExit == true && (run?.HardRejectInfeasibleDownstreamCone ?? true))
+            reasons.Add("DOWNSTREAM_CONE_INFEASIBLE");
+
+        return reasons.Count > 0
+            ? new ConstraintViolationBreakdown(true, reasons)
+            : ConstraintViolationBreakdown.Ok;
+    }
+}

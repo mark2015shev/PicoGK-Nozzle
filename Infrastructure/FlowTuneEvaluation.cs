@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PicoGK_Run.Infrastructure.Pipeline;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 
@@ -38,4 +39,16 @@ public sealed class FlowTuneEvaluation
 
     /// <summary>Populated for autotune / tooling — same object as full-run SI diagnostics.</summary>
     public SiFlowDiagnostics? SiDiagnostics { get; init; }
+
+    /// <summary>Full handoff from unified prepare → solve → penalties (tuning and final use the same path).</summary>
+    public UnifiedEvaluationResult? UnifiedEvaluation { get; init; }
+
+    public PhysicsPenaltyBreakdown? PhysicsPenalties { get; init; }
+
+    public GeometryPenaltyBreakdown? GeometryPenalties { get; init; }
+
+    public ConstraintViolationBreakdown? ConstraintBreakdown { get; init; }
+
+    /// <summary>Largest penalty bucket name for quick scan (see unified score / <see cref="PhysicsPenaltyBreakdown.TopSource"/>).</summary>
+    public string? TopPenaltySource { get; init; }
 }

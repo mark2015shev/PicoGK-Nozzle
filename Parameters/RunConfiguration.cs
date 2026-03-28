@@ -124,8 +124,31 @@ public sealed class RunConfiguration
     /// </summary>
     public bool ApplySolvedGeometryHints { get; init; }
 
+    /// <summary>
+    /// When true, the exit section may taper from the geometric expander outlet to <see cref="NozzleDesignInputs.ExitDiameterMm"/> / 2.
+    /// Default false: constant-area recovery — expander axial length is solved so outlet R matches declared exit inner R (no hidden contraction).
+    /// </summary>
+    public bool EnablePostStatorExitTaper { get; init; }
+
+    /// <summary>
+    /// When true (default), a downstream cone that cannot match the declared exit inner radius with the current chamber/angle/length
+    /// hard-rejects candidates in unified evaluation (see <see cref="Infrastructure.Pipeline.PenaltyBreakdownBuilder.BuildConstraints"/>).
+    /// </summary>
+    public bool HardRejectInfeasibleDownstreamCone { get; init; } = true;
+
     /// <summary>Run <see cref="Geometry.GeometryContinuityValidator"/> on the driven design and surface issues in the report.</summary>
     public bool RunGeometryContinuityCheck { get; init; } = true;
+
+    /// <summary>
+    /// When true, autotune SI-only trials run the same continuity validator as the detailed path (no voxels), so geometry rejects align with CAD checks.
+    /// </summary>
+    public bool EvaluateGeometryContinuityDuringAutotune { get; init; } = true;
+
+    /// <summary>If set, append one CSV row per scored autotune trial (legacy + coarse-to-fine strategies).</summary>
+    public string? AutotuneTrialDiagnosticsCsvPath { get; init; }
+
+    /// <summary>Print compact trial rows to console (same columns as CSV data rows, no header).</summary>
+    public bool AutotuneLogTrialDiagnosticsToConsole { get; init; }
 
     /// <summary>Record <see cref="Infrastructure.PipelineProfiler"/> stages on full voxel runs (timing + approximate heap/GC).</summary>
     public bool EnablePipelineProfiling { get; init; } = true;
@@ -228,7 +251,7 @@ public sealed class RunConfiguration
     /// <see cref="PicoGK_Run.Physics.SwirlChamberSizingModel.ComputeDerived"/> at <see cref="GeometrySynthesisTargetEntrainmentRatio"/>
     /// before the final SI + voxel pass (other trial dimensions preserved). First-order continuity only — not CFD.
     /// </summary>
-    public bool AutotuneFinalizeApplyEntrainmentDerivedChamberBore { get; init; } = true;
+    public bool AutotuneFinalizeApplyEntrainmentDerivedChamberBore { get; init; }
 
     /// <summary>
     /// When true (K320-class presets), SI path applies hard invalidation: chamber/march static &gt; 10 bar abs,
@@ -280,7 +303,12 @@ public sealed class RunConfiguration
         LockInjectorYawTo90Degrees = LockInjectorYawTo90Degrees,
         ChamberVaneBlockageFractionOfAnnulus = ChamberVaneBlockageFractionOfAnnulus,
         ApplySolvedGeometryHints = ApplySolvedGeometryHints,
+        EnablePostStatorExitTaper = EnablePostStatorExitTaper,
+        HardRejectInfeasibleDownstreamCone = HardRejectInfeasibleDownstreamCone,
         RunGeometryContinuityCheck = RunGeometryContinuityCheck,
+        EvaluateGeometryContinuityDuringAutotune = EvaluateGeometryContinuityDuringAutotune,
+        AutotuneTrialDiagnosticsCsvPath = AutotuneTrialDiagnosticsCsvPath,
+        AutotuneLogTrialDiagnosticsToConsole = AutotuneLogTrialDiagnosticsToConsole,
         EnablePipelineProfiling = EnablePipelineProfiling,
         AutotuneUseParallelEvaluation = AutotuneUseParallelEvaluation,
         AutotuneMaxDegreeOfParallelism = AutotuneMaxDegreeOfParallelism,
@@ -306,6 +334,7 @@ public sealed class RunConfiguration
         PhysicsAutotuneStageBRelativeSpan = PhysicsAutotuneStageBRelativeSpan,
         PhysicsAutotuneStageCRelativeSpan = PhysicsAutotuneStageCRelativeSpan,
         PhysicsAutotunePreserveWinningChamberDiameter = PhysicsAutotunePreserveWinningChamberDiameter,
+        PhysicsAutotuneStageCUnlockTierB = PhysicsAutotuneStageCUnlockTierB,
         ApplyHardSiThrustAndPressureAssertions = ApplyHardSiThrustAndPressureAssertions
     };
 }

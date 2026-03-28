@@ -326,7 +326,12 @@ public static class PhysicsAutotuneRunner
         HealthMessages = e.HealthMessages,
         AmbientAirMassFlowKgS = e.AmbientAirMassFlowKgS,
         CoreMassFlowKgS = e.CoreMassFlowKgS,
-        SiDiagnostics = e.SiDiagnostics
+        SiDiagnostics = e.SiDiagnostics,
+        UnifiedEvaluation = e.UnifiedEvaluation,
+        PhysicsPenalties = e.PhysicsPenalties,
+        GeometryPenalties = e.GeometryPenalties,
+        ConstraintBreakdown = e.ConstraintBreakdown,
+        TopPenaltySource = e.TopPenaltySource
     };
 
     private static NozzleDesignInputs CloneTemplateLockedYaw(NozzleDesignInputs t, RunConfiguration run) =>

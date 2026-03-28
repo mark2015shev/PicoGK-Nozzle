@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using PicoGK_Run.Parameters;
 
@@ -12,9 +13,13 @@ public static class NozzleGeometryDebugReportBuilder
     public const double DiameterJumpWarnMm = 1.0;
     public const double ExpanderExitVsExitDiameterWarnMm = 1.5;
 
-    public static NozzleGeometryDebugReport Build(NozzleDesignInputs d, NozzleGeometryResult? builtGeometry = null)
+    public static NozzleGeometryDebugReport Build(
+        NozzleDesignInputs d,
+        NozzleGeometryResult? builtGeometry = null,
+        RunConfiguration? run = null)
     {
-        GeometryAssemblyPath path = GeometryAssemblyPath.Compute(d);
+        GeometryAssemblyPath path = GeometryAssemblyPath.Compute(d, run);
+        DownstreamGeometryTargets tgt = DownstreamGeometryResolver.Resolve(d, run);
         double overlap = path.OverlapMm;
         var segments = new List<GeometrySegmentDebugInfo>();
         var explanations = new List<string>();
@@ -98,7 +103,9 @@ public static class NozzleGeometryDebugReportBuilder
             chamberInnerR, expanderEndInnerR,
             wall,
             d.ExpanderHalfAngleDeg,
-            "Inner radius follows ExpanderHalfAngleDeg from chamber ID; implied outlet Ø = 2·R_end (not ExitDiameterMm)."));
+            path.UsesPostStatorExitTaper
+                ? "Nominal template length + angle to recovery R (post-stator taper mode)."
+                : "Axial length solved so outlet inner R matches declared exit inner R (constant-area recovery); angle from design."));
 
         // --- Stator ---
         double xStatorStart = path.XStatorStart;
@@ -112,33 +119,39 @@ public static class NozzleGeometryDebugReportBuilder
             null,
             "Annulus inner casing radius is held constant (matches expander exit R); hub + blades are solid add-ons."));
 
-        explanations.Add("Stator annulus inner wall does not expand in current builder — any perceived opening in the viewer is usually overlap with the expander or the exit taper after the stator.");
         explanations.Add(
-            "Exit uses AddBeam(..., roundCap:false) like other segments: flat annular ends so the duct stays hollow. roundCap:true was removed — it adds spherical end caps and visually closes the exit into a bulb. Longer exit length (ComputeExitSectionLengthMm) reduces stubby 'washer' look without capping the bore.");
+            "Downstream gas path uses one recovery annulus inner radius: expander outlet = stator casing ID = exit section start (from DownstreamGeometryResolver).");
+        explanations.Add(
+            "Exit uses AddBeam(..., roundCap:false): flat annular ends; inner beam subtracted so the bore stays open.");
 
         // --- Exit (length + stations from GeometryAssemblyPath / ExitBuilder.ComputeExitSectionLengthMm) ---
         double xExitStart = path.XExitStart;
-        double targetExitR = path.ExitInnerRadiusTargetMm;
         double rExit0 = path.ExitInnerRadiusStartMm;
         double rExit1 = path.ExitInnerRadiusEndMm;
         double exitLen = path.ExitSectionLengthMm;
         double xAfterExit = path.XAfterExit;
         double exitSlopeHalfAngleDeg = RadiansToDeg(Math.Atan(Math.Abs(rExit1 - rExit0) / Math.Max(exitLen, 1e-6)));
 
-        if (Math.Abs(impliedExitD - d.ExitDiameterMm) > ExpanderExitVsExitDiameterWarnMm)
+        if (!path.UsesPostStatorExitTaper)
+            explanations.Add(
+                "Constant-area recovery exit (default): exit inner R start = end = recovery annulus R — no post-stator contraction in the bore.");
+        else
         {
             explanations.Add(
-                "Expander end diameter does not match requested ExitDiameterMm; ExitBuilder linearly connects stator/exit interface inner R to ExitDiameterMm (this is the geometric bridge — no separate transition voxel).");
-            warnings.Add(
-                $"Expander-implied exit Ø ({impliedExitD:F2} mm) differs from requested ExitDiameterMm ({d.ExitDiameterMm:F2} mm) by {Math.Abs(impliedExitD - d.ExitDiameterMm):F2} mm — exit section carries the diameter change.");
+                "Post-stator taper enabled: exit frustum runs from geometric expander outlet R to declared ExitDiameterMm/2 (explicit taper, not a hidden cleanup).");
+            if (rExit1 < rExit0 - 0.25)
+                explanations.Add("Exit section contracts in the bore (intentional when taper mode is on).");
+            if (rExit1 > rExit0 + 0.25)
+                explanations.Add("Exit section expands in the bore (intentional when taper mode is on).");
         }
-        else
-            explanations.Add("Expander-implied outlet Ø is close to ExitDiameterMm; exit section may still add a short flare for minimum length rule.");
 
-        if (rExit1 > rExit0 + 0.25)
-            explanations.Add("Exit flare added after stator: inner wall opens from casing R to ExitDiameterMm over the exit section length.");
-        if (rExit1 < rExit0 - 0.25)
-            explanations.Add("Exit section contracts inner wall from stator casing R toward ExitDiameterMm.");
+        double nominalConeD = 2.0 * tgt.NominalConeOutletInnerRadiusMm;
+        if (!path.UsesPostStatorExitTaper
+            && Math.Abs(nominalConeD - d.ExitDiameterMm) > ExpanderExitVsExitDiameterWarnMm)
+        {
+            warnings.Add(
+                $"Template expander (nominal L×angle) would end at Ø {nominalConeD:F2} mm vs declared exit Ø {d.ExitDiameterMm:F2} mm — built expander length is adjusted so outlet matches declared exit (see effective L in path).");
+        }
 
         segments.Add(MkSeg(
             "Exit section",
@@ -146,7 +159,9 @@ public static class NozzleGeometryDebugReportBuilder
             rExit0, rExit1,
             wall,
             rExit0 != rExit1 ? exitSlopeHalfAngleDeg : null,
-            "Linear frustum (inner); length = ExitBuilder.ComputeExitSectionLengthMm; AddBeam roundCap false (open annulus at exit)."));
+            path.UsesPostStatorExitTaper
+                ? "Explicit post-stator taper frustum (EnablePostStatorExitTaper)."
+                : "Constant-area annulus (inner R constant); minimum-length lip from ComputeExitSectionLengthMm."));
 
         segments.Add(MkSeg(
             "Final outlet lip / exit plane",
@@ -154,19 +169,19 @@ public static class NozzleGeometryDebugReportBuilder
             rExit1, rExit1,
             wall,
             null,
-            "End of built duct; inner radius = 0.5×ExitDiameterMm."));
+            "End of built duct; inner radius = exit section end inner R."));
 
         if (2.0 * rExit1 > chamberD * 1.2 && rExit1 > rExit0 + 0.5)
             warnings.Add(
-                $"Final exit inner Ø ({2 * rExit1:F2} mm) is much larger than swirl chamber Ø ({chamberD:F2} mm) — most post-chamber 'opening' is expander + exit taper, not stator row expansion.");
+                $"Final exit inner Ø ({2 * rExit1:F2} mm) is much larger than swirl chamber Ø ({chamberD:F2} mm) — most post-chamber 'opening' is expander + exit, not stator row expansion.");
 
         if (Math.Abs(rExit1 - rExit0) > 1.0 && exitLen < 0.18 * Math.Max(2.0 * rExit0, 2.0 * rExit1))
             warnings.Add(
                 $"Exit section length ({exitLen:F2} mm) is still short vs bore (L/D≈{exitLen / Math.Max(2.0 * Math.Max(rExit0, rExit1), 1e-6):F3}) — check viewer.");
 
-        if (Math.Abs(impliedExitD - d.ExitDiameterMm) > ExpanderExitVsExitDiameterWarnMm)
+        if (tgt.ConeCannotReachDeclaredExit)
             warnings.Add(
-                "No dedicated 'mismatch transition' voxel exists: diameter reconciliation is embedded in the exit frustum (plus assembly overlap for sealing).");
+                "DOWNSTREAM: declared exit inner R could not be reached with a diverging cone from chamber ID — built recovery uses fallback cone (see unified penalties / HardRejectInfeasibleDownstreamCone).");
 
         // --- Mismatches ---
         var mismatches = new List<TransitionMismatchDebugInfo>();
@@ -200,9 +215,10 @@ public static class NozzleGeometryDebugReportBuilder
             "Exit start (inner)",
             expanderEndInnerR,
             rExit0,
-            "Exit upstream R uses max(0.5, stator downstream inner) — equals casing R in builder.");
-        // Not an assembly seam: single ExitBuilder frustum from r0 → r1 by design.
+            "Single recovery R: exit start equals stator casing inner R.");
         double dExitR = rExit1 - rExit0;
+        double tolR = GeometryContinuityValidator.DownstreamRadiusContinuityToleranceMm;
+        bool constantExitOk = !path.UsesPostStatorExitTaper && Math.Abs(dExitR) <= tolR;
         mismatches.Add(new TransitionMismatchDebugInfo(
             "Exit start (inner)",
             "Final outlet (inner, exit frustum end)",
@@ -210,10 +226,12 @@ public static class NozzleGeometryDebugReportBuilder
             rExit1,
             dExitR,
             2.0 * dExitR,
-            WithinTolerance: true,
-            Note: Math.Abs(dExitR) < 1e-6
-                ? "Exit inner wall is constant along exit section."
-                : "Intentional ExitBuilder taper to ExitDiameterMm (not a missing bridge segment between voxels)."));
+            WithinTolerance: path.UsesPostStatorExitTaper || constantExitOk,
+            Note: path.UsesPostStatorExitTaper
+                ? "Explicit post-stator taper (EnablePostStatorExitTaper)."
+                : Math.Abs(dExitR) <= tolR
+                    ? "Constant-area exit lip (inner R start = end)."
+                    : "Unexpected radial change in default constant-area exit mode."));
 
         explanations.Add(
             $"Assembly uses {overlap:F2} mm axial overlap between consecutive voxel segments for watertight BoolAdd — not an extra flow passage; diameters are continuity-checked at logical interfaces.");
@@ -226,11 +244,22 @@ public static class NozzleGeometryDebugReportBuilder
             warnings.Add($"Vane span (hub-to-casing annulus ≈ {statorDiag.VaneSpanMm:F2} mm) may be short for meaningful swirl interception — check hub OD and casing R.");
 
         // Stator mount interpretation tags
-        var mountTags = new List<string> { "constant-area recovery section (casing inner R constant)" };
+        var mountTags = new List<string>();
+        string primaryMount;
+        if (path.UsesPostStatorExitTaper)
+        {
+            mountTags.Add("post-stator exit taper enabled (explicit bore change in exit section)");
+            primaryMount = "diffuser-mounted + explicit exit taper";
+        }
+        else
+        {
+            mountTags.Add("constant-area recovery section (casing inner R constant through expander/stator/exit start)");
+            primaryMount = "diffuser-mounted + constant-area annulus";
+        }
+
         mountTags.Add("diffuser-mounted recovery section (stator after conical expander)");
         if (Math.Abs(rExit1 - rExit0) > 0.25)
-            mountTags.Add("exit follows stator — not exit-mounted-only recovery");
-        string primaryMount = "diffuser-mounted + constant-area annulus";
+            mountTags.Add("exit follows stator — bore change in exit section");
 
         statorDiag = statorDiag with
         {
@@ -242,6 +271,19 @@ public static class NozzleGeometryDebugReportBuilder
         foreach (string cw in assemblyAudit.ConsistencyWarnings)
             warnings.Add(cw);
 
+        double tolDown = GeometryContinuityValidator.DownstreamRadiusContinuityToleranceMm;
+        double maxRadErr = Math.Max(
+            Math.Abs(path.ExpanderEndInnerRadiusMm - path.RecoveryAnnulusInnerRadiusMm),
+            Math.Abs(path.ExitInnerRadiusStartMm - path.RecoveryAnnulusInnerRadiusMm));
+        if (!path.UsesPostStatorExitTaper)
+            maxRadErr = Math.Max(maxRadErr, Math.Abs(path.ExitInnerRadiusEndMm - path.ExitInnerRadiusStartMm));
+
+        string downLabel = maxRadErr <= tolDown ? "PASS" : "FAIL";
+        if (tgt.ConeCannotReachDeclaredExit && maxRadErr <= tolDown)
+            downLabel = "WARN";
+
+        string modeLabel = path.UsesPostStatorExitTaper ? "Mode B: post-stator taper" : "Mode A: constant-area recovery exit";
+
         return new NozzleGeometryDebugReport
         {
             AssemblyOverlapMm = overlap,
@@ -251,6 +293,14 @@ public static class NozzleGeometryDebugReportBuilder
             InjectorReferencePlaneXMm = xInjectorPlane,
             ImpliedExpanderExitDiameterMm = impliedExitD,
             RequestedExitDiameterMm = d.ExitDiameterMm,
+            SolvedDownstreamTargetInnerDiameterMm = 2.0 * path.RecoveryAnnulusInnerRadiusMm,
+            ExpanderBuiltOutletInnerDiameterMm = 2.0 * expanderEndInnerR,
+            StatorCasingInnerDiameterMm = 2.0 * expanderEndInnerR,
+            ExitStartInnerDiameterMm = 2.0 * rExit0,
+            ExitEndInnerDiameterMm = 2.0 * rExit1,
+            DownstreamContinuityMaxRadialErrorMm = maxRadErr,
+            DownstreamContinuityLabel = downLabel,
+            DownstreamExitModeLabel = modeLabel,
             Segments = segments,
             Mismatches = mismatches,
             Stator = statorDiag,
@@ -372,6 +422,15 @@ public static class NozzleGeometryDebugReportBuilder
         log($"Nominal chamber inlet plane X [mm]: {F(r.NominalChamberInletPlaneXMm)}  |  Swirl voxel start X [mm]: {F(r.SwirlVoxelStartXMm)}");
         log($"Injector reference plane X [mm]: {F(r.InjectorReferencePlaneXMm)}");
         log($"Implied expander exit Ø [mm]: {F(r.ImpliedExpanderExitDiameterMm, "F2")}  |  Requested ExitDiameterMm: {F(r.RequestedExitDiameterMm, "F2")}");
+        log("");
+        log("── Downstream diameter audit (single recovery annulus) ──");
+        log($"  Mode: {r.DownstreamExitModeLabel}");
+        log($"  Solved downstream target inner Ø [mm]: {F(r.SolvedDownstreamTargetInnerDiameterMm, "F3")}  (PASS/WARN/FAIL label: {r.DownstreamContinuityLabel})");
+        log($"  Expander built outlet inner Ø [mm]:    {F(r.ExpanderBuiltOutletInnerDiameterMm, "F3")}");
+        log($"  Stator casing inner Ø [mm]:            {F(r.StatorCasingInnerDiameterMm, "F3")}");
+        log($"  Exit start inner Ø [mm]:                {F(r.ExitStartInnerDiameterMm, "F3")}");
+        log($"  Exit end inner Ø [mm]:                  {F(r.ExitEndInnerDiameterMm, "F3")}");
+        log($"  Downstream continuity max |ΔR| [mm]:  {F(r.DownstreamContinuityMaxRadialErrorMm, "F4")}  (tol {GeometryContinuityValidator.DownstreamRadiusContinuityToleranceMm:F3} mm)");
         log("");
         log("── Segment detail (build order) ──");
         foreach (GeometrySegmentDebugInfo s in r.Segments)

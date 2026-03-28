@@ -8,6 +8,7 @@ using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 using PicoGK_Run.Physics.Reports;
 using PicoGK_Run.Physics.Solvers;
+using PicoGK_Run.Infrastructure.Pipeline;
 
 namespace PicoGK_Run.Infrastructure;
 
@@ -36,32 +37,167 @@ public static class NozzleFlowCompositionRoot
         NozzlePhysicsStageResult PhysicsStages);
 
     /// <summary>
-    /// Same SI path as <see cref="Run"/> up to health check — no voxels, no viewer, no console summary.
-    /// <paramref name="run"/> reserved for future tuning hooks (march resolution, etc.); currently unused.
+    /// Same prepare → <c>SolveSiPath</c> (+ optional continuity) as <see cref="Run"/> — no voxels, no viewer, no console summary.
     /// </summary>
     internal static FlowTuneEvaluation EvaluateDesignForTuning(
         SourceInputs source,
         NozzleDesignInputs candidateDesign,
         RunConfiguration run)
     {
-        SiPathSolveResult r = SolveSiPath(source, candidateDesign, run);
-        int hard = r.HealthMessages.Count(m => m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
+        UnifiedEvaluationResult u = EvaluateCandidateUnified(source, candidateDesign, run, NozzleEvaluationMode.TuningFast);
+        return ToFlowTuneEvaluation(u);
+    }
+
+    /// <summary>Authoritative handoff: synthesis / derived-bore reference / template — identical for tuning and final.</summary>
+    public static PreparedNozzleDesignHandoff PrepareActiveDesignForSolve(
+        SourceInputs source,
+        NozzleDesignInputs seedDesign,
+        RunConfiguration run)
+    {
+        NozzleDesignInputs activeDesign;
+        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing;
+        if (run.UsePhysicsInformedGeometry)
+        {
+            NozzleGeometrySynthesis.GeometrySynthesisResult syn = NozzleGeometrySynthesis.SynthesizeWithDiagnostics(
+                source,
+                seedDesign,
+                run.GeometrySynthesisTargetEntrainmentRatio,
+                run);
+            activeDesign = syn.Design;
+            chamberSizing = syn.ChamberSizing;
+        }
+        else if (run.UseDerivedSwirlChamberDiameter)
+        {
+            activeDesign = seedDesign;
+            chamberSizing = SwirlChamberSizingModel.ComputeDerived(
+                source,
+                seedDesign,
+                run.GeometrySynthesisTargetEntrainmentRatio,
+                run,
+                SwirlChamberSizingModel.DiameterMode.ReferenceDerivedAtConfiguredTargetEr);
+        }
+        else
+        {
+            activeDesign = seedDesign;
+            chamberSizing = SwirlChamberSizingModel.ForUserTemplate(seedDesign, source, run);
+        }
+
+        return new PreparedNozzleDesignHandoff(seedDesign, activeDesign, chamberSizing);
+    }
+
+    /// <summary>Single evaluation path shared by autotune and final run (voxels excluded).</summary>
+    public static UnifiedEvaluationResult EvaluateCandidateUnified(
+        SourceInputs source,
+        NozzleDesignInputs seedDesign,
+        RunConfiguration run,
+        NozzleEvaluationMode mode)
+    {
+        PreparedNozzleDesignHandoff prep = PrepareActiveDesignForSolve(source, seedDesign, run);
+        SiPathSolveResult path = SolveSiPath(source, prep.ActiveDesignAfterSynthesis, run);
+        bool checkContinuity = mode == NozzleEvaluationMode.FinalDetailed
+            ? run.RunGeometryContinuityCheck
+            : run.EvaluateGeometryContinuityDuringAutotune;
+        GeometryContinuityReport? continuity = checkContinuity
+            ? GeometryContinuityValidator.Check(path.DrivenDesign, run)
+            : null;
+        return BuildUnifiedEvaluation(prep, path, continuity, run);
+    }
+
+    /// <summary>Build unified result after <c>SolveSiPath</c> (used by <see cref="Run"/> to preserve profiler stages).</summary>
+    private static UnifiedEvaluationResult BuildUnifiedAfterSolve(
+        PreparedNozzleDesignHandoff prep,
+        SiPathSolveResult path,
+        GeometryContinuityReport? continuity,
+        RunConfiguration run) =>
+        BuildUnifiedEvaluation(prep, path, continuity, run);
+
+    private static UnifiedEvaluationResult BuildUnifiedEvaluation(
+        PreparedNozzleDesignHandoff prep,
+        SiPathSolveResult path,
+        GeometryContinuityReport? continuity,
+        RunConfiguration run)
+    {
+        SiFlowDiagnostics si = path.SiDiag;
+        FlowTunePhysicsMetrics metrics = FlowTunePhysicsMetrics.FromChamber(si.Chamber, si.FinalAxialVelocityMps);
+        int designErr = path.HealthMessages.Count(m => m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
+        double mdotTot = path.PhysicsStages.FinalTotalMassFlowKgS;
+        PhysicsPenaltyBreakdown phys = PenaltyBreakdownBuilder.BuildPhysics(
+            si,
+            metrics,
+            path.HealthMessages,
+            designErr,
+            mdotTot);
+        DownstreamGeometryTargets downstream = DownstreamGeometryResolver.Resolve(path.DrivenDesign, run);
+        GeometryPenaltyBreakdown geom = PenaltyBreakdownBuilder.BuildGeometry(continuity, downstream, run);
+        ConstraintViolationBreakdown cv = PenaltyBreakdownBuilder.BuildConstraints(
+            si,
+            continuity,
+            designErr > 0,
+            path.HealthMessages,
+            mdotTot,
+            downstream,
+            run);
+        bool hard = designErr > 0 || cv.Reject;
+        string? hr = null;
+        if (hard)
+        {
+            var parts = new List<string>();
+            if (designErr > 0)
+                parts.Add("DESIGN_ERROR");
+            foreach (string r in cv.Reasons)
+            {
+                if (!parts.Contains(r))
+                    parts.Add(r);
+            }
+
+            hr = string.Join("; ", parts);
+        }
+
+        return new UnifiedEvaluationResult(
+            prep,
+            path.DrivenDesign,
+            path.Solved,
+            si,
+            path.CriticalRatios,
+            path.HealthMessages is List<string> hl ? hl : new List<string>(path.HealthMessages),
+            path.PhysicsStages,
+            path.DesignResult,
+            path.InletState,
+            continuity,
+            phys,
+            geom,
+            cv,
+            hard,
+            hr);
+    }
+
+    private static FlowTuneEvaluation ToFlowTuneEvaluation(UnifiedEvaluationResult u)
+    {
+        int hard = u.HealthMessages.Count(m => m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
+        bool hasErr = hard > 0 || u.HardReject;
         return new FlowTuneEvaluation
         {
-            CandidateDesign = candidateDesign,
-            DrivenDesign = r.DrivenDesign,
-            EntrainmentRatio = r.Solved.EntrainmentRatio,
-            NetThrustN = r.SiDiag.NetThrustN,
-            SourceOnlyThrustN = r.Solved.SourceOnlyThrustN,
-            VortexQualityMetric = r.SiDiag.Chamber?.TuningCompositeQuality ?? r.SiDiag.Vortex?.VortexQualityMetric ?? 0.0,
-            PhysicsMetrics = FlowTunePhysicsMetrics.FromChamber(r.SiDiag.Chamber, r.SiDiag.FinalAxialVelocityMps),
-            AmbientAirMassFlowKgS = r.Solved.AmbientAirMassFlowKgPerSec,
-            CoreMassFlowKgS = r.Solved.CoreMassFlowKgPerSec,
-            HealthCount = r.HealthMessages.Count,
-            HasDesignError = hard > 0,
-            HealthMessages = r.HealthMessages is List<string> list ? list : new List<string>(r.HealthMessages),
-            SiDiagnostics = r.SiDiag,
-            Score = 0.0
+            CandidateDesign = u.Preparation.ActiveDesignAfterSynthesis,
+            DrivenDesign = u.DrivenDesign,
+            EntrainmentRatio = u.Solved.EntrainmentRatio,
+            NetThrustN = u.SiDiagnostics.NetThrustN,
+            SourceOnlyThrustN = u.Solved.SourceOnlyThrustN,
+            VortexQualityMetric = u.SiDiagnostics.Chamber?.TuningCompositeQuality
+                ?? u.SiDiagnostics.Vortex?.VortexQualityMetric
+                ?? 0.0,
+            PhysicsMetrics = FlowTunePhysicsMetrics.FromChamber(u.SiDiagnostics.Chamber, u.SiDiagnostics.FinalAxialVelocityMps),
+            AmbientAirMassFlowKgS = u.Solved.AmbientAirMassFlowKgPerSec,
+            CoreMassFlowKgS = u.Solved.CoreMassFlowKgPerSec,
+            HealthCount = u.HealthMessages.Count,
+            HasDesignError = hasErr,
+            HealthMessages = u.HealthMessages is List<string> list ? list : new List<string>(u.HealthMessages),
+            SiDiagnostics = u.SiDiagnostics,
+            Score = 0.0,
+            UnifiedEvaluation = u,
+            PhysicsPenalties = u.PhysicsPenalties,
+            GeometryPenalties = u.GeometryPenalties,
+            ConstraintBreakdown = u.Constraints,
+            TopPenaltySource = u.HardReject ? (u.HardRejectReason ?? "HardReject") : u.PhysicsPenalties.TopSource
         };
     }
 
@@ -71,53 +207,28 @@ public static class NozzleFlowCompositionRoot
 
         double chamberDiameterInputMm = input.Design.SwirlChamberDiameterMm;
 
-        NozzleDesignInputs activeDesign;
-        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing;
+        PreparedNozzleDesignHandoff prep;
         using (PipelineProfiler.Stage("pipeline.synthesis"))
-        {
-            if (input.Run.UsePhysicsInformedGeometry)
-            {
-                NozzleGeometrySynthesis.GeometrySynthesisResult syn = NozzleGeometrySynthesis.SynthesizeWithDiagnostics(
-                    input.Source,
-                    input.Design,
-                    input.Run.GeometrySynthesisTargetEntrainmentRatio,
-                    input.Run);
-                activeDesign = syn.Design;
-                chamberSizing = syn.ChamberSizing;
-            }
-            else if (input.Run.UseDerivedSwirlChamberDiameter)
-            {
-                // Final pass often skips synthesis (e.g. AfterAutotune). Still compute reference derived bore for reporting.
-                activeDesign = input.Design;
-                chamberSizing = SwirlChamberSizingModel.ComputeDerived(
-                    input.Source,
-                    input.Design,
-                    input.Run.GeometrySynthesisTargetEntrainmentRatio,
-                    input.Run,
-                    SwirlChamberSizingModel.DiameterMode.ReferenceDerivedAtConfiguredTargetEr);
-            }
-            else
-            {
-                activeDesign = input.Design;
-                chamberSizing = SwirlChamberSizingModel.ForUserTemplate(input.Design, input.Source, input.Run);
-            }
-        }
+            prep = PrepareActiveDesignForSolve(input.Source, input.Design, input.Run);
+        SwirlChamberSizingModel.SizingDiagnostics? chamberSizing = prep.ChamberSizing;
 
         SiPathSolveResult path;
         using (PipelineProfiler.Stage("physics.solveSiPath"))
-            path = SolveSiPath(input.Source, activeDesign, input.Run);
+            path = SolveSiPath(input.Source, prep.ActiveDesignAfterSynthesis, input.Run);
 
         GeometryContinuityReport? geomContinuity;
         using (PipelineProfiler.Stage("geometry.continuity"))
         {
             geomContinuity = input.Run.RunGeometryContinuityCheck
-                ? GeometryContinuityValidator.Check(path.DrivenDesign)
+                ? GeometryContinuityValidator.Check(path.DrivenDesign, input.Run)
                 : null;
         }
 
+        UnifiedEvaluationResult unified = BuildUnifiedAfterSolve(prep, path, geomContinuity, input.Run);
+
         // Per-segment timings live in NozzleGeometryBuilder (sum ≈ full voxel assembly; no outer wrapper — avoids double-count in TOTAL).
         var geometryBuilder = new NozzleGeometryBuilder();
-        NozzleGeometryResult geometry = geometryBuilder.Build(path.DrivenDesign, path.Solved);
+        NozzleGeometryResult geometry = geometryBuilder.Build(unified.DrivenDesign, unified.Solved, input.Run);
 
         if (showInViewer)
         {
@@ -126,7 +237,7 @@ public static class NozzleFlowCompositionRoot
         }
 
         using (PipelineProfiler.Stage("reporting.consoleSummary"))
-            PrintPhysicsSummary(path.InletState, path.DesignResult, path.SiDiag, input.Run.SiVerbosityLevel);
+            PrintPhysicsSummary(unified.InletState, unified.DesignResult, unified.SiDiagnostics, input.Run.SiVerbosityLevel);
 
         var warnings = new List<string>
         {
@@ -162,9 +273,9 @@ public static class NozzleFlowCompositionRoot
 
         if (geomContinuity is { IsAcceptable: false })
             warnings.AddRange(geomContinuity.Issues);
-        warnings.AddRange(path.HealthMessages);
+        warnings.AddRange(unified.HealthMessages);
 
-        NozzleInput effectiveInput = new NozzleInput(input.Source, path.DrivenDesign, input.Run);
+        NozzleInput effectiveInput = new NozzleInput(input.Source, unified.DrivenDesign, input.Run);
         PipelineProfileReport? profile = PipelineProfiler.TryBuildReport();
 
         string declaredSource = !input.Run.UsePhysicsInformedGeometry
@@ -180,10 +291,10 @@ public static class NozzleFlowCompositionRoot
         var chamberAudit = new ChamberDiameterAudit
         {
             InputDesignMm = chamberDiameterInputMm,
-            AfterSynthesisMm = activeDesign.SwirlChamberDiameterMm,
-            PreSiSolveMm = activeDesign.SwirlChamberDiameterMm,
-            PostFlowDrivenMm = path.DrivenDesign.SwirlChamberDiameterMm,
-            UsedForVoxelBuildMm = path.DrivenDesign.SwirlChamberDiameterMm,
+            AfterSynthesisMm = prep.ActiveDesignAfterSynthesis.SwirlChamberDiameterMm,
+            PreSiSolveMm = prep.ActiveDesignAfterSynthesis.SwirlChamberDiameterMm,
+            PostFlowDrivenMm = unified.DrivenDesign.SwirlChamberDiameterMm,
+            UsedForVoxelBuildMm = unified.DrivenDesign.SwirlChamberDiameterMm,
             DeclaredPrimarySource = declaredSource,
             AutotuneSearchUsedDerivedBoreSizing = false,
             AutotuneAppliedDirectChamberScale = false,
@@ -195,13 +306,13 @@ public static class NozzleFlowCompositionRoot
 
         return new PipelineRunResult(
             effectiveInput,
-            path.Solved,
+            unified.Solved,
             geometry,
             warnings,
-            path.SiDiag,
-            path.CriticalRatios,
+            unified.SiDiagnostics,
+            unified.CriticalRatios,
             autotune: null,
-            physicsStages: path.PhysicsStages,
+            physicsStages: unified.PhysicsStages,
             geometryContinuity: geomContinuity,
             performanceProfile: profile,
             chamberSizing: chamberSizing,
@@ -410,7 +521,7 @@ public static class NozzleFlowCompositionRoot
             Math.Abs(detailed.FinalTangentialVelocityMps),
             Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6)) * (180.0 / Math.PI);
 
-        double rStatorOuterMm = NozzleGeometryMetrics.ExpanderEndInnerRadiusMm(activeDesign);
+        double rStatorOuterMm = NozzleGeometryMetrics.BuiltRecoveryAnnulusInnerRadiusMm(activeDesign, run);
         HubStatorRecoveryContext hubCtx = HubStatorFirstOrderModel.ComputeContext(
             activeDesign,
             rStatorOuterMm,
@@ -738,7 +849,8 @@ public static class NozzleFlowCompositionRoot
             drivenDesign,
             source,
             solved,
-            siDiag);
+            siDiag,
+            run);
 
         IReadOnlyList<string> healthBase = NozzleDesignHealthCheck.Validate(drivenDesign, criticalRatios, siDiag);
         var health = new List<string>(

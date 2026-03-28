@@ -4,7 +4,7 @@ namespace PicoGK_Run.Geometry;
 
 /// <summary>
 /// Single source of truth for axial stations and inner radii used by <see cref="NozzleGeometryBuilder"/>
-/// and geometry audits (mm). Keeps console output aligned with built voxels.
+/// and geometry audits (mm). Downstream radii come from <see cref="DownstreamGeometryResolver"/> only.
 /// </summary>
 public sealed class GeometryAssemblyPath
 {
@@ -18,6 +18,7 @@ public sealed class GeometryAssemblyPath
     public double XInjectorPlane { get; init; }
     public double XExpanderStart { get; init; }
     public double XAfterExpander { get; init; }
+    /// <summary>Equals <see cref="RecoveryAnnulusInnerRadiusMm"/> (authoritative downstream bore).</summary>
     public double ExpanderEndInnerRadiusMm { get; init; }
     public double XStatorStart { get; init; }
     public double XAfterStator { get; init; }
@@ -25,7 +26,8 @@ public sealed class GeometryAssemblyPath
     public double XAfterExit { get; init; }
 
     public double ChamberInnerRadiusMm { get; init; }
-    public double ExitInnerRadiusTargetMm { get; init; }
+    public double RecoveryAnnulusInnerRadiusMm { get; init; }
+    public double DeclaredExitInnerRadiusMm { get; init; }
     public double ExitInnerRadiusStartMm { get; init; }
     public double ExitInnerRadiusEndMm { get; init; }
     public double ExitSectionLengthMm { get; init; }
@@ -35,8 +37,11 @@ public sealed class GeometryAssemblyPath
     public double LipLengthMm { get; init; }
     public double FlareLengthMm { get; init; }
 
-    public static GeometryAssemblyPath Compute(NozzleDesignInputs d)
+    public bool UsesPostStatorExitTaper { get; init; }
+
+    public static GeometryAssemblyPath Compute(NozzleDesignInputs d, RunConfiguration? run = null)
     {
+        DownstreamGeometryTargets t = DownstreamGeometryResolver.Resolve(d, run);
         double overlap = NozzleGeometryBuilder.AssemblyOverlapMm;
         double wall = Math.Max(d.WallThicknessMm, 0.0);
         double inletD = Math.Max(d.InletDiameterMm, 1.0);
@@ -60,21 +65,19 @@ public sealed class GeometryAssemblyPath
         double xInjectorPlane = xAfterInlet + ratio * chamberLen;
 
         double xExpStart = xAfterSwirl - overlap;
-        double expLen = Math.Max(d.ExpanderLengthMm, 0.0);
-        double halfRad = d.ExpanderHalfAngleDeg * (Math.PI / 180.0);
-        double expanderEndInnerR = chamberInnerR + Math.Tan(halfRad) * expLen;
+        double expLen = t.EffectiveExpanderLengthMm;
+        double expanderEndInnerR = t.RecoveryAnnulusRadiusMm;
         double xAfterExpander = xExpStart + expLen;
 
         double xStatorStart = xAfterExpander - overlap;
         double innerRStator = Math.Max(0.5, expanderEndInnerR);
-        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerRStator * 2.0, d.ExitDiameterMm));
+        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerRStator * 2.0, t.RecoveryAnnulusDiameterMm));
         double statorLen = d.StatorAxialLengthMm > 1.0 ? d.StatorAxialLengthMm : lenAuto;
         double xAfterStator = xStatorStart + statorLen;
 
         double xExitStart = xAfterStator - overlap;
-        double targetExitR = 0.5 * Math.Max(d.ExitDiameterMm, 1.0);
-        double rExit0 = Math.Max(0.5, expanderEndInnerR);
-        double rExit1 = Math.Max(0.5, targetExitR);
+        double rExit0 = Math.Max(0.5, t.RecoveryAnnulusRadiusMm);
+        double rExit1 = Math.Max(0.5, t.ExitEndInnerRadiusMm);
         double exitLen = ExitBuilder.ComputeExitSectionLengthMm((float)rExit0, (float)rExit1);
         double xAfterExit = xExitStart + exitLen;
 
@@ -95,14 +98,16 @@ public sealed class GeometryAssemblyPath
             XAfterExpander = xAfterExpander,
             ExpanderEndInnerRadiusMm = expanderEndInnerR,
             ChamberInnerRadiusMm = chamberInnerR,
+            RecoveryAnnulusInnerRadiusMm = t.RecoveryAnnulusRadiusMm,
+            DeclaredExitInnerRadiusMm = t.DeclaredExitInnerRadiusMm,
             XStatorStart = xStatorStart,
             XAfterStator = xAfterStator,
             XExitStart = xExitStart,
             XAfterExit = xAfterExit,
-            ExitInnerRadiusTargetMm = targetExitR,
             ExitInnerRadiusStartMm = rExit0,
             ExitInnerRadiusEndMm = rExit1,
-            ExitSectionLengthMm = exitLen
+            ExitSectionLengthMm = exitLen,
+            UsesPostStatorExitTaper = t.UsesPostStatorExitTaper
         };
     }
 }

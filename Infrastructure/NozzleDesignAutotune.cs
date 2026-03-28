@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using PicoGK_Run.Core;
+using PicoGK_Run.Infrastructure.Pipeline;
 using PicoGK_Run.Infrastructure.PhysicsAutotune;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
@@ -108,6 +110,11 @@ public static class NozzleDesignAutotune
         NozzleDesignInputs baseSeed = BaselineSeed(source, template, run);
         FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseSeed, run);
 
+        List<string>? trialCsv = CreateTrialCsvBuffer(run);
+        int trialOrd = 0;
+        if (run.AutotuneLogTrialDiagnosticsToConsole)
+            TrialDiagnosticsFormatter.PrintTableHeaderToConsole();
+
         // Single-threaded RNG + candidate construction keeps trials reproducible; SI solves are embarrassingly parallel.
         var knobs = new Knobs[trials];
         for (int i = 0; i < trials; i++)
@@ -134,18 +141,22 @@ public static class NozzleDesignAutotune
         for (int i = 0; i < trials; i++)
         {
             FlowTuneEvaluation ev = evals[i];
-            if (ev.HasDesignError)
-                continue;
-
-            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
-            ev = WithScore(ev, score);
-
-            if (score > bestScore)
+            double? scoreVal = null;
+            FlowTuneEvaluation logged = ev;
+            if (!ev.HasDesignError)
             {
-                bestScore = score;
-                bestSeed = candidates[i];
-                bestEv = ev;
+                double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+                logged = WithScore(ev, score);
+                scoreVal = score;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestSeed = candidates[i];
+                    bestEv = logged;
+                }
             }
+
+            AppendTrialDiagnosticsRow(run, trialCsv, ref trialOrd, 1, candidates[i], logged, scoreVal);
         }
 
         if (bestScore <= double.NegativeInfinity)
@@ -154,6 +165,8 @@ public static class NozzleDesignAutotune
             bestSeed = baseSeed;
             bestEv = WithScore(baselineEval, bestScore);
         }
+
+        FlushTrialDiagnosticsCsv(run, trialCsv);
 
         return new Result
         {
@@ -177,6 +190,11 @@ public static class NozzleDesignAutotune
         var rng = new Random(run.AutotuneRandomSeed);
         var log = new StringBuilder();
         log.AppendLine("=== Coarse-to-fine autotune (SI-only trials; not CFD) ===");
+
+        List<string>? trialCsv = CreateTrialCsvBuffer(run);
+        int trialOrd = 0;
+        if (run.AutotuneLogTrialDiagnosticsToConsole)
+            TrialDiagnosticsFormatter.PrintTableHeaderToConsole();
 
         NozzleDesignInputs baseSeed = BaselineSeed(source, template, run);
         FlowTuneEvaluation baselineEval = NozzleFlowCompositionRoot.EvaluateDesignForTuning(source, baseSeed, run);
@@ -206,15 +224,21 @@ public static class NozzleDesignAutotune
         for (int i = 0; i < n1; i++)
         {
             FlowTuneEvaluation ev = evals1[i];
-            if (ev.HasDesignError)
-                continue;
-            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
-            ev = WithScore(ev, score);
-            allStage1.Add(new ScoredTrial(candidates1[i], score, ev));
+            double? scoreVal = null;
+            FlowTuneEvaluation logged = ev;
+            if (!ev.HasDesignError)
+            {
+                double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+                logged = WithScore(ev, score);
+                scoreVal = score;
+                allStage1.Add(new ScoredTrial(candidates1[i], score, logged));
+            }
+
+            AppendTrialDiagnosticsRow(run, trialCsv, ref trialOrd, 1, candidates1[i], logged, scoreVal);
         }
 
         if (allStage1.Count == 0)
-            return FallbackBaseline(source, baseSeed, baselineEval, run, log, stageBests);
+            return FallbackBaseline(source, baseSeed, baselineEval, run, log, stageBests, trialCsv);
 
         ScoredTrial best1 = allStage1.MaxBy(t => t.Score)!;
         stageBests.Add(new AutotuneStageBestSnapshot { Stage = 1, TrialsInStage = n1, BestScore = best1.Score, BestDesign = best1.Design });
@@ -255,17 +279,23 @@ public static class NozzleDesignAutotune
         for (int i = 0; i < total2; i++)
         {
             FlowTuneEvaluation ev = evals2[i];
-            if (ev.HasDesignError)
-                continue;
-            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
-            ev = WithScore(ev, score);
-            allStage2.Add(new ScoredTrial(candidates2[i], score, ev));
+            double? scoreVal = null;
+            FlowTuneEvaluation logged = ev;
+            if (!ev.HasDesignError)
+            {
+                double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+                logged = WithScore(ev, score);
+                scoreVal = score;
+                allStage2.Add(new ScoredTrial(candidates2[i], score, logged));
+            }
+
+            AppendTrialDiagnosticsRow(run, trialCsv, ref trialOrd, 2, candidates2[i], logged, scoreVal);
         }
 
         if (allStage2.Count == 0)
         {
             log.AppendLine("Stage 2: no valid trials — using stage 1 winner.");
-            return FinishResult(best1.Design, best1.Score, best1.Eval, baselineEval, n1, log, stageBests);
+            return FinishResult(best1.Design, best1.Score, best1.Eval, baselineEval, n1, log, stageBests, trialCsv, run);
         }
 
         ScoredTrial best2 = allStage2.MaxBy(t => t.Score)!;
@@ -293,17 +323,23 @@ public static class NozzleDesignAutotune
         for (int i = 0; i < n3; i++)
         {
             FlowTuneEvaluation ev = evals3[i];
-            if (ev.HasDesignError)
-                continue;
-            double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
-            ev = WithScore(ev, score);
-            allStage3.Add(new ScoredTrial(candidates3[i], score, ev));
+            double? scoreVal = null;
+            FlowTuneEvaluation logged = ev;
+            if (!ev.HasDesignError)
+            {
+                double score = AutotuneScoring.ComputeScore(ev, baselineEval, run);
+                logged = WithScore(ev, score);
+                scoreVal = score;
+                allStage3.Add(new ScoredTrial(candidates3[i], score, logged));
+            }
+
+            AppendTrialDiagnosticsRow(run, trialCsv, ref trialOrd, 3, candidates3[i], logged, scoreVal);
         }
 
         if (allStage3.Count == 0)
         {
             log.AppendLine("Stage 3: no valid trials — using stage 2 winner.");
-            return FinishResult(best2.Design, best2.Score, best2.Eval, baselineEval, n1 + n2, log, stageBests);
+            return FinishResult(best2.Design, best2.Score, best2.Eval, baselineEval, n1 + n2, log, stageBests, trialCsv, run);
         }
 
         ScoredTrial best3 = allStage3.MaxBy(t => t.Score)!;
@@ -313,6 +349,8 @@ public static class NozzleDesignAutotune
         log.AppendLine("Final winning design vs original template:");
         LogDesignDeltaLine(log, "  Final vs input template", template, best3.Design);
         log.AppendLine($"Total SI evaluations: {n1 + n2 + n3} (no voxels in search).");
+
+        FlushTrialDiagnosticsCsv(run, trialCsv);
 
         return new Result
         {
@@ -332,7 +370,8 @@ public static class NozzleDesignAutotune
         FlowTuneEvaluation baselineEval,
         RunConfiguration run,
         StringBuilder log,
-        List<AutotuneStageBestSnapshot> stageBests)
+        List<AutotuneStageBestSnapshot> stageBests,
+        List<string>? trialCsv)
     {
         _ = source;
         log.AppendLine("Stage 1 produced no valid candidates — using baseline seed.");
@@ -345,6 +384,7 @@ public static class NozzleDesignAutotune
             BestScore = score,
             BestDesign = baseSeed
         });
+        FlushTrialDiagnosticsCsv(run, trialCsv);
         return new Result
         {
             BestSeedDesign = baseSeed,
@@ -406,9 +446,12 @@ public static class NozzleDesignAutotune
         FlowTuneEvaluation baselineEval,
         int trials,
         StringBuilder log,
-        List<AutotuneStageBestSnapshot> stageBests)
+        List<AutotuneStageBestSnapshot> stageBests,
+        List<string>? trialCsv,
+        RunConfiguration run)
     {
         log.AppendLine($"Total SI evaluations: {trials} (no voxels in search).");
+        FlushTrialDiagnosticsCsv(run, trialCsv);
         return new Result
         {
             BestSeedDesign = best,
@@ -419,6 +462,39 @@ public static class NozzleDesignAutotune
             CoarseToFineLog = log.ToString(),
             StageBests = stageBests
         };
+    }
+
+    private static List<string>? CreateTrialCsvBuffer(RunConfiguration run)
+    {
+        if (string.IsNullOrWhiteSpace(run.AutotuneTrialDiagnosticsCsvPath))
+            return null;
+        return new List<string> { TrialDiagnosticsFormatter.CsvHeader };
+    }
+
+    private static void AppendTrialDiagnosticsRow(
+        RunConfiguration run,
+        List<string>? csv,
+        ref int trialOrdinal,
+        int stage,
+        NozzleDesignInputs candidate,
+        FlowTuneEvaluation ev,
+        double? score)
+    {
+        string line = TrialDiagnosticsFormatter.FormatDataRow(trialOrdinal++, stage, candidate, ev, score);
+        csv?.Add(line);
+        if (run.AutotuneLogTrialDiagnosticsToConsole)
+            Console.WriteLine(line);
+    }
+
+    private static void FlushTrialDiagnosticsCsv(RunConfiguration run, List<string>? csv)
+    {
+        if (csv == null || csv.Count <= 1)
+            return;
+        string path = run.AutotuneTrialDiagnosticsCsvPath!;
+        string? dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+        File.WriteAllLines(path, csv);
     }
 
     private static void LogDesignDeltaLine(StringBuilder sb, string label, NozzleDesignInputs a, NozzleDesignInputs b)
@@ -500,7 +576,12 @@ public static class NozzleDesignAutotune
         HealthMessages = e.HealthMessages,
         AmbientAirMassFlowKgS = e.AmbientAirMassFlowKgS,
         CoreMassFlowKgS = e.CoreMassFlowKgS,
-        SiDiagnostics = e.SiDiagnostics
+        SiDiagnostics = e.SiDiagnostics,
+        UnifiedEvaluation = e.UnifiedEvaluation,
+        PhysicsPenalties = e.PhysicsPenalties,
+        GeometryPenalties = e.GeometryPenalties,
+        ConstraintBreakdown = e.ConstraintBreakdown,
+        TopPenaltySource = e.TopPenaltySource
     };
 
     /// <summary>Legacy single-stage sampling (unchanged bands).</summary>

@@ -1,4 +1,5 @@
 using System;
+using PicoGK_Run.Geometry;
 
 namespace PicoGK_Run.Parameters;
 
@@ -62,9 +63,19 @@ public static class NozzleGeometryGenomeMapper
         double rIn = 0.5 * g.InletDiameterMm;
         double rEx = 0.5 * g.ExitDiameterMm;
         double rHub = 0.5 * g.StatorHubDiameterMm;
-        double halfRad = g.ExpanderHalfAngleDeg * (Math.PI / 180.0);
-        double rExpEnd = rCh + Math.Tan(halfRad) * g.ExpanderLengthMm;
-        double span = Math.Max(0.0, rCh - rHub);
+        var tmp = new NozzleDesignInputs
+        {
+            SwirlChamberDiameterMm = g.SwirlChamberDiameterMm,
+            ExpanderLengthMm = g.ExpanderLengthMm,
+            ExpanderHalfAngleDeg = g.ExpanderHalfAngleDeg,
+            ExitDiameterMm = g.ExitDiameterMm,
+            StatorAxialLengthMm = g.StatorAxialLengthMm,
+            StatorHubDiameterMm = g.StatorHubDiameterMm,
+            WallThicknessMm = g.WallThicknessMm ?? 1.0
+        };
+        DownstreamGeometryTargets down = DownstreamGeometryResolver.Resolve(tmp, run: null);
+        double rExpEnd = down.RecoveryAnnulusRadiusMm;
+        double span = Math.Max(0.0, rExpEnd - rHub);
         double lip = g.InletLipLengthMm ?? Math.Clamp(0.12 * g.InletDiameterMm, 1.5, 18.0);
         double contraction = g.InletContractionLengthMm ?? Math.Clamp(0.45 * Math.Max(0.0, rCh - rIn), 4.0, 45.0);
 
@@ -73,10 +84,10 @@ public static class NozzleGeometryGenomeMapper
             InletInnerRadiusMm: rIn,
             ExitInnerRadiusMm: rEx,
             StatorHubRadiusMm: rHub,
-            StatorAnnulusInnerRadiusMm: rCh,
+            StatorAnnulusInnerRadiusMm: rExpEnd,
             StatorBladeSpanMm: span,
             ExpanderEndInnerRadiusMm: rExpEnd,
-            ExpanderAxialLengthMm: g.ExpanderLengthMm,
+            ExpanderAxialLengthMm: down.EffectiveExpanderLengthMm,
             EffectiveInletContractionLengthMm: contraction,
             EffectiveInletLipLengthMm: lip);
     }

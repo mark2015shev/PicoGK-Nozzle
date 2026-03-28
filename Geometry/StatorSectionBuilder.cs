@@ -7,23 +7,22 @@ namespace PicoGK_Run.Geometry;
 
 /// <summary>
 /// Stator: annular shell + solid hub/centerbody (no cusped tip) + blades from hub OD to casing ID — reference solids only.
+/// Casing inner radius is <see cref="DownstreamGeometryTargets.RecoveryAnnulusRadiusMm"/> (constant annulus).
 /// </summary>
 public static class StatorSectionBuilder
 {
-    /// <param name="upstreamInnerRadiusMm">Inner gas path radius at expander outlet (must match expander end).</param>
-    /// <param name="downstreamInnerRadiusMm">Casing inner radius at stator outlet (annulus outer boundary).</param>
     public static Voxels Build(
         NozzleDesignInputs d,
         float xStart,
-        float upstreamInnerRadiusMm,
+        DownstreamGeometryTargets downstream,
         out float xEnd,
         out float downstreamInnerRadiusMm)
     {
-        float innerR = Math.Max(0.5f, upstreamInnerRadiusMm);
+        float innerR = Math.Max(0.5f, (float)downstream.RecoveryAnnulusRadiusMm);
         downstreamInnerRadiusMm = innerR;
         float wallThicknessMm = (float)d.WallThicknessMm;
 
-        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerR * 2.0, d.ExitDiameterMm));
+        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerR * 2.0, downstream.RecoveryAnnulusDiameterMm));
         float length = (float)(d.StatorAxialLengthMm > 1.0 ? d.StatorAxialLengthMm : lenAuto);
 
         Vector3 p0 = new(xStart, 0f, 0f);

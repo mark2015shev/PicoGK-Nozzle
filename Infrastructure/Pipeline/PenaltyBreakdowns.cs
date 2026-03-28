@@ -1,0 +1,84 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace PicoGK_Run.Infrastructure.Pipeline;
+
+/// <summary>Numeric physics-side penalties for optimization (mirrors warnings / governors / CV validity).</summary>
+public sealed record PhysicsPenaltyBreakdown(
+    double MassBalancePenalty,
+    double MomentumBalancePenalty,
+    double ContinuityResidualPenalty,
+    double ChokingPenalty,
+    double SeparationRiskPenalty,
+    double ExcessiveSwirlPenalty,
+    double GovernorClippingPenalty,
+    double EntrainmentShortfallPenalty,
+    double ThrustCvInvalidPenalty,
+    double LowStaticPressurePenalty,
+    double MachBandPenalty,
+    double CapacityClassificationPenalty,
+    double HealthMessagePenalty)
+{
+    public double Sum =>
+        MassBalancePenalty + MomentumBalancePenalty + ContinuityResidualPenalty + ChokingPenalty
+        + SeparationRiskPenalty + ExcessiveSwirlPenalty + GovernorClippingPenalty
+        + EntrainmentShortfallPenalty + ThrustCvInvalidPenalty + LowStaticPressurePenalty
+        + MachBandPenalty + CapacityClassificationPenalty + HealthMessagePenalty;
+
+    public string TopSource
+    {
+        get
+        {
+            var pairs = new (string Name, double Value)[]
+            {
+                (nameof(MassBalancePenalty), MassBalancePenalty),
+                (nameof(MomentumBalancePenalty), MomentumBalancePenalty),
+                (nameof(ContinuityResidualPenalty), ContinuityResidualPenalty),
+                (nameof(ChokingPenalty), ChokingPenalty),
+                (nameof(SeparationRiskPenalty), SeparationRiskPenalty),
+                (nameof(ExcessiveSwirlPenalty), ExcessiveSwirlPenalty),
+                (nameof(GovernorClippingPenalty), GovernorClippingPenalty),
+                (nameof(EntrainmentShortfallPenalty), EntrainmentShortfallPenalty),
+                (nameof(ThrustCvInvalidPenalty), ThrustCvInvalidPenalty),
+                (nameof(LowStaticPressurePenalty), LowStaticPressurePenalty),
+                (nameof(MachBandPenalty), MachBandPenalty),
+                (nameof(CapacityClassificationPenalty), CapacityClassificationPenalty),
+                (nameof(HealthMessagePenalty), HealthMessagePenalty)
+            };
+            return pairs.OrderByDescending(p => p.Value).First().Name;
+        }
+    }
+}
+
+/// <summary>Geometry continuity and CAD-self-consistency penalties.</summary>
+public sealed record GeometryPenaltyBreakdown(
+    double ContinuityIssuePenalty,
+    int ContinuityIssueCount,
+    double DownstreamDiameterMismatchPenalty)
+{
+    public double Sum => ContinuityIssuePenalty + DownstreamDiameterMismatchPenalty;
+
+    public string TopSource
+    {
+        get
+        {
+            if (ContinuityIssuePenalty >= DownstreamDiameterMismatchPenalty && ContinuityIssueCount > 0)
+                return "GeometryContinuity";
+            if (DownstreamDiameterMismatchPenalty > 1e-6)
+                return nameof(DownstreamDiameterMismatchPenalty);
+            return ContinuityIssueCount > 0 ? "GeometryContinuity" : "none";
+        }
+    }
+}
+
+/// <summary>Hard feasibility gates; when <see cref="Reject"/> is true the candidate should not win.</summary>
+public sealed record ConstraintViolationBreakdown(
+    bool Reject,
+    IReadOnlyList<string> Reasons)
+{
+    public static ConstraintViolationBreakdown Ok { get; } = new(false, Array.Empty<string>());
+
+    public static ConstraintViolationBreakdown FromReasons(params string[] reasons) =>
+        new(reasons.Length > 0, reasons);
+}

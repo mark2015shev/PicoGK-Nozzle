@@ -7,7 +7,7 @@ public static class NozzleGeometryAssemblyAuditBuilder
 {
     public static NozzleGeometryAssemblyAudit Build(NozzleDesignInputs d, NozzleGeometryResult? builtGeometry = null)
     {
-        GeometryAssemblyPath p = GeometryAssemblyPath.Compute(d);
+        GeometryAssemblyPath p = GeometryAssemblyPath.Compute(d, null);
         var solids = new List<BuiltGeometrySolidAuditEntry>();
         var consistency = new List<string>();
 

@@ -1,4 +1,5 @@
 using System;
+using PicoGK_Run.Infrastructure.Pipeline;
 using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Infrastructure;
@@ -7,14 +8,18 @@ namespace PicoGK_Run.Infrastructure;
 public static class AutotuneScoring
 {
     /// <summary>
-    /// Higher is better. Positive: ER, thrust, vortex composite, radial pressure structure.
-    /// Penalties: breakdown, separation, losses, ejector stress, low axial momentum, health count.
+    /// Higher is better. When <see cref="FlowTuneEvaluation.UnifiedEvaluation"/> is set (normal path), uses
+    /// <see cref="UnifiedOptimizerScore"/> so tuning matches the same penalty ledger as the unified solve.
+    /// Otherwise falls back to the legacy weighted breakdown.
     /// </summary>
     public static double ComputeScore(
         FlowTuneEvaluation candidate,
         FlowTuneEvaluation baseline,
         RunConfiguration run)
     {
+        if (candidate.UnifiedEvaluation != null && baseline.UnifiedEvaluation != null)
+            return UnifiedOptimizerScore.Compute(candidate.UnifiedEvaluation, baseline.UnifiedEvaluation, run).Score;
+
         double wE = Math.Clamp(run.AutotuneWeightEntrainment, 0.03, 0.92);
         double wT = Math.Clamp(run.AutotuneWeightThrust, 0.03, 0.92);
         double wV = Math.Clamp(run.AutotuneWeightVortexQuality, 0.03, 0.92);

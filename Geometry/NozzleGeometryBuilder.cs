@@ -15,9 +15,10 @@ public sealed class NozzleGeometryBuilder
     /// <summary>Axial overlap between consecutive segments [mm] for robust <see cref="Voxels.BoolAdd"/>.</summary>
     public const float AssemblyOverlapMm = 0.75f;
 
-    public NozzleGeometryResult Build(NozzleDesignInputs design, NozzleSolvedState solved)
+    public NozzleGeometryResult Build(NozzleDesignInputs design, NozzleSolvedState solved, RunConfiguration? run = null)
     {
         _ = solved;
+        DownstreamGeometryTargets downstream = DownstreamGeometryResolver.Resolve(design, run);
         float overlap = AssemblyOverlapMm;
 
         float x = 0f;
@@ -33,7 +34,6 @@ public sealed class NozzleGeometryBuilder
         using (PipelineProfiler.Stage("geometry.segment.swirlChamber"))
             swirl = SwirlChamberBuilder.Build(design, xSwirlStart, out xAfterSwirl);
 
-        // Injector station: measured from nominal chamber inlet plane (not overlap-shifted start).
         Voxels injectorMarkers;
         using (PipelineProfiler.Stage("geometry.segment.injectorMarkers"))
             injectorMarkers = InjectorRingBuilder.Build(design, xAfterInlet);
@@ -43,7 +43,7 @@ public sealed class NozzleGeometryBuilder
         float expanderEndInnerR;
         Voxels expander;
         using (PipelineProfiler.Stage("geometry.segment.expander"))
-            expander = ExpanderBuilder.Build(design, xExpStart, out xAfterExpander, out expanderEndInnerR);
+            expander = ExpanderBuilder.Build(design, xExpStart, downstream, out xAfterExpander, out expanderEndInnerR);
 
         float xStatorStart = xAfterExpander - overlap;
         float xAfterStator;
@@ -53,7 +53,7 @@ public sealed class NozzleGeometryBuilder
             stator = StatorSectionBuilder.Build(
                 design,
                 xStatorStart,
-                expanderEndInnerR,
+                downstream,
                 out xAfterStator,
                 out statorDownstreamInnerR);
 
@@ -64,7 +64,7 @@ public sealed class NozzleGeometryBuilder
             exit = ExitBuilder.Build(
                 design,
                 xExitStart,
-                statorDownstreamInnerR,
+                downstream,
                 out xAfterExit,
                 out _);
 

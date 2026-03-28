@@ -1,4 +1,5 @@
 using System;
+using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 
@@ -15,7 +16,8 @@ public static class NozzleCriticalRatios
         NozzleDesignInputs d,
         SourceInputs? source,
         NozzleSolvedState? solved,
-        SiFlowDiagnostics? si)
+        SiFlowDiagnostics? si,
+        RunConfiguration? run = null)
     {
         double dIn = Math.Max(d.InletDiameterMm, 1e-6);
         double dCh = Math.Max(d.SwirlChamberDiameterMm, 1e-6);
@@ -40,10 +42,11 @@ public static class NozzleCriticalRatios
         double portToChamber = aCh > 1e-9 ? aInj / aCh : 0.0;
 
         double rCh = 0.5 * dCh;
-        double halfRad = d.ExpanderHalfAngleDeg * DegToRad;
-        double rExpEnd = rCh + Math.Tan(halfRad) * d.ExpanderLengthMm;
-        double rExitTgt = 0.5 * Math.Max(d.ExitDiameterMm, 1e-6);
-        double mismatch = rCh > 1e-6 ? Math.Abs(rExpEnd - rExitTgt) / rCh : 0.0;
+        DownstreamGeometryTargets dg = DownstreamGeometryResolver.Resolve(d, run);
+        double rExpEndBuilt = dg.RecoveryAnnulusRadiusMm;
+        double rNominalConeEnd = dg.NominalConeOutletInnerRadiusMm;
+        double rExitTgt = dg.DeclaredExitInnerRadiusMm;
+        double mismatch = rCh > 1e-6 ? Math.Abs(rNominalConeEnd - rExitTgt) / rCh : 0.0;
 
         double yawMis = Math.Abs(d.StatorVaneAngleDeg - d.InjectorYawAngleDeg);
 
@@ -61,7 +64,7 @@ public static class NozzleCriticalRatios
             ChamberSlendernessLD = ld,
             InjectorPortToChamberAreaRatio = portToChamber,
             ExpanderHalfAngleDeg = d.ExpanderHalfAngleDeg,
-            ExpanderEndInnerRadiusMm = rExpEnd,
+            ExpanderEndInnerRadiusMm = rExpEndBuilt,
             ExitTargetInnerRadiusMm = rExitTgt,
             ExpanderExitToTargetRadiusMismatchRatio = mismatch,
             StatorToInjectorYawMismatchDeg = yawMis,

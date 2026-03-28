@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
 
@@ -28,7 +27,7 @@ public static class NozzleDesignHealthCheck
         if (d.WallThicknessMm <= 0) Add("DESIGN ERROR: WallThicknessMm must be positive.");
         if (d.InjectorCount < 1) Add("DESIGN ERROR: InjectorCount must be at least 1.");
 
-        double rSt = NozzleGeometryMetrics.ExpanderEndInnerRadiusMm(d);
+        double rSt = r.ExpanderEndInnerRadiusMm;
         double hubD = d.StatorHubDiameterMm > 0.5 ? d.StatorHubDiameterMm : 0.28 * d.SwirlChamberDiameterMm;
         if (hubD * 0.5 >= 0.92 * rSt)
             Add($"STATOR HUB: hub radius ({0.5 * hubD:F1} mm) is large vs stator casing inner R ({rSt:F1} mm) — span may be tiny; check StatorHubDiameterMm vs expander exit.");
@@ -75,9 +74,9 @@ public static class NozzleDesignHealthCheck
         if (r.ExpanderHalfAngleDeg > 14.0)
             Add($"R4 EXPANDER: half-angle {r.ExpanderHalfAngleDeg:F1}° is very high — strongly consider reducing angle or shortening length.");
 
-        // R4b geometry consistency
+        // R4b template cone vs declared exit (built voxel path adjusts expander length in constant-area mode)
         if (r.ExpanderExitToTargetRadiusMismatchRatio > 0.55)
-            Add($"R4 SIZING: expander cone ends at R={r.ExpanderEndInnerRadiusMm:F1} mm vs exit target R={r.ExitTargetInnerRadiusMm:F1} mm (mismatch / R_ch = {r.ExpanderExitToTargetRadiusMismatchRatio:F2}) — exit taper carries large area change; confirm one expander mode (angle vs end radius) is authoritative.");
+            Add($"R4 SIZING: nominal expander cone R vs declared exit R mismatch / R_ch = {r.ExpanderExitToTargetRadiusMismatchRatio:F2} — built geometry uses one recovery annulus (expander length solved to ExitDiameterMm when possible); tighten ExpanderLengthMm/angle/ExitDiameterMm for self-consistent templates or enable post-stator taper explicitly.");
 
         // R4c stator vs injector
         if (r.StatorToInjectorYawMismatchDeg > 55.0)

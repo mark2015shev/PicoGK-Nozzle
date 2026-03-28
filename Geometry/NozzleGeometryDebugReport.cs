@@ -10,6 +10,17 @@ public sealed class NozzleGeometryDebugReport
     public double InjectorReferencePlaneXMm { get; init; }
     public double ImpliedExpanderExitDiameterMm { get; init; }
     public double RequestedExitDiameterMm { get; init; }
+
+    /// <summary>Built recovery annulus inner Ø (2·R) — single downstream target for expander/stator/exit start.</summary>
+    public double SolvedDownstreamTargetInnerDiameterMm { get; init; }
+
+    public double ExpanderBuiltOutletInnerDiameterMm { get; init; }
+    public double StatorCasingInnerDiameterMm { get; init; }
+    public double ExitStartInnerDiameterMm { get; init; }
+    public double ExitEndInnerDiameterMm { get; init; }
+    public double DownstreamContinuityMaxRadialErrorMm { get; init; }
+    public string DownstreamContinuityLabel { get; init; } = "PASS";
+    public string DownstreamExitModeLabel { get; init; } = "";
     public IReadOnlyList<GeometrySegmentDebugInfo> Segments { get; init; } = Array.Empty<GeometrySegmentDebugInfo>();
     public IReadOnlyList<TransitionMismatchDebugInfo> Mismatches { get; init; } = Array.Empty<TransitionMismatchDebugInfo>();
     public StatorGeometryDebugInfo? Stator { get; init; }
