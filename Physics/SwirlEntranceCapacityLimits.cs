@@ -15,5 +15,11 @@ public sealed class SwirlEntranceCapacityLimits
     /// <summary>Mach &gt; <see cref="MachCautionMax"/> and &lt; <see cref="MachChokingMin"/> → <see cref="SwirlEntranceCapacityClassification.FailRestrictive"/> (bad).</summary>
     public double MachChokingMin { get; init; } = 1.00;
 
+    /// <summary>
+    /// Live march entrainment governor (active limit): ṁ_total ≤ ρ_mix A_eff a M. Default matches <see cref="MachGoodMax"/> (conservative).
+    /// Classification bands above still use all four thresholds; this is the Mach used inside <see cref="FlowMarcher"/> to trim demand.
+    /// </summary>
+    public double EntrainmentGovernorMachMax { get; init; } = 0.30;
+
     public static SwirlEntranceCapacityLimits Default { get; } = new();
 }

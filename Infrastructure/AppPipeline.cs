@@ -30,7 +30,7 @@ internal sealed class AppPipeline
                 Library.Log(line.TrimEnd('\r'));
         }
 
-        LogAutotuneBeforeFinalRun(tune.TrialsUsed, tune.BestScore, tune.BestSeedDesign, input.Run);
+        LogAutotuneBeforeFinalRun(tune, baselineTemplate, input.Run);
         LogAutotuneGeometryDeltaToConsole(baselineTemplate, tune.BestSeedDesign);
 
         bool searchDerivedBore = input.Run.UseDerivedSwirlChamberDiameter && input.Run.AutotuneUseSynthesisBaseline;
@@ -180,15 +180,26 @@ internal sealed class AppPipeline
             _ => throw new ArgumentOutOfRangeException(nameof(propertyName), propertyName, "Unknown nozzle geometry property for viewer group.")
         };
 
-    private static void LogAutotuneBeforeFinalRun(int trialsUsed, double bestScore, NozzleDesignInputs winning, RunConfiguration run)
+    private static void LogAutotuneBeforeFinalRun(NozzleDesignAutotune.Result tune, NozzleDesignInputs baselineTemplate, RunConfiguration run)
     {
         Library.Log("=== Autotune enabled (SI search — pre-CFD) ===");
         Library.Log($"Autotune strategy: {run.AutotuneStrategy} (same coupled SI scoring path for all trials).");
-        Library.Log($"Autotune: trial count (SI-only evals): {trialsUsed}");
-        Library.Log($"Autotune: best composite score [-]:      {bestScore:F4}");
+        Library.Log($"Autotune: trial count (SI-only evals): {tune.TrialsUsed}");
+        Library.Log($"Autotune: best composite score [-]:      {tune.BestScore:F4}");
         Library.Log("Autotune: winning seed geometry [mm / deg]:");
-        LogDesignToLibrary(winning);
-        Library.Log($"Autotune: winning injector Yaw / Pitch [deg]: {winning.InjectorYawAngleDeg:F2} / {winning.InjectorPitchAngleDeg:F2}");
+        LogDesignToLibrary(tune.BestSeedDesign);
+        Library.Log($"Autotune: winning injector Yaw / Pitch [deg]: {tune.BestSeedDesign.InjectorYawAngleDeg:F2} / {tune.BestSeedDesign.InjectorPitchAngleDeg:F2}");
+
+        if (run.AutotuneStrategy == AutotuneStrategy.PhysicsControlledFiveParameter && tune.BestGeometryGenome != null)
+        {
+            NozzleGeometryGenome baseG = NozzleGeometryGenome.FromDesignInputs(baselineTemplate);
+            foreach (string line in NozzleGeometryGenomeDiagnostics.FormatAutotuneReport(
+                         baseG,
+                         tune.BestGeometryGenome,
+                         run,
+                         tune.PhysicsAutotuneBestDetail))
+                Library.Log(line);
+        }
     }
 
     private static void LogDesignToLibrary(NozzleDesignInputs d)
@@ -221,7 +232,8 @@ internal sealed class AppPipeline
 
         Console.WriteLine("[Autotune] Geometry delta vs hand template: " + (any ? "YES (at least one knob changed)" : "NO — winner matches template within tolerance"));
         if (!any)
-            Console.WriteLine("[Autotune] WARNING: widen search bounds or increase trials if you expected visible geometry changes.");
+            ConsoleReportColor.WriteWarning(
+                "[Autotune] WARNING: widen search bounds or increase trials if you expected visible geometry changes.");
     }
 
     private static NozzleDesignInputs CloneDesignForLog(NozzleDesignInputs d) => new()

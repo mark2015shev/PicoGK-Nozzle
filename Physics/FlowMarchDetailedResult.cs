@@ -26,4 +26,13 @@ public sealed class FlowMarchDetailedResult
 
     /// <summary>Count of march steps where entrainment demand was cut by swirl-passage bulk Mach ceiling.</summary>
     public int EntrainmentStepsLimitedBySwirlPassageCapacity { get; init; }
+
+    /// <summary>Σ Δṁ_req from correlation over all steps [kg/s] (before passage governor trim on that step’s capped demand).</summary>
+    public double SumCorrelationEntrainmentDemandKgS { get; init; }
+
+    /// <summary>Σ (ṁ demand into passage block − ṁ after passage trim) per step [kg/s].</summary>
+    public double SumEntrainmentMassTrimmedByPassageGovernorKgS { get; init; }
+
+    /// <summary>Mach limit used in <see cref="FlowMarcher"/> for ṁ ceiling (from <see cref="SwirlEntranceCapacityLimits.EntrainmentGovernorMachMax"/>).</summary>
+    public double EntrainmentGovernorMachMaxUsed { get; init; }
 }

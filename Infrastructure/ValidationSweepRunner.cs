@@ -431,6 +431,10 @@ public static class ValidationSweepRunner
             string inv = c.ImpossibleOrInvalidState ? "BAD" : "";
             log(
                 $" {i,2} | {c.ParameterValue,8:F3} | {c.NetThrustN,9:F2} | {c.EntrainmentRatio,5:F3} | {c.ExitVelocityMps,5:F1} | {c.VortexQuality,5:F3} | {c.BreakdownRisk,5:F3} | {c.SeparationRisk,5:F3} | {c.HealthCount,6} | {fl}{inv}");
+            if (c.ImpossibleOrInvalidState)
+                ConsoleReportColor.WriteError($"  [sweep {sw.SweepName} row {i}] INVALID state (BAD) — check CSV notes / health.");
+            if (c.RapidChangeFromPrevious)
+                ConsoleReportColor.WriteWarning($"  [sweep {sw.SweepName} row {i}] CAUTION: rapid change vs previous case (JUMP).");
         }
 
         log("Interpretation:");

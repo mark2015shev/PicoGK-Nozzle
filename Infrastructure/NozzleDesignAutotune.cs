@@ -32,6 +32,9 @@ public static class NozzleDesignAutotune
 
         /// <summary>Populated for <see cref="AutotuneStrategy.PhysicsControlledFiveParameter"/>.</summary>
         public CandidatePhysicsAutotuneResult? PhysicsAutotuneBestDetail { get; init; }
+
+        /// <summary>Winning <see cref="NozzleGeometryGenome"/> when physics autotune ran (same skeleton as <see cref="BestSeedDesign"/>).</summary>
+        public NozzleGeometryGenome? BestGeometryGenome { get; init; }
     }
 
     public sealed class AutotuneStageBestSnapshot
@@ -40,6 +43,9 @@ public static class NozzleDesignAutotune
         public int TrialsInStage { get; init; }
         public double BestScore { get; init; }
         public NozzleDesignInputs BestDesign { get; init; } = null!;
+
+        /// <summary>Genome for <see cref="BestDesign"/> when strategy is physics-controlled autotune.</summary>
+        public NozzleGeometryGenome? BestGenome { get; init; }
     }
 
     private readonly struct Knobs

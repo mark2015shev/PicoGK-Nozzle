@@ -141,7 +141,11 @@ public sealed class FlowMarcher
                 FinalTangentialVelocityMps = primaryTangentialVelocityMps,
                 FinalAxialVelocityMps = inletState.VelocityMps,
                 FinalPrimaryTangentialVelocityMps = primaryTangentialVelocityMps,
-                EntrainmentStepsLimitedBySwirlPassageCapacity = 0
+                EntrainmentStepsLimitedBySwirlPassageCapacity = 0,
+                SumCorrelationEntrainmentDemandKgS = 0.0,
+                SumEntrainmentMassTrimmedByPassageGovernorKgS = 0.0,
+                EntrainmentGovernorMachMaxUsed =
+                    (swirlPassageMachLimitsForEntrainmentCap ?? SwirlEntranceCapacityLimits.Default).EntrainmentGovernorMachMax
             };
         }
 
@@ -185,6 +189,8 @@ public sealed class FlowMarcher
 
         SwirlEntranceCapacityLimits passageLim = swirlPassageMachLimitsForEntrainmentCap ?? SwirlEntranceCapacityLimits.Default;
         int entrainmentPassageCapSteps = 0;
+        double sumCorrelationEntrainmentDemandKgS = 0.0;
+        double sumEntrainmentTrimmedByGovernorKgS = 0.0;
 
         for (int step = 1; step <= stepCount; step++)
         {
@@ -225,6 +231,7 @@ public sealed class FlowMarcher
                 _ambient.DensityKgM3,
                 vMagCorr,
                 perimeter) * dx * boost;
+            sumCorrelationEntrainmentDemandKgS += dmRequested;
 
             double pMixClamped = Math.Clamp(pOld, 1.0, _ambient.PressurePa * 0.99999);
             double mdotChokedCeiling = _gas.ChokedMassFlux(_ambient.PressurePa, _ambient.TemperatureK) * aCap;
@@ -239,11 +246,13 @@ public sealed class FlowMarcher
                 dmRequested,
                 Math.Min(mdotPressureLimited, Math.Max(mdotChokedCeiling, 0.0)));
 
+            double dmBeforeSwirlPassageGovernor = dmDemandCapped;
             double passageMdotCeil = double.NaN;
             bool cappedBySwirlPassage = false;
+            double govMach = passageLim.EntrainmentGovernorMachMax;
             if (capEntrainmentToSwirlPassageMach
                 && chamberFullBoreAreaM2 > 1e-18
-                && passageLim.MachCautionMax > 1e-9)
+                && govMach > 1e-9)
             {
                 double aEffPass = Math.Min(Math.Min(aCap, area), chamberFullBoreAreaM2);
                 double mdotCeil = SwirlEntranceCapacityEvaluator.MaxMdotForBulkMachLimit(
@@ -251,7 +260,7 @@ public sealed class FlowMarcher
                     current.DensityKgM3,
                     current.TemperatureK,
                     aEffPass,
-                    passageLim.MachCautionMax);
+                    govMach);
                 passageMdotCeil = mdotCeil;
                 if (mOld > mdotCeil + 1e-9)
                 {
@@ -259,7 +268,7 @@ public sealed class FlowMarcher
                     cappedBySwirlPassage = true;
                     entrainmentPassageCapSteps++;
                     invariantSink?.Add(
-                        $"March step {step}: SWIRL PASSAGE — ṁ_mix ({mOld:E}) exceeds Mach≤{passageLim.MachCautionMax:F2} ceiling ({mdotCeil:E} kg/s); entrainment increment forced to zero.");
+                        $"March step {step}: SWIRL PASSAGE GOVERNOR — ṁ_mix ({mOld:E}) exceeds ρ·A_eff·a·M limit (M={govMach:F3}); ceiling {mdotCeil:E} kg/s; entrainment increment forced to zero.");
                 }
                 else
                 {
@@ -276,6 +285,8 @@ public sealed class FlowMarcher
                     }
                 }
             }
+
+            sumEntrainmentTrimmedByGovernorKgS += Math.Max(0.0, dmBeforeSwirlPassageGovernor - dmDemandCapped);
 
             InletSuctionOutcome intake = _inletSuction.Solve(
                 _gas,
@@ -448,6 +459,13 @@ public sealed class FlowMarcher
             if (pCore > pNew + 1.0)
                 stepBulkValid = false;
 
+            if (!radial.ShapingInvariantsSatisfied)
+            {
+                stepBulkValid = false;
+                invariantSink?.Add(
+                    $"March step {step}: RADIAL SHAPING — {radial.ShapingInvariantNote}");
+            }
+
             double mu = _gas.DynamicViscosityAirPaS(tNew);
             double vMagRe = Math.Max(vmagFinal, 1e-9);
             double reStep = rhoNew * vMagRe * dHyd / Math.Max(mu, 1e-12);
@@ -511,6 +529,9 @@ public sealed class FlowMarcher
                 CorePressurePa = pCore,
                 WallPressurePa = pWall,
                 RadialPressureDeltaPa = radial.EstimatedRadialPressureDeltaPa,
+                RadialCoreRadiusUsedM = radial.CoreRadiusM,
+                RadialShapingInvariantsOk = radial.ShapingInvariantsSatisfied,
+                RadialShapingInvariantNote = radial.ShapingInvariantNote,
                 ContinuityResidualRelative = contRes,
                 StepUpdate = stepUpdate,
                 Compressible = comp
@@ -606,7 +627,10 @@ public sealed class FlowMarcher
                 angularMomentumFluxKgM2PerS2,
                 primaryMdot,
                 rRef),
-            EntrainmentStepsLimitedBySwirlPassageCapacity = entrainmentPassageCapSteps
+            EntrainmentStepsLimitedBySwirlPassageCapacity = entrainmentPassageCapSteps,
+            SumCorrelationEntrainmentDemandKgS = sumCorrelationEntrainmentDemandKgS,
+            SumEntrainmentMassTrimmedByPassageGovernorKgS = sumEntrainmentTrimmedByGovernorKgS,
+            EntrainmentGovernorMachMaxUsed = passageLim.EntrainmentGovernorMachMax
         };
     }
 }

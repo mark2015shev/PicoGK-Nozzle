@@ -10,8 +10,9 @@ public enum AutotuneStrategy
     CoarseToFine,
 
     /// <summary>
-    /// Stages A→B→C: only five geometry parameters (chamber D/L, inlet capture, expander half-angle, stator angle);
-    /// injector yaw fixed 90°; no synthesis baseline in search; physics-based score via PhysicsAutotuneScoring.
+    /// Stages A→B→C over <see cref="NozzleGeometryGenome"/> Tier A (full skeleton: chamber, inlet, injector axial ratio,
+    /// expander length/angle, exit, stator angle); Tier B optional in stage C; injector port template merged by mapper;
+    /// physics score via PhysicsAutotuneScoring.
     /// </summary>
     PhysicsControlledFiveParameter
 }

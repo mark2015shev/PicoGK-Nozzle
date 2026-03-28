@@ -40,11 +40,24 @@ public static class RunReportBuilder
 
         if (geometry != null)
         {
-            log(geometry.IsAcceptable
-                ? "Geometry continuity: OK."
-                : "Geometry continuity: ISSUES —");
+            if (geometry.IsAcceptable)
+            {
+                const string ok = "Geometry continuity: OK.";
+                log(ok);
+                ConsoleReportColor.WritePass(ok);
+            }
+            else
+            {
+                const string bad = "Geometry continuity: ISSUES —";
+                log(bad);
+                ConsoleReportColor.WriteError(bad);
+            }
+
             foreach (string iss in geometry.Issues)
+            {
                 log("  " + iss);
+                ConsoleReportColor.WriteWarning("  " + iss);
+            }
         }
 
         if (siFlow?.ChamberMarch != null)

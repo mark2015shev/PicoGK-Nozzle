@@ -75,7 +75,7 @@ internal static class ResultReporter
         if (result.SiFlow?.SourceDischargeConsistency != null)
         {
             foreach (string line in result.SiFlow.SourceDischargeConsistency.FormatReportLines())
-                Library.Log(line);
+                ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), line);
         }
 
         if (result.SiFlow?.InjectorPressureVelocity != null)
@@ -115,7 +115,7 @@ internal static class ResultReporter
         NozzleGeometryDebugReportBuilder.WriteReport(geometryAudit, line =>
         {
             Library.Log(line);
-            Console.WriteLine(line);
+            ConsoleReportColor.WriteClassifiedLine(line);
         });
 
         Library.Log("--- Injector (SI authority = InjectorDischargeSolver) ---");
@@ -151,9 +151,13 @@ internal static class ResultReporter
             Library.Log("--- SI compressible march (first-order estimate; not CFD-calibrated) ---");
             Library.Log($"Min inlet static P (entrainment solve) [Pa]: {sf.MinInletLocalStaticPressurePa:F1}");
             Library.Log($"Max inlet Mach (entrained stream) [-]: {sf.MaxInletMach:F4}");
-            Library.Log($"Any entrainment step choked: {sf.AnyEntrainmentStepChoked}");
-            Library.Log(
-                $"Swirl-passage ṁ cap steps:      {sf.EntrainmentStepsLimitedBySwirlPassageCapacity}  (any: {sf.AnyEntrainmentLimitedBySwirlPassageCapacity})");
+            string chokedLine = $"Any entrainment step choked: {sf.AnyEntrainmentStepChoked}";
+            Library.Log(chokedLine);
+            ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), chokedLine);
+            string capLine =
+                $"Swirl-passage ṁ cap steps:      {sf.EntrainmentStepsLimitedBySwirlPassageCapacity}  (any: {sf.AnyEntrainmentLimitedBySwirlPassageCapacity})";
+            Library.Log(capLine);
+            ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), capLine);
             Library.Log($"Σ requested Δṁ_ent [kg/s]:     {sf.SumRequestedEntrainmentIncrementsKgS:F6}");
             Library.Log($"Σ actual Δṁ_ent [kg/s]:       {sf.SumActualEntrainmentIncrementsKgS:F6}");
             Library.Log($"Entrainment shortfall Σ [kg/s]: {sf.EntrainmentShortfallSumKgS:F6} (requested − actual, per-step sum)");
@@ -164,12 +168,17 @@ internal static class ResultReporter
             Library.Log($"Pressure thrust [N]:          {sf.PressureThrustN:F3} ((P_exit − P_amb) A_exit only)");
             Library.Log($"Net thrust [N]:               {sf.NetThrustN:F3}  (momentum + exit-plane pressure; sole authority)");
             Library.Log($"Core momentum estimate [N]:   {sf.CoreMomentumEstimateN:F3} (ṁ_core |V_a,inj| — order-of-magnitude check)");
-            Library.Log(
-                sf.ThrustControlVolumeIsValid
-                    ? string.IsNullOrEmpty(sf.ThrustControlVolumeSoftWarning)
-                        ? "Thrust CV: valid."
-                        : $"Thrust CV: valid with soft warning — {sf.ThrustControlVolumeSoftWarning}"
-                    : $"Thrust CV: INVALID — {sf.ThrustControlVolumeInvalidReason ?? "unknown"}");
+            string thrustCvLine = sf.ThrustControlVolumeIsValid
+                ? string.IsNullOrEmpty(sf.ThrustControlVolumeSoftWarning)
+                    ? "Thrust CV: valid."
+                    : $"Thrust CV: valid with soft warning — {sf.ThrustControlVolumeSoftWarning}"
+                : $"Thrust CV: INVALID — {sf.ThrustControlVolumeInvalidReason ?? "unknown"}";
+            StatusLevel thrustCvLevel = !sf.ThrustControlVolumeIsValid
+                ? StatusLevel.Error
+                : string.IsNullOrEmpty(sf.ThrustControlVolumeSoftWarning)
+                    ? StatusLevel.Pass
+                    : StatusLevel.Warning;
+            ConsoleReportColor.LogLibraryAndConsole(static s => Library.Log(s), thrustCvLevel, thrustCvLine);
             Library.Log($"March steps recorded:         {sf.MarchSteps.Count}");
             if (sf.ChamberMarch != null)
                 LogSwirlChamberMarchSection(sf);
@@ -328,7 +337,11 @@ internal static class ResultReporter
         {
             Library.Log("--- Plain-language warnings ---");
             foreach (string w in h.PlainLanguageWarnings)
-                Library.Log("  • " + w);
+            {
+                string wl = "  • " + w;
+                Library.Log(wl);
+                ConsoleReportColor.WriteWarning(wl);
+            }
         }
     }
 
@@ -364,9 +377,13 @@ internal static class ResultReporter
             sf.MarchPhysicsClosure != null
                 ? $"Mach_bulk / Re_D (last step) [-]: {sf.MarchPhysicsClosure.FinalMachBulk:F4} / {sf.MarchPhysicsClosure.FinalReynolds:F1}"
                 : "Mach_bulk / Re_D: n/a");
-        Library.Log($"Choked entrainment step:       {sf.AnyEntrainmentStepChoked}");
-        Library.Log(
-            $"Entrainment capped by passage: {sf.EntrainmentStepsLimitedBySwirlPassageCapacity} step(s)  (Mach≤caution vs min areas)");
+        string chokedSnap = $"Choked entrainment step:       {sf.AnyEntrainmentStepChoked}";
+        Library.Log(chokedSnap);
+        ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), chokedSnap);
+        string govSnap =
+            $"Entrainment capped by passage governor: {sf.EntrainmentStepsLimitedBySwirlPassageCapacity} step(s)  (Mach ≤ EntrainmentGovernorMachMax vs min areas)";
+        Library.Log(govSnap);
+        ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), govSnap);
         Library.Log(
             $"Swirl correlation (last step) [-]: {last.SwirlNumberFlux:F4}  (bounded flux or |Vt|/|V| path; chamber bulk ratio {last.ChamberSwirlBulkRatio:F4})");
         if (sf.ChamberMarch?.SwirlEntranceCapacityStations != null)
@@ -403,8 +420,17 @@ internal static class ResultReporter
         if (m.SwirlEntranceCapacityStations != null)
         {
             foreach (string line in m.SwirlEntranceCapacityStations.FormatReportLines())
-                Library.Log(line);
+                ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), line);
         }
+
+        if (m.EntrainmentGovernor != null)
+        {
+            foreach (string line in m.EntrainmentGovernor.FormatReportLines())
+                ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), line);
+        }
+
+        foreach (string line in m.RadialShapingReportLines)
+            ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), line);
 
         foreach (string w in m.ValidationWarnings)
             Library.Log(w);
@@ -540,7 +566,11 @@ internal static class ResultReporter
         }
 
         foreach (string w in warnings)
-            Library.Log("WARNING: " + w);
+        {
+            string wl = "WARNING: " + w;
+            Library.Log(wl);
+            ConsoleReportColor.WriteWarning(wl);
+        }
     }
 
     private static void LogDerivedSwirlChamberSizing(SwirlChamberSizingModel.SizingDiagnostics d)
@@ -592,7 +622,11 @@ internal static class ResultReporter
         {
             Library.Log("--- Chamber sizing notes ---");
             foreach (string w in d.Warnings)
-                Library.Log("  • " + w);
+            {
+                string wl = "  • " + w;
+                Library.Log(wl);
+                ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), wl);
+            }
         }
     }
 

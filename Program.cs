@@ -27,13 +27,13 @@ internal static class Program
         if (args.Length > 0 && string.Equals(args[0], "geom-report", StringComparison.OrdinalIgnoreCase))
         {
             NozzleGeometryDebugReport rep = NozzleGeometryDebugReportBuilder.Build(K320Baseline.CreateDesign());
-            NozzleGeometryDebugReportBuilder.WriteReport(rep, Console.WriteLine);
+            NozzleGeometryDebugReportBuilder.WriteReport(rep, ConsoleReportColor.WriteClassifiedLine);
             return;
         }
 
-        // Autotune off by default. Options: CreateInputWithAutotune, CreateInputWithCoarseToFineAutotune,
-        // or CreateInputWithPhysicsFiveParameterAutotune (five geometry dims, staged A/B/C, SI score only).
-        bool useAutotune = false;
+        // Autotune on by default (single-stage SI search + one voxel pass). Alternatives: CreateInputWithCoarseToFineAutotune,
+        // CreateInputWithPhysicsFiveParameterAutotune (genome A/B/C).
+        bool useAutotune = true;
         NozzleInput input = useAutotune
             ? K320Baseline.CreateInputWithAutotune(trials: 300)
             : new(

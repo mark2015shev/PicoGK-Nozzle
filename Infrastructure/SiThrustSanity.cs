@@ -21,8 +21,10 @@ internal static class SiThrustSanity
         }
         catch (Exception)
         {
-            Console.WriteLine(line);
+            // Library may be unavailable in headless tooling — terminal still shows the assert.
         }
+
+        ConsoleReportColor.WriteError(line);
     }
 
     /// <summary>10 bar absolute — model is ambient-fed ejector class; above this is treated as invalid.</summary>

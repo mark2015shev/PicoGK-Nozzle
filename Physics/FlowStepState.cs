@@ -48,6 +48,13 @@ public sealed class FlowStepState
     public double WallPressurePa { get; init; }
     public double RadialPressureDeltaPa { get; init; }
 
+    /// <summary>Core radius used in radial shaping integral this step [m].</summary>
+    public double RadialCoreRadiusUsedM { get; init; }
+
+    public bool RadialShapingInvariantsOk { get; init; } = true;
+
+    public string RadialShapingInvariantNote { get; init; } = "";
+
     /// <summary>|ρ A V_ax − ṁ_total| / max(ṁ_total, ε).</summary>
     public double ContinuityResidualRelative { get; init; }
 

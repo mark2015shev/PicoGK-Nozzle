@@ -145,7 +145,7 @@ public sealed class RunConfiguration
     /// <summary>When true, the SI march records optional per-step consistency checks (mass split, ideal gas, continuity, Mach).</summary>
     public bool ValidateMarchStepInvariants { get; init; }
 
-    // --- Physics-controlled five-parameter autotune (see AutotuneStrategy.PhysicsControlledFiveParameter) ---
+    // --- Physics-controlled genome autotune (see AutotuneStrategy.PhysicsControlledFiveParameter, NozzleGeometryGenome) ---
 
     /// <summary>Stage A coarse random trials (clamped 100–300 in runner).</summary>
     public int PhysicsAutotuneStageACandidates { get; init; } = 200;
@@ -170,6 +170,12 @@ public sealed class RunConfiguration
     /// (preserves direct tuned D_ch). Five-parameter physics autotune also skips that finalize step.
     /// </summary>
     public bool PhysicsAutotunePreserveWinningChamberDiameter { get; init; }
+
+    /// <summary>
+    /// When true, stage C perturbs Tier B (stator axial length, hub diameter, vane count, chord) in addition to Tier A polish.
+    /// Default false: only primary physics knobs move until you explicitly unlock secondary fit/recovery.
+    /// </summary>
+    public bool PhysicsAutotuneStageCUnlockTierB { get; init; }
 
     // --- Swirl chamber bore sizing (first-order continuity / area; not CFD) ---
 

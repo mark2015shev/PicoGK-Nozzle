@@ -68,5 +68,12 @@ public static class MarchInvariantValidation
 
         if (!s.StepBulkPressureValid)
             sink.Add($"March inv step {stepIndexOneBased}: StepBulkPressureValid=false (chamber bulk/radial guard).");
+
+        if (!s.RadialShapingInvariantsOk && !string.IsNullOrEmpty(s.RadialShapingInvariantNote))
+            sink.Add($"March inv step {stepIndexOneBased}: radial shaping — {s.RadialShapingInvariantNote}");
+
+        if (s.CorePressurePa > s.PStaticPa + 2.0)
+            sink.Add(
+                $"March inv step {stepIndexOneBased}: P_core ({s.CorePressurePa:F1} Pa) exceeds P_bulk ({s.PStaticPa:F1} Pa) — radial shaping inconsistent.");
     }
 }

@@ -814,7 +814,6 @@ public static class NozzleFlowCompositionRoot
             return;
         foreach (string line in report.FormatReportLines())
         {
-            Console.WriteLine(line);
             try
             {
                 Library.Log(line);
@@ -823,6 +822,8 @@ public static class NozzleFlowCompositionRoot
             {
                 // validate / headless: Library may be unavailable
             }
+
+            ConsoleReportColor.WriteClassifiedLine(line);
         }
     }
 
@@ -870,7 +871,6 @@ public static class NozzleFlowCompositionRoot
             return;
         foreach (string line in chamberMarchDiag.SwirlEntranceCapacityStations?.FormatReportLines() ?? Array.Empty<string>())
         {
-            Console.WriteLine(line);
             try
             {
                 Library.Log(line);
@@ -878,6 +878,8 @@ public static class NozzleFlowCompositionRoot
             catch
             {
             }
+
+            ConsoleReportColor.WriteClassifiedLine(line);
         }
     }
 
@@ -896,7 +898,6 @@ public static class NozzleFlowCompositionRoot
 
         foreach (string w in warnings)
         {
-            Console.WriteLine(w);
             try
             {
                 Library.Log(w);
@@ -904,6 +905,8 @@ public static class NozzleFlowCompositionRoot
             catch
             {
             }
+
+            ConsoleReportColor.WriteError(w);
         }
     }
 
@@ -954,6 +957,9 @@ public static class NozzleFlowCompositionRoot
         foreach (string h in dual.EnumerateHealthMessages())
             warnings.Add(h);
 
+        SwirlEntrainmentGovernorSummary gov = SwirlEntrainmentGovernorSummary.Build(dual, detailed, inletJet.MassFlowKgS);
+        IReadOnlyList<string> radialLines = FormatRadialVortexShapingReportLines(lastPhysics);
+
         return new SwirlChamberMarchDiagnostics
         {
             AInletMm2 = aInletMm2,
@@ -973,7 +979,28 @@ public static class NozzleFlowCompositionRoot
             EntrainmentCeAtFirstStep = ceFirst,
             EntrainmentMassDemandBoost = entrainmentMassDemandBoost,
             SwirlEntranceCapacityStations = dual,
+            EntrainmentGovernor = gov,
+            RadialShapingReportLines = radialLines,
             ValidationWarnings = warnings
+        };
+    }
+
+    private static IReadOnlyList<string> FormatRadialVortexShapingReportLines(FlowStepState? lastPhysics)
+    {
+        if (lastPhysics == null)
+            return Array.Empty<string>();
+        double dCore = Math.Max(0.0, lastPhysics.PStaticPa - lastPhysics.CorePressurePa);
+        double dWall = Math.Max(0.0, lastPhysics.WallPressurePa - lastPhysics.PStaticPa);
+        return new List<string>
+        {
+            "RADIAL VORTEX SHAPING (last march station — secondary to bulk P_static)",
+            $"  P_bulk [Pa]:               {lastPhysics.PStaticPa:F1}",
+            $"  P_core [Pa]:               {lastPhysics.CorePressurePa:F1}",
+            $"  P_wall [Pa]:               {lastPhysics.WallPressurePa:F1}",
+            $"  DeltaP_core [Pa]:          {dCore:F1}",
+            $"  DeltaP_wall [Pa]:          {dWall:F1}",
+            $"  core radius used [m]:      {lastPhysics.RadialCoreRadiusUsedM:E4}",
+            $"  shaping invariants OK:     {lastPhysics.RadialShapingInvariantsOk}  {lastPhysics.RadialShapingInvariantNote}"
         };
     }
 
@@ -1027,7 +1054,8 @@ public static class NozzleFlowCompositionRoot
         Console.WriteLine($"Estimated thrust [N]:       {d.EstimatedThrustN:F2} (momentum + pressure CV terms, first-order)");
         Console.WriteLine(
             $"Min inlet static (entrain.) [Pa]: {si.MinInletLocalStaticPressurePa:F1} ({SiPressureGuards.PaToBar(si.MinInletLocalStaticPressurePa):F4} bar)");
-        Console.WriteLine($"Max entrainment Mach [-]:   {si.MaxInletMach:F3}  Choked step: {si.AnyEntrainmentStepChoked}");
+        ConsoleReportColor.WriteClassifiedLine(
+            $"Max entrainment Mach [-]:   {si.MaxInletMach:F3}  Choked step: {si.AnyEntrainmentStepChoked}");
         Console.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}");
         Console.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}");
         Console.WriteLine($"Suggested mixing length [m]: {d.SuggestedMixingLengthM:F5}");
@@ -1044,11 +1072,11 @@ public static class NozzleFlowCompositionRoot
             Console.WriteLine(
                 $"A_capture {m.CaptureAreaM2:E4} m2 | P_ent {m.EntrainmentPerimeterM:F5} m | A_duct_eff {m.DuctEffectiveAreaM2:E4} m2 (constant along chamber march)");
             foreach (string w in m.ValidationWarnings)
-                Console.WriteLine(w);
+                ConsoleReportColor.WriteClassifiedLine(w);
             if (m.SwirlEntranceCapacityStations != null)
             {
                 foreach (string line in m.SwirlEntranceCapacityStations.FormatReportLines())
-                    Console.WriteLine(line);
+                    ConsoleReportColor.WriteClassifiedLine(line);
             }
         }
 

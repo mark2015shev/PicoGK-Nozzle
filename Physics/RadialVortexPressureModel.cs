@@ -24,6 +24,11 @@ public sealed class RadialVortexPressureResult
     public double EstimatedRadialPressureDeltaPa { get; init; }
     public RadialVortexPressureModelType VortexType { get; init; }
     public string Notes { get; init; } = "";
+
+    /// <summary>P_core ≤ P_bulk and wall/core bounded vs P₀ (secondary shaping only).</summary>
+    public bool ShapingInvariantsSatisfied { get; init; } = true;
+
+    public string ShapingInvariantNote { get; init; } = "";
 }
 
 /// <summary>
@@ -123,6 +128,40 @@ public static class RadialVortexPressureModel
             raw.EstimatedRadialPressureDeltaPa,
             wallDelta + coreDelta);
 
+        double vtAbs = Math.Abs(representativeTangentialVelocityMps);
+        double qTheta = 0.5 * Math.Max(densityKgM3, 1e-9) * vtAbs * vtAbs;
+        if (qTheta >= ChamberAerodynamicsConfiguration.RadialSwirlQThetaFloorPa)
+        {
+            double minCore = Math.Min(
+                maxCoreDrop * 0.98,
+                ChamberAerodynamicsConfiguration.RadialMinimumCoreDropFractionOfSwirlQ * qTheta);
+            if (coreDelta < minCore)
+                coreDelta = minCore;
+            double minWall = Math.Min(
+                maxWallDelta,
+                ChamberAerodynamicsConfiguration.RadialMinimumWallRiseFractionOfSwirlQ * qTheta);
+            if (wallDelta < minWall)
+                wallDelta = minWall;
+            coreDelta = Math.Min(coreDelta, maxCoreDrop * 0.99);
+            wallDelta = Math.Min(wallDelta, maxWallDelta);
+        }
+
+        deltaMag = Math.Min(
+            raw.EstimatedRadialPressureDeltaPa,
+            wallDelta + coreDelta);
+
+        double pCoreIf = bulk - coreDelta;
+        double pWallIf = bulk + wallDelta;
+        double pWallCeil = p0Ceil * (1.0 + 2.0 * ChamberAerodynamicsConfiguration.WallStaticExcessOverBulkMaxFractionOfP0);
+        bool ok = double.IsFinite(pCoreIf) && double.IsFinite(pWallIf)
+                  && pCoreIf <= bulk + 1.0
+                  && pWallIf <= pWallCeil + 1.0
+                  && coreDelta >= -1e-6
+                  && wallDelta >= -1e-6;
+        string invNote = ok
+            ? ""
+            : "RADIAL SHAPING INVARIANT: core/wall vs bulk or P₀ ceiling failed — check bulk state and caps.";
+
         return new RadialVortexPressureResult
         {
             CoreRadiusM = raw.CoreRadiusM,
@@ -131,7 +170,9 @@ public static class RadialVortexPressureModel
             CorePressureDropPa = coreDelta,
             EstimatedRadialPressureDeltaPa = deltaMag,
             VortexType = raw.VortexType,
-            Notes = raw.Notes + " Shaping deltas clamped to bulk static and P₀ ceiling (secondary field model)."
+            Notes = raw.Notes + " Shaping deltas clamped to bulk static and P₀ ceiling (secondary field model).",
+            ShapingInvariantsSatisfied = ok,
+            ShapingInvariantNote = invNote
         };
     }
 }

@@ -59,6 +59,10 @@ public sealed class SiDiagnosticsReport
             FinalContinuityResidualRelative = si.MarchPhysicsClosure?.FinalContinuityResidualRelative ?? double.NaN,
             AnyEntrainmentChoked = si.AnyEntrainmentStepChoked,
             EntrainmentStepsCappedBySwirlPassage = si.EntrainmentStepsLimitedBySwirlPassageCapacity,
+            EntrainmentGovernorMachMaxUsed = si.ChamberMarch?.EntrainmentGovernor?.EntrainmentGovernorMachLimitUsed ?? double.NaN,
+            EntrainmentDemandSumKgS = si.ChamberMarch?.EntrainmentGovernor?.MdotSecondaryDemandSumKgS ?? double.NaN,
+            EntrainmentTrimmedSumKgS = si.ChamberMarch?.EntrainmentGovernor?.SumMassFlowTrimmedByGovernorKgS ?? double.NaN,
+            LastStepRadialShapingOk = si.PhysicsStepStates.Count > 0 && si.PhysicsStepStates[^1].RadialShapingInvariantsOk,
             SumRequestedEntrainmentKgS = si.SumRequestedEntrainmentIncrementsKgS,
             SumActualEntrainmentKgS = si.SumActualEntrainmentIncrementsKgS
         };
@@ -207,6 +211,10 @@ public sealed class ChamberMarchSummary
     public double FinalContinuityResidualRelative { get; init; }
     public bool AnyEntrainmentChoked { get; init; }
     public int EntrainmentStepsCappedBySwirlPassage { get; init; }
+    public double EntrainmentGovernorMachMaxUsed { get; init; }
+    public double EntrainmentDemandSumKgS { get; init; }
+    public double EntrainmentTrimmedSumKgS { get; init; }
+    public bool LastStepRadialShapingOk { get; init; }
     public double SumRequestedEntrainmentKgS { get; init; }
     public double SumActualEntrainmentKgS { get; init; }
 }

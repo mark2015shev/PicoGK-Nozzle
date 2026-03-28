@@ -26,4 +26,13 @@ public static class ChamberAerodynamicsConfiguration
     /// — keeps secondary core/wall deltas visible when swirl dynamic pressure is large (does not change bulk P_static).
     /// </summary>
     public const double RadialIntegralCapTimesSwirlDynamicPressure = 6.0;
+
+    /// <summary>After bulk-relative clamps, ensure Δp_core ≥ this fraction of ½ρV_t² when q_θ exceeds <see cref="RadialSwirlQThetaFloorPa"/> (gentle non-zero shaping).</summary>
+    public const double RadialMinimumCoreDropFractionOfSwirlQ = 0.12;
+
+    /// <summary>After clamps, ensure Δp_wall ≥ this fraction of ½ρV_t² when q_θ exceeds floor (paired with core floor).</summary>
+    public const double RadialMinimumWallRiseFractionOfSwirlQ = 0.05;
+
+    /// <summary>Below this swirl dynamic pressure [Pa], optional radial floors are not applied (avoids noise at negligible V_t).</summary>
+    public const double RadialSwirlQThetaFloorPa = 40.0;
 }

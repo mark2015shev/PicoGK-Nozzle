@@ -64,6 +64,9 @@ public static class K320Baseline
         WallThicknessMm = 3.0
     };
 
+    /// <summary>Master geometry genome matching <see cref="CreateDesign"/> (Tier B/C carried from design fields).</summary>
+    public static NozzleGeometryGenome CreateGeometryGenome() => NozzleGeometryGenome.FromDesignInputs(CreateDesign());
+
     /// <summary>K320 template with a different swirl chamber bore (tests / sweeps).</summary>
     public static NozzleDesignInputs CreateDesignWithSwirlChamberDiameterMm(double swirlChamberDiameterMm)
     {
@@ -206,7 +209,7 @@ public static class K320Baseline
         new(CreateSource(), CreateDesign(), CreateRunWithCoarseToFineAutotune(stage1, stage2, stage3));
 
     /// <summary>
-    /// Five-parameter physics autotune (staged A/B/C), SI scoring only, yaw locked 90°, no synthesis in search, no derived-bore finalize.
+    /// Physics genome autotune (staged A/B/C on <see cref="NozzleGeometryGenome"/>), SI scoring only, yaw locked 90°, no synthesis in search, no derived-bore finalize.
     /// </summary>
     public static RunConfiguration CreateRunWithPhysicsFiveParameterAutotune() => new()
     {

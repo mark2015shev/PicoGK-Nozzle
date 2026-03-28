@@ -27,5 +27,11 @@ public sealed class SwirlChamberMarchDiagnostics
     /// <summary>Mixed ṁ_total vs min(capture, free annulus) at swirl entrance plane and chamber end.</summary>
     public SwirlEntranceCapacityDualResult? SwirlEntranceCapacityStations { get; init; }
 
+    /// <summary>Live governor vs post-hoc dual-station audit (demand vs allowed secondary, areas, Mach).</summary>
+    public SwirlEntrainmentGovernorSummary? EntrainmentGovernor { get; init; }
+
+    /// <summary>Last-step radial shaping audit lines (bulk vs core/wall).</summary>
+    public IReadOnlyList<string> RadialShapingReportLines { get; init; } = System.Array.Empty<string>();
+
     public IReadOnlyList<string> ValidationWarnings { get; init; } = System.Array.Empty<string>();
 }
