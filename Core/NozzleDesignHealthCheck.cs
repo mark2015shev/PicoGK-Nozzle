@@ -58,9 +58,9 @@ public static class NozzleDesignHealthCheck
         else if (Math.Abs(d.InjectorYawAngleDeg - 90.0) > 8.0)
         {
             if (r.InjectorSwirlNumber < 0.35)
-                Add($"R2 SWIRL (diagnostic |Vt|/|Va|={r.InjectorSwirlNumber:F2}): low — weak tangential component vs axial at template yaw.");
-            if (r.InjectorSwirlNumber > 5.0)
-                Add($"R2 SWIRL (diagnostic |Vt|/|Va|={r.InjectorSwirlNumber:F2}): very high — check yaw/pitch.");
+                Add($"R2 SWIRL (diagnostic |Vt|/|V|={r.InjectorSwirlNumber:F2}): low tangential fraction of jet speed.");
+            if (r.InjectorSwirlNumber > 0.98)
+                Add($"R2 SWIRL (diagnostic |Vt|/|V|={r.InjectorSwirlNumber:F2}): nearly pure tangential injection — verify axial entrainment coupling in SI.");
         }
 
         // R3
@@ -93,6 +93,23 @@ public static class NozzleDesignHealthCheck
                 double sf = si.EntrainmentShortfallSumKgS / si.SumRequestedEntrainmentIncrementsKgS;
                 if (sf > 0.12)
                     Add($"SI FLOW: entrainment shortfall {sf:P0} of requested (sum of steps) — suction / capture area may be undersized in the model.");
+            }
+
+            if (si.ChamberMarch?.SwirlEntranceCapacityStations is { } capDual)
+            {
+                SwirlEntranceCapacityResult cap = capDual.GoverningResult;
+                if (capDual.StationsDivergeSignificantly)
+                    Add(
+                        $"SWIRL ENTRANCE CAPACITY: entrance vs chamber-end Mach_required differ (|Δ|={capDual.MachAbsoluteDelta:F3}); governing={capDual.GoverningStationLabel}.");
+                if (capDual.CombinedClassification == SwirlEntranceCapacityClassification.FailChoking)
+                    Add(
+                        $"SWIRL ENTRANCE CAPACITY ({capDual.GoverningStationLabel}): Mach_required={cap.MachRequired:F3} — choking risk for mdot_total={cap.MdotTotalKgS:F4} kg/s through A_eff={cap.EffectiveSwirlEntranceAreaM2:E4} m² (see SI block).");
+                else if (capDual.CombinedClassification == SwirlEntranceCapacityClassification.FailRestrictive)
+                    Add(
+                        $"SWIRL ENTRANCE CAPACITY ({capDual.GoverningStationLabel}): Mach_required={cap.MachRequired:F3} exceeds caution limit — annulus/capture likely too small for mixed flow.");
+                else if (capDual.CombinedClassification == SwirlEntranceCapacityClassification.Warning)
+                    Add(
+                        $"SWIRL ENTRANCE CAPACITY ({capDual.GoverningStationLabel}): Mach_required={cap.MachRequired:F3} in caution band — watch bore/capture vs entrainment growth.");
             }
         }
 

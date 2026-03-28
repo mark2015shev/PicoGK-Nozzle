@@ -23,4 +23,7 @@ public sealed class PhysicsAutotuneScoreWeights
     public double LowChamberAxialPenaltyWeight { get; init; } = 0.20;
     public double EntrainmentShortfallPenaltyWeight { get; init; } = 0.15;
     public double HealthIssuePenaltyEach { get; init; } = 0.04;
+
+    /// <summary>Scale for <see cref="PhysicsAutotuneScoring"/> swirl-entrance Mach capacity (warning / restrictive / choking).</summary>
+    public double SwirlEntranceCapacityPenaltyWeight { get; init; } = 0.48;
 }

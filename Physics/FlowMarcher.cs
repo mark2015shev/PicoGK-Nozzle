@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+#pragma warning disable CS0618 // legacy duct march intentionally retained for tooling
+
 namespace PicoGK_Run.Physics;
 
 /// <summary>
@@ -28,8 +30,14 @@ public sealed class FlowMarcher
 
     /// <summary>
     /// March from <paramref name="inletState"/> over [0, <paramref name="sectionLengthM"/>].
-    /// Uses ambient pressure as static pressure for the mixed stream (first-order).
+    /// Uses ambient static pressure and mass-weighted temperature for the mixed stream (simplified duct model).
     /// </summary>
+    /// <remarks>
+    /// <b>Legacy / simplified:</b> not used by the live SI nozzle path, which uses <see cref="SolveDetailed"/> (stagnation-based
+    /// mixing, P₀/h₀ carry, derived statics). Prefer <see cref="SolveDetailed"/> for nozzle physics.
+    /// </remarks>
+    [Obsolete(
+        "Legacy simplified duct march (ambient P_static + mass-weighted T). Live SI nozzle uses SolveDetailed only — do not use in the SI pipeline.")]
     public IReadOnlyList<JetState> Solve(
         JetState inletState,
         double sectionLengthM,
@@ -92,11 +100,13 @@ public sealed class FlowMarcher
         return states;
     }
 
+#pragma warning restore CS0618
+
     /// <summary>
     /// Compressible entrainment (choked cap): carry h₀ and P₀ by mass mixing of stagnation properties, apply named
     /// <see cref="ChamberMarchLossModel"/> P₀ decrements, derive (P,T) from P₀, h₀, and |V|; evolve ṁ and axial momentum
-    /// via mixing; evolve Ġ_θ explicitly (entrainment at V_θ=0 dilutes V_θ,bulk); Ce uses <see cref="SwirlMath.FluxSwirlNumber"/>;
-    /// radial structure each step via <see cref="RadialVortexPressureModel"/>.
+    /// via mixing; evolve Ġ_θ explicitly (entrainment at V_θ=0 dilutes V_θ,bulk); Ce uses <see cref="SwirlMath.SwirlCorrelationForEntrainment"/>;
+    /// bulk P_static from isentropic (P₀, T₀, |V|); radial shaping via <see cref="RadialVortexPressureModel.ComputeShapingRelativeToBulk"/>.
     /// </summary>
     public FlowMarchDetailedResult SolveDetailed(
         JetState inletState,
@@ -111,7 +121,8 @@ public sealed class FlowMarcher
         double chamberLdRatio = 1.0,
         double chamberDiameterMm = 50.0,
         bool useReynoldsOnEntrainmentCe = false,
-        double swirlMomentRadiusM = double.NaN)
+        double swirlMomentRadiusM = double.NaN,
+        bool validateMarchStepInvariants = false)
     {
         if (sectionLengthM <= 0 || stepCount < 1)
         {
@@ -120,12 +131,15 @@ public sealed class FlowMarcher
                 FlowStates = new List<JetState> { inletState },
                 StepResults = Array.Empty<FlowMarchStepResult>(),
                 StepPhysicsStates = Array.Empty<FlowStepState>(),
+                MarchInvariantWarnings = Array.Empty<string>(),
                 MarchClosure = null,
                 FinalTangentialVelocityMps = primaryTangentialVelocityMps,
                 FinalAxialVelocityMps = inletState.VelocityMps,
                 FinalPrimaryTangentialVelocityMps = primaryTangentialVelocityMps
             };
         }
+
+        var invariantSink = validateMarchStepInvariants ? new List<string>() : null;
 
         double boost = Math.Clamp(
             entrainmentMassDemandMultiplier,
@@ -180,14 +194,19 @@ public sealed class FlowMarcher
 
             double angularMomFluxForCe = angularMomentumFluxKgM2PerS2;
             double axialMomFluxForCe = mOld * va;
-            double sFlux = SwirlMath.FluxSwirlNumber(angularMomFluxForCe, axialMomFluxForCe, rRef);
-
-            double vMagCorr = Math.Sqrt(va * va + vtOldBulk * vtOldBulk);
-            vMagCorr = Math.Max(vMagCorr, Math.Abs(va));
+            double vMagPreStep = Math.Sqrt(va * va + vtOldBulk * vtOldBulk);
+            double vMagCorr = Math.Max(vMagPreStep, 1e-9);
+            double sForCe = SwirlMath.SwirlCorrelationForEntrainment(
+                angularMomFluxForCe,
+                axialMomFluxForCe,
+                mOld,
+                rRef,
+                vMagCorr,
+                vtOldBulk);
 
             double reApprox = SwirlChamberMarchGeometry.ChamberReynoldsApprox(vMagCorr, chamberDiameterMm);
             double ceStep = _entrainment.ComputeCoefficient(
-                sFlux,
+                sForCe,
                 chamberLdRatio,
                 reApprox,
                 useReynoldsOnEntrainmentCe);
@@ -246,12 +265,10 @@ public sealed class FlowMarcher
                 mNew,
                 rRef);
 
-            double vmag2 = vaNew * vaNew + vtMixed * vtMixed;
-            double vmag = Math.Sqrt(vmag2);
-
             double rhoApprox = Math.Max(current.DensityKgM3, 1e-6);
-            double qBar = 0.5 * rhoApprox * vMagCorr * vMagCorr;
-            double qSwirl = 0.5 * rhoApprox * vtOldBulk * vtOldBulk;
+            double vmagMixGuess = Math.Sqrt(vaNew * vaNew + vtMixed * vtMixed);
+            double qBar = 0.5 * rhoApprox * Math.Max(vmagMixGuess * vmagMixGuess, 1e-12);
+            double qSwirl = 0.5 * rhoApprox * vtMixed * vtMixed;
             double dHyd = 2.0 * Math.Max(rWallGeom, 1e-5);
             double dp0Mix = ChamberMarchLossModel.MixingTotalPressureLossPa(dmActual, mNew, qBar);
             double dp0Wall = ChamberMarchLossModel.WallTotalPressureLossPa(dx, dHyd, qBar);
@@ -259,24 +276,93 @@ public sealed class FlowMarcher
             double p0AfterLoss = p0Mix - dp0Mix - dp0Wall - dp0Swirl;
             p0AfterLoss = Math.Max(p0AfterLoss, _ambient.PressurePa + 1.0);
 
-            double t0FromH = h0Mix / cp;
-            double tNew = Math.Max(t0FromH - vmag * vmag / (2.0 * cp), 1.0);
-            double pNew = p0AfterLoss * Math.Pow(tNew / Math.Max(t0FromH, 1.0), g / (g - 1.0));
-            double pMixedCap = ChamberPhysicsCoefficients.MarchMixedStaticPressureMaxTimesAmbient
-                * Math.Max(_ambient.PressurePa, 1.0);
-            pNew = Math.Min(pNew, pMixedCap);
+            double t0FromH = Math.Max(h0Mix / cp, 1.0);
+
+            double vaIter = vaNew;
+            const int contIters = 8;
+            for (int it = 0; it < contIters; it++)
+            {
+                double vmagIt = Math.Sqrt(vaIter * vaIter + vtMixed * vtMixed);
+                var iterSt = CompressibleFlowMath.StaticPressureTemperatureFromTotalStagnationAndSpeed(
+                    _gas,
+                    p0AfterLoss,
+                    t0FromH,
+                    vmagIt);
+                double ps = iterSt.Item1;
+                double ts = iterSt.Item2;
+                ps = SiPressureGuards.ClampStaticPressurePa(ps);
+                double rh = _gas.Density(ps, ts);
+                double vaNeed = mNew / (rh * area);
+                bool contOk = Math.Abs(vaNeed - vaIter) <= 0.012 * Math.Max(Math.Abs(vaNeed), 1.0);
+                bool contSmall = Math.Abs(vaNeed - vaIter) < 0.35;
+                if (contOk || contSmall)
+                    break;
+                vaIter = 0.5 * vaIter + 0.5 * vaNeed;
+            }
+
+            double vaFinal = vaIter;
+            double vmagFinal = Math.Sqrt(vaFinal * vaFinal + vtMixed * vtMixed);
+            var finalSt = CompressibleFlowMath.StaticPressureTemperatureFromTotalStagnationAndSpeed(
+                _gas,
+                p0AfterLoss,
+                t0FromH,
+                vmagFinal);
+            double pNew = finalSt.Item1;
+            double tNew = finalSt.Item2;
             pNew = SiPressureGuards.ClampStaticPressurePa(pNew);
             double rhoNew = _gas.Density(pNew, tNew);
 
-            double mFluxThermo = rhoNew * area * Math.Max(Math.Abs(vaNew), 1e-12);
-            if (mFluxThermo > 1e-18 && Math.Abs(mFluxThermo - mNew) / mNew > 0.28)
+            double aSound = _gas.SpeedOfSound(tNew);
+            double machFromV = vmagFinal / Math.Max(aSound, 1e-9);
+            double pFromMach = p0AfterLoss * CompressibleFlowMath.StaticPressureRatioFromMach(machFromV, g);
+            if (double.IsFinite(pFromMach) && pNew > 1.0
+                && Math.Abs(pFromMach - pNew) / pNew > ChamberAerodynamicsConfiguration.IsentropicPressureConsistencyRelativeTolerance)
             {
-                double rhoCont = mNew / (area * Math.Max(Math.Abs(vaNew), 1e-5));
-                tNew = Math.Max(t0FromH - vmag * vmag / (2.0 * cp), 1.0);
-                pNew = rhoCont * GasProperties.R * tNew;
-                pNew = Math.Min(pNew, pMixedCap);
-                pNew = SiPressureGuards.ClampStaticPressurePa(pNew);
+                pNew = SiPressureGuards.ClampStaticPressurePa(pFromMach);
                 rhoNew = _gas.Density(pNew, tNew);
+                aSound = _gas.SpeedOfSound(tNew);
+                machFromV = vmagFinal / Math.Max(aSound, 1e-9);
+            }
+
+            const double pBulkReasonableMinPa = 50.0;
+            const double pBulkReasonableMaxPa = 900_000.0;
+            double pCeilBulk = Math.Max(
+                pBulkReasonableMinPa + 1.0,
+                Math.Min(pBulkReasonableMaxPa, p0AfterLoss * 1.002));
+            if (double.IsFinite(pNew))
+                pNew = Math.Clamp(pNew, pBulkReasonableMinPa, pCeilBulk);
+            if (double.IsFinite(tNew))
+                tNew = Math.Clamp(tNew, 50.0, Math.Max(t0FromH * 1.5, 5000.0));
+            rhoNew = _gas.Density(pNew, tNew);
+
+            bool stepBulkValid = double.IsFinite(pNew) && double.IsFinite(tNew) && double.IsFinite(rhoNew)
+                && pNew >= pBulkReasonableMinPa
+                && pNew <= pBulkReasonableMaxPa
+                && pNew <= p0AfterLoss * (1.0 + 0.02)
+                && tNew >= 50.0;
+
+            if (!stepBulkValid && mNew > 1e-18 && area > 1e-15)
+            {
+                double rhoCont = mNew / (area * Math.Max(Math.Abs(vaFinal), 0.05));
+                double tFloor = Math.Clamp(t0FromH - vmagFinal * vmagFinal / (2.0 * cp), 180.0, t0FromH);
+                double pIso = p0AfterLoss * Math.Pow(tFloor / t0FromH, g / (g - 1.0));
+                double pCont = rhoCont * GasProperties.R * tFloor;
+                double pBlend = 0.5 * (pIso + pCont);
+                pNew = SiPressureGuards.ClampStaticPressurePa(Math.Clamp(pBlend, pBulkReasonableMinPa, pCeilBulk));
+                tNew = tFloor;
+                rhoNew = _gas.Density(pNew, tNew);
+                aSound = _gas.SpeedOfSound(tNew);
+                machFromV = vmagFinal / Math.Max(aSound, 1e-9);
+                stepBulkValid = double.IsFinite(pNew) && pNew >= pBulkReasonableMinPa && pNew <= pBulkReasonableMaxPa;
+            }
+
+            double rhoAmb = Math.Max(_ambient.DensityKgM3, 0.2);
+            if (rhoNew < 0.28 * rhoAmb)
+            {
+                rhoNew = 0.28 * rhoAmb;
+                pNew = SiPressureGuards.ClampStaticPressurePa(Math.Clamp(rhoNew * GasProperties.R * tNew, pBulkReasonableMinPa, pCeilBulk));
+                rhoNew = _gas.Density(pNew, tNew);
+                stepBulkValid = false;
             }
 
             double swirlKe = 0.5 * vtMixed * vtMixed;
@@ -287,28 +373,50 @@ public sealed class FlowMarcher
 
             double entrainedTotal = entrainedOld + dmActual;
 
-            var radial = RadialVortexPressureModel.Compute(
+            var radial = RadialVortexPressureModel.ComputeShapingRelativeToBulk(
+                pNew,
+                p0AfterLoss,
                 rhoNew,
                 Math.Abs(vtMixed),
                 rWallGeom,
                 ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
-                ChamberPhysicsCoefficients.RadialPressureCapPa);
+                ChamberPhysicsCoefficients.RadialPressureCapPa,
+                _ambient.PressurePa);
 
-            double pCore = Math.Max(pNew - radial.CorePressureDropPa, 1.0);
-            double pWall = pNew + radial.WallPressureRisePa;
+            double pCore = SiPressureGuards.ClampStaticPressurePa(Math.Max(pNew - radial.CorePressureDropPa, _ambient.PressurePa * 0.5));
+            double pWall = SiPressureGuards.ClampStaticPressurePa(pNew + radial.WallPressureRisePa);
+            if (pWall > p0AfterLoss * (1.0 + ChamberAerodynamicsConfiguration.WallStaticExcessOverBulkMaxFractionOfP0))
+            {
+                pWall = p0AfterLoss * (1.0 + ChamberAerodynamicsConfiguration.WallStaticExcessOverBulkMaxFractionOfP0);
+                stepBulkValid = false;
+            }
+
+            if (pCore > pNew + 1.0)
+                stepBulkValid = false;
 
             double mu = _gas.DynamicViscosityAirPaS(tNew);
-            double reStep = rhoNew * vMagCorr * dHyd / Math.Max(mu, 1e-12);
+            double vMagRe = Math.Max(vmagFinal, 1e-9);
+            double reStep = rhoNew * vMagRe * dHyd / Math.Max(mu, 1e-12);
 
-            var comp = CompressibleState.FromMixedStatic(_gas, pNew, tNew, vaNew, vtMixed);
-            double contRes = Math.Abs(rhoNew * area * vaNew - mNew) / Math.Max(mNew, 1e-18);
+            var comp = CompressibleState.FromMixedStatic(_gas, pNew, tNew, vaFinal, vtMixed);
+            double contRes = Math.Abs(rhoNew * area * vaFinal - mNew) / Math.Max(mNew, 1e-18);
 
             h0Carried = h0Mix;
             p0Carried = comp.TotalPressurePa;
 
-            double axialMomFluxNew = mNew * vaNew;
+            double axialMomFluxNew = mNew * vaFinal;
             double angFluxBulk = angularMomentumFluxKgM2PerS2;
-            double sFluxPost = SwirlMath.FluxSwirlNumber(angFluxBulk, axialMomFluxNew, rRef);
+            double sFluxPost = SwirlMath.SwirlCorrelationForEntrainment(
+                angFluxBulk,
+                axialMomFluxNew,
+                mNew,
+                rRef,
+                vmagFinal,
+                vtMixed);
+            double chamberBulk = SwirlMath.ChamberSwirlBulkRatio(
+                vtMixed,
+                vaFinal,
+                ChamberAerodynamicsConfiguration.VaFloorForBulkSwirlMps);
 
             var stepUpdate = new FlowStepUpdate(
                 dmActual,
@@ -316,7 +424,7 @@ public sealed class FlowMarcher
                 intake.MaxSupportedEntrainedMassFlowKgS,
                 mdotPressureLimited);
 
-            physicsSteps.Add(new FlowStepState
+            var stepPhysics = new FlowStepState
             {
                 X = x,
                 AreaM2 = area,
@@ -330,7 +438,7 @@ public sealed class FlowMarcher
                 DensityKgM3 = rhoNew,
                 PTotalPa = comp.TotalPressurePa,
                 TTotalK = comp.TotalTemperatureK,
-                VAxialMps = vaNew,
+                VAxialMps = vaFinal,
                 VTangentialMps = vtMixed,
                 VMagnitudeMps = comp.MagnitudeVelocityMps,
                 Mach = comp.MachNumber,
@@ -338,20 +446,35 @@ public sealed class FlowMarcher
                 SwirlNumberFlux = sFluxPost,
                 AngularMomentumFluxKgM2PerS2 = angFluxBulk,
                 AxialMomentumFluxKgM2PerS2 = axialMomFluxNew,
+                TotalPressureAfterLossesPa = p0AfterLoss,
+                ChamberSwirlBulkRatio = chamberBulk,
+                EntrainmentSwirlCorrelation = sForCe,
+                StepBulkPressureValid = stepBulkValid,
                 CorePressurePa = pCore,
                 WallPressurePa = pWall,
                 RadialPressureDeltaPa = radial.EstimatedRadialPressureDeltaPa,
                 ContinuityResidualRelative = contRes,
                 StepUpdate = stepUpdate,
                 Compressible = comp
-            });
+            };
+            physicsSteps.Add(stepPhysics);
+            if (invariantSink != null)
+            {
+                if (!stepBulkValid)
+                {
+                    invariantSink.Add(
+                        $"March step {step}: CHAMBER BULK — invalid static/total ordering or radial wall exceeded P₀ ceiling (see FlowStepState).");
+                }
+
+                invariantSink.AddRange(MarchInvariantValidation.CollectStep(stepPhysics, _gas, step));
+            }
 
             var next = new JetState(
                 axialPositionM: x,
                 pressurePa: pNew,
                 temperatureK: tNew,
                 densityKgM3: rhoNew,
-                velocityMps: vaNew,
+                velocityMps: vaFinal,
                 areaM2: area,
                 primaryMassFlowKgS: primaryMdot,
                 entrainedMassFlowKgS: entrainedTotal);
@@ -364,7 +487,7 @@ public sealed class FlowMarcher
                 MixedStaticPressurePa = pNew,
                 MixedTemperatureK = tNew,
                 MixedDensityKgM3 = rhoNew,
-                MixedVelocityMps = vaNew,
+                MixedVelocityMps = vaFinal,
                 PrimaryMassFlowKgS = primaryMdot,
                 EntrainedMassFlowKgS = entrainedTotal,
                 RequestedDeltaEntrainedMassFlowKgS = dmRequested,
@@ -374,7 +497,7 @@ public sealed class FlowMarcher
                 InletMach = intake.Mach,
                 InletIsChoked = intake.IsChoked,
                 TangentialVelocityMps = vtMixed,
-                AxialVelocityMps = vaNew,
+                AxialVelocityMps = vaFinal,
                 SwirlKineticEnergyPerKg = swirlKe,
                 RecoveredPressureRisePa = 0.0,
                 PressureForceN = dFN,
@@ -387,7 +510,7 @@ public sealed class FlowMarcher
             current = next;
             pOld = pNew;
             tOld = tNew;
-            va = vaNew;
+            va = vaFinal;
         }
 
         double finalVtMixed = stepResults.Count > 0
@@ -406,6 +529,8 @@ public sealed class FlowMarcher
                 FinalReynolds = lastP.Reynolds,
                 AnyEntrainmentChoked = anyChoked,
                 FinalFluxSwirlNumber = lastP.SwirlNumberFlux,
+                FinalChamberSwirlBulk = lastP.ChamberSwirlBulkRatio,
+                FinalEntrainmentSwirlCorrelation = lastP.EntrainmentSwirlCorrelation,
                 FinalContinuityResidualRelative = lastP.ContinuityResidualRelative
             };
 
@@ -414,6 +539,7 @@ public sealed class FlowMarcher
             FlowStates = states,
             StepResults = stepResults,
             StepPhysicsStates = physicsSteps,
+            MarchInvariantWarnings = invariantSink ?? (IReadOnlyList<string>)Array.Empty<string>(),
             MarchClosure = closure,
             FinalTangentialVelocityMps = finalVtMixed,
             FinalAxialVelocityMps = current.VelocityMps,

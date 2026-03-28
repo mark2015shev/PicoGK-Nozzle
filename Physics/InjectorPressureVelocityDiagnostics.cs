@@ -13,12 +13,12 @@ public sealed class InjectorPressureVelocityDiagnostics
     /// <summary>Total pressure used as jet-source upstream stagnation pressure [Pa].</summary>
     public double InjectorUpstreamTotalPressurePa { get; init; }
 
-    /// <summary>Plain-language definition of how <see cref="SourceInputs.PressureRatio"/> enters the model.</summary>
+    /// <summary>Plain-language note on live upstream P₀ vs deprecated <see cref="SourceInputs.PressureRatio"/>.</summary>
     public string PressureRatioDefinition { get; init; } = "";
 
     public double AmbientStaticPressurePa { get; init; }
 
-    /// <summary>Static pressure passed into <see cref="JetSource"/> (current model: ambient) [Pa].</summary>
+    /// <summary>Derived source static pressure used as reference for injector bookkeeping [Pa].</summary>
     public double JetSourceReferenceStaticPressurePa { get; init; }
 
     public double InjectorJetVelocityRawMps { get; init; }
@@ -110,9 +110,9 @@ public sealed class InjectorPressureVelocityDiagnostics
             pExit = injectorUpstreamTotalPressurePa;
 
         string prDef =
-            "SourceInputs.PressureRatio [-] is used as: P0_jet_upstream_total ≈ max(P_ambient_static × PressureRatio, P_ambient + 1 Pa). " +
-            "That P0 is the JetSource total pressure — it is NOT the post-injector or chamber mixed static pressure. " +
-            "JetSource.StaticPressurePa is currently set to ambient static for the isentropic source helper (see JetSourceReferenceStaticPressurePa).";
+            "Live SI path: upstream total pressure for diagnostics = P0 implied by derived source discharge (ρ=ṁ/(A|V|), P_static=ρRT_static, isentropic P0). " +
+            "SourceInputs.PressureRatio is deprecated and unused for live physics; if set, logs may show a legacy diagnostic line only. " +
+            "JetSourceReferenceStaticPressurePa here is the derived source static P (not ambient-only).";
 
         string pExitNote =
             "Injector exit P_static: ideal gas, adiabatic energy T=T₀−V²/(2cₚ) and isentropic P=P₀′(T/T₀)^(γ/(γ−1)), " +
@@ -141,13 +141,13 @@ public sealed class InjectorPressureVelocityDiagnostics
             pNearInj = bestP.PStaticPa;
             nearNote =
                 $"Solved P_static from march FlowStepState at x≈{bestP.X:F4} m (nearest to injector ratio×L_ch={xTargetM:F4} m); same SI closure as live march.";
-            const double pAbsReasonableMaxPaP = 5_000_000.0;
+            const double pAbsReasonableMaxPaP = 1_000_000.0;
             const double pAbsReasonableMinPaP = 20.0;
             if (!double.IsFinite(pNearInj) || pNearInj < pAbsReasonableMinPaP || pNearInj > pAbsReasonableMaxPaP)
             {
                 pNearInj = double.NaN;
                 nearNote =
-                    "INVALID: nearest march FlowStepState P_static is non-finite or outside [20 Pa, 5 MPa] — not replaced with a plausible clamp.";
+                    "INVALID: nearest march FlowStepState P_static is non-finite or outside [20 Pa, 10 bar] — not replaced with a plausible clamp.";
             }
         }
         else if (marchSteps != null && marchSteps.Count > 0)
@@ -167,13 +167,13 @@ public sealed class InjectorPressureVelocityDiagnostics
             pNearInj = best.MixedStaticPressurePa;
             nearNote =
                 $"Mixed-stream static from march step at x≈{best.AxialPositionM:F4} m (nearest to injector ratio×L_ch={xTargetM:F4} m); uniform annulus model.";
-            const double pAbsReasonableMaxPa = 5_000_000.0;
+            const double pAbsReasonableMaxPa = 1_000_000.0;
             const double pAbsReasonableMinPa = 20.0;
             if (!double.IsFinite(pNearInj) || pNearInj < pAbsReasonableMinPa || pNearInj > pAbsReasonableMaxPa)
             {
                 pNearInj = double.NaN;
                 nearNote =
-                    "INVALID: nearest march MixedStaticPressurePa is non-finite or outside [20 Pa, 5 MPa] — not replaced with a plausible clamp.";
+                    "INVALID: nearest march MixedStaticPressurePa is non-finite or outside [20 Pa, 10 bar] — not replaced with a plausible clamp.";
             }
         }
 

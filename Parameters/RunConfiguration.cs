@@ -139,6 +139,12 @@ public sealed class RunConfiguration
     /// <summary>0 = use <see cref="Environment.ProcessorCount"/>.</summary>
     public int AutotuneMaxDegreeOfParallelism { get; init; }
 
+    /// <summary>SI console / Library log volume: Low skips SOURCE and dual swirl-capacity blocks per solve (batch sweeps).</summary>
+    public SiVerbosityLevel SiVerbosityLevel { get; init; } = SiVerbosityLevel.Normal;
+
+    /// <summary>When true, the SI march records optional per-step consistency checks (mass split, ideal gas, continuity, Mach).</summary>
+    public bool ValidateMarchStepInvariants { get; init; }
+
     // --- Physics-controlled five-parameter autotune (see AutotuneStrategy.PhysicsControlledFiveParameter) ---
 
     /// <summary>Stage A coarse random trials (clamped 100–300 in runner).</summary>
@@ -272,6 +278,8 @@ public sealed class RunConfiguration
         EnablePipelineProfiling = EnablePipelineProfiling,
         AutotuneUseParallelEvaluation = AutotuneUseParallelEvaluation,
         AutotuneMaxDegreeOfParallelism = AutotuneMaxDegreeOfParallelism,
+        SiVerbosityLevel = SiVerbosityLevel,
+        ValidateMarchStepInvariants = ValidateMarchStepInvariants,
         UseDerivedSwirlChamberDiameter = UseDerivedSwirlChamberDiameter,
         GeometrySynthesisTargetEntrainmentRatio = GeometrySynthesisTargetEntrainmentRatio,
         ChamberSizingTargetAxialVelocityMps = ChamberSizingTargetAxialVelocityMps,

@@ -82,4 +82,52 @@ public static class RadialVortexPressureModel
             Notes = notes
         };
     }
+
+    /// <summary>
+    /// Same vortex integral as <see cref="Compute"/> but returns <b>deltas only</b> clamped so radial shaping cannot
+    /// pull wall static above a P₀ ceiling or core static below ambient: P_core = P_bulk − Δ_core, P_wall = P_bulk + Δ_wall.
+    /// Does not replace bulk static — use bulk from isentropic chamber march.
+    /// </summary>
+    public static RadialVortexPressureResult ComputeShapingRelativeToBulk(
+        double bulkStaticPressurePa,
+        double totalPressureCeilingPa,
+        double densityKgM3,
+        double representativeTangentialVelocityMps,
+        double chamberRadiusM,
+        double coreRadiusFraction,
+        double capPa,
+        double ambientPressureFloorPa)
+    {
+        double bulk = Math.Max(bulkStaticPressurePa, SiPressureGuards.MinStaticPressurePa);
+        double p0Ceil = Math.Max(totalPressureCeilingPa, bulk);
+        RadialVortexPressureResult raw = Compute(
+            densityKgM3,
+            representativeTangentialVelocityMps,
+            chamberRadiusM,
+            coreRadiusFraction,
+            capPa);
+
+        double maxWallDelta =
+            Math.Max(0.0, p0Ceil * (1.0 + ChamberAerodynamicsConfiguration.WallStaticExcessOverBulkMaxFractionOfP0) - bulk);
+        double wallDelta = Math.Min(Math.Max(0.0, raw.WallPressureRisePa), maxWallDelta);
+
+        double pFloor = Math.Max(ambientPressureFloorPa, SiPressureGuards.MinStaticPressurePa);
+        double maxCoreDrop = Math.Max(0.0, bulk - pFloor);
+        double coreDelta = Math.Min(Math.Max(0.0, raw.CorePressureDropPa), maxCoreDrop * 0.99);
+
+        double deltaMag = Math.Min(
+            raw.EstimatedRadialPressureDeltaPa,
+            wallDelta + coreDelta);
+
+        return new RadialVortexPressureResult
+        {
+            CoreRadiusM = raw.CoreRadiusM,
+            ChamberRadiusM = raw.ChamberRadiusM,
+            WallPressureRisePa = wallDelta,
+            CorePressureDropPa = coreDelta,
+            EstimatedRadialPressureDeltaPa = deltaMag,
+            VortexType = raw.VortexType,
+            Notes = raw.Notes + " Shaping deltas clamped to bulk static and P₀ ceiling (secondary field model)."
+        };
+    }
 }

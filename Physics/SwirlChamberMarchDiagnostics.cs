@@ -23,5 +23,9 @@ public sealed class SwirlChamberMarchDiagnostics
 
     /// <summary>B_vortex multiplier applied to correlation demand (1 if swirl entrainment boost disabled in run config).</summary>
     public double EntrainmentMassDemandBoost { get; init; }
+
+    /// <summary>Mixed ṁ_total vs min(capture, free annulus) at swirl entrance plane and chamber end.</summary>
+    public SwirlEntranceCapacityDualResult? SwirlEntranceCapacityStations { get; init; }
+
     public IReadOnlyList<string> ValidationWarnings { get; init; } = System.Array.Empty<string>();
 }

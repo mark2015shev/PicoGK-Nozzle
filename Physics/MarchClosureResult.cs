@@ -7,5 +7,12 @@ public sealed class MarchClosureResult
     public double FinalReynolds { get; init; }
     public bool AnyEntrainmentChoked { get; init; }
     public double FinalFluxSwirlNumber { get; init; }
+
+    /// <summary>Last step |Vt|/max(|Va|, Va_floor).</summary>
+    public double FinalChamberSwirlBulk { get; init; }
+
+    /// <summary>Last step entrainment correlation input (bounded).</summary>
+    public double FinalEntrainmentSwirlCorrelation { get; init; }
+
     public double FinalContinuityResidualRelative { get; init; }
 }

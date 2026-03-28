@@ -148,6 +148,19 @@ public static class SwirlChamberSizingModel
         double vAxial = Math.Clamp(run.ChamberSizingTargetAxialVelocityMps, 8.0, 220.0);
         double aFree = ComputeAFreeTargetM2(mdotMix, rhoMix, vAxial);
 
+        double tMixK = Math.Max(source.AmbientTemperatureK, 250.0);
+        var gasSz = new GasProperties();
+        double aSoundMix = gasSz.SpeedOfSound(tMixK);
+        double mTarget = Math.Clamp(ChamberAerodynamicsConfiguration.ChamberSizingTargetMachMixedFlow, 0.08, 0.85);
+        double vFromMach = mTarget * aSoundMix;
+        double aFreeMach = mdotMix / (Math.Max(rhoMix, 0.05) * Math.Max(vFromMach, 5.0));
+        if (aFreeMach > aFree * 1.02)
+        {
+            warnings.Add(
+                $"Chamber annulus sizing: raised A_free target using mixed-flow Mach cap M={mTarget:F2} (a_mix={aSoundMix:F1} m/s) so A ≥ ṁ/(ρ·M·a); was {aFree:E4} m² → {aFreeMach:E4} m².");
+            aFree = aFreeMach;
+        }
+
         double phi = Math.Clamp(run.ChamberVaneBlockageFractionOfAnnulus, 0.0, 0.92);
 
         double aSourceMm2 = Math.Max(source.SourceOutletAreaMm2, 1.0);

@@ -126,7 +126,7 @@ public static class NozzleFlowCompositionRoot
         }
 
         using (PipelineProfiler.Stage("reporting.consoleSummary"))
-            PrintPhysicsSummary(path.InletState, path.DesignResult, path.SiDiag);
+            PrintPhysicsSummary(path.InletState, path.DesignResult, path.SiDiag, input.Run.SiVerbosityLevel);
 
         var warnings = new List<string>
         {
@@ -222,38 +222,39 @@ public static class NozzleFlowCompositionRoot
             source.AmbientTemperatureK,
             velocityMps: 0.0);
 
-        double pTotal = Math.Max(source.AmbientPressurePa * source.PressureRatio, ambient.PressurePa + 1.0);
-        double pStaticJet = source.AmbientPressurePa;
-        double tTotal = source.ExhaustTemperatureK ?? source.AmbientTemperatureK;
+        SourceDischargeConsistencyReport dischargeReport = SourceDischargePhase_Evaluate(source, gas, ambient.PressurePa);
+        SourceDischargePhase_Log(dischargeReport, run.SiVerbosityLevel);
+
         double exitAreaM2 = source.SourceOutletAreaMm2 / 1e6;
+        double coreMdot = source.MassFlowKgPerSec;
+        double p0Implied = dischargeReport.P0ImpliedFromDerivedStatePa;
+        double tTotalForDiagnostics = dischargeReport.DerivedTotalTemperatureK;
+        double pStaticDerived = dischargeReport.DerivedStaticPressurePa;
 
-        var jetSource = new JetSource(
-            gas,
-            totalPressurePa: pTotal,
-            staticPressurePa: pStaticJet,
-            totalTemperatureK: tTotal,
-            exitAreaM2: exitAreaM2,
-            primaryMassFlowKgS: source.MassFlowKgPerSec);
-
-        JetState rawInlet = jetSource.CreateInitialState();
+        JetState rawInlet = new JetState(
+            axialPositionM: 0.0,
+            pressurePa: pStaticDerived,
+            temperatureK: dischargeReport.DerivedStaticTemperatureK,
+            densityKgM3: dischargeReport.DerivedDensityKgM3,
+            velocityMps: dischargeReport.VelocityUsedMps,
+            areaM2: exitAreaM2,
+            primaryMassFlowKgS: coreMdot,
+            entrainedMassFlowKgS: 0.0);
 
         double sourceAreaMm2 = source.SourceOutletAreaMm2;
         double injectorAreaMm2 = Math.Max(activeDesign.TotalInjectorAreaMm2, 1e-9);
-        double sourceAreaM2 = sourceAreaMm2 / 1e6;
         double injectorAreaM2 = injectorAreaMm2 / 1e6;
-        double coreMdot = source.MassFlowKgPerSec;
-        double vCore = source.SourceVelocityMps > 0.0
-            ? source.SourceVelocityMps
-            : VelocityMath.FromMassFlow(coreMdot, source.AmbientDensityKgPerM3, sourceAreaM2);
+        double vCore = dischargeReport.VelocityUsedMps;
         double rhoCore = rawInlet.DensityKgM3;
         double areaDriverDiagnostic = vCore * (sourceAreaMm2 / injectorAreaMm2);
         double continuityAtInjectorMps = coreMdot / (rhoCore * Math.Max(injectorAreaM2, 1e-12));
 
-        // Stage 1 — authoritative injector: pressure-driven ṁ + continuity |V| = ṁ/(ρA), then yaw/pitch + loss model.
+        // Stage 1 — authoritative ṁ; ρ from derived source discharge; P₀ from derived stagnation (not blind PressureRatio).
         InjectorDischargeResult injectorDischarge = InjectorDischargeSolver.Solve(
             source,
             activeDesign,
             rhoCore,
+            p0Implied,
             ambient.PressurePa,
             injectorYawAngleDegOverride: yawPhysicsDeg);
 
@@ -268,19 +269,27 @@ public static class NozzleFlowCompositionRoot
         double injectorJetVelocityEffective = injectorDischarge.EffectiveVelocityMagnitudeMps;
 
         double rInjFluxM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
-        double sFluxInjector = SwirlMath.FluxSwirlNumber(
+        double vMagInjPlane = Math.Sqrt(va0 * va0 + vt0 * vt0);
+        double sFluxInjector = SwirlMath.SwirlCorrelationForEntrainment(
             coreMdot * rInjFluxM * vt0,
             coreMdot * va0,
-            rInjFluxM);
+            coreMdot,
+            rInjFluxM,
+            Math.Max(vMagInjPlane, 1e-9),
+            vt0);
+        double injectorSwirlDirective = SwirlMath.InjectorSwirlDirective(vt0, Math.Max(vMagInjPlane, 1e-9));
 
         // Pre-march radial picture on effective swirl — bounded entrainment boost (does not add free static head in march).
         double rWallM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
-        var radialPreMarch = RadialVortexPressureModel.Compute(
+        var radialPreMarch = RadialVortexPressureModel.ComputeShapingRelativeToBulk(
+            pStaticDerived,
+            p0Implied,
             rhoCore,
             Math.Abs(vt0),
             rWallM,
             ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
-            ChamberPhysicsCoefficients.RadialPressureCapPa);
+            ChamberPhysicsCoefficients.RadialPressureCapPa,
+            source.AmbientPressurePa);
         double pCoreEstimatedPa = Math.Max(ambient.PressurePa - radialPreMarch.CorePressureDropPa, 1.0);
         double deltaPCoreUseful = Math.Clamp(
             radialPreMarch.CorePressureDropPa,
@@ -354,22 +363,27 @@ public static class NozzleFlowCompositionRoot
         double swirlDecayPerStep = SwirlDecayModel.DecayPerStepFromK(kTotal, sectionLengthM, chamberDM, DefaultMarchSteps);
 
         double rSwirlMomM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
-        FlowMarchDetailedResult detailed = marcher.SolveDetailed(
+        FlowMarchDetailedResult detailed = MarchPhase_SolveSwirlChamber(
+            marcher,
             inletState,
             sectionLengthM,
             DefaultMarchSteps,
             AreaAt,
             PerimeterAt,
             CaptureAreaAt,
-            primaryTangentialVelocityMps: vt0,
-            swirlDecayPerStepFactor: swirlDecayPerStep,
-            entrainmentMassDemandMultiplier: entrainmentBoost,
-            chamberLdRatio: ldRatio,
-            chamberDiameterMm: activeDesign.SwirlChamberDiameterMm,
-            useReynoldsOnEntrainmentCe: run.UseReynoldsEntrainmentFactor,
-            swirlMomentRadiusM: rSwirlMomM);
+            vt0,
+            swirlDecayPerStep,
+            entrainmentBoost,
+            ldRatio,
+            activeDesign.SwirlChamberDiameterMm,
+            run.UseReynoldsEntrainmentFactor,
+            rSwirlMomM,
+            run.ValidateMarchStepInvariants);
 
-        SwirlChamberMarchDiagnostics chamberMarchDiag = BuildSwirlChamberMarchDiagnostics(
+        IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
+        JetState lastMarch = detailed.FlowStates[^1];
+
+        SwirlChamberMarchDiagnostics chamberMarchDiag = CapacityPhase_BuildSwirlChamberMarchDiagnostics(
             activeDesign,
             entrainment,
             aChamberBoreMm2,
@@ -379,11 +393,15 @@ public static class NozzleFlowCompositionRoot
             perimeterMarchM,
             aCaptureM2,
             detailed,
-            entrainmentBoost);
+            entrainmentBoost,
+            inletState,
+            vt0,
+            lastMarch,
+            gas);
 
-        IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
-        JetState lastMarch = detailed.FlowStates[^1];
+        CapacityPhase_LogSwirlEntranceCapacity(chamberMarchDiag, run.SiVerbosityLevel);
 
+        // ThrustPhase: stator + expander + exit control-volume thrust (same physics as before; only orchestration split above).
         double etaStatorBase = Math.Min(0.42, activeDesign.StatorVaneAngleDeg / 95.0);
         double fracVt = Math.Clamp(1.0 - 0.38 * etaStatorBase, 0.22, 0.92);
 
@@ -581,17 +599,18 @@ public static class NozzleFlowCompositionRoot
             sumAct,
             shortfall,
             solvedEr,
-            vtAfterStator);
+            vtAfterStator,
+            Math.Max(1.0001, p0Implied / Math.Max(ambient.PressurePa, 1.0)));
 
         VortexFlowDiagnostics vortex = ChamberPhysicsPipeline.ToLegacyVortexDiagnostics(chamber, swirlDecayPerStep);
 
         InjectorPressureVelocityDiagnostics injectorPressureVelocity = InjectorPressureVelocityDiagnostics.Compute(
             source,
             gas,
-            tTotal,
+            tTotalForDiagnostics,
             ambient.PressurePa,
-            pTotal,
-            pStaticJet,
+            p0Implied,
+            pStaticDerived,
             rawInlet.DensityKgM3,
             injectorJetVelocityRaw,
             injectorJetVelocityEffective,
@@ -649,6 +668,7 @@ public static class NozzleFlowCompositionRoot
         var siDiag = new SiFlowDiagnostics
         {
             InjectorPlaneFluxSwirlNumber = sFluxInjector,
+            InjectorPlaneSwirlDirective = injectorSwirlDirective,
             MarchSteps = steps,
             PhysicsStepStates = detailed.StepPhysicsStates,
             MarchPhysicsClosure = detailed.MarchClosure,
@@ -683,8 +703,12 @@ public static class NozzleFlowCompositionRoot
             HubStator = hubDiag,
             InjectorPressureVelocity = injectorPressureVelocity,
             ChamberMarch = chamberMarchDiag,
-            SwirlChamberHealth = swirlChamberHealth
+            SwirlChamberHealth = swirlChamberHealth,
+            SourceDischargeConsistency = dischargeReport,
+            MarchInvariantWarnings = detailed.MarchInvariantWarnings
         };
+
+        MarchInvariantPhase_LogIfVerbose(detailed.MarchInvariantWarnings, run);
 
         var designer = new NozzleDesigner();
         NozzleDesignResult designResult = designer.CreateDesignResult(
@@ -775,7 +799,109 @@ public static class NozzleFlowCompositionRoot
         return new SiPathValidationPack(r.Solved, r.SiDiag, r.CriticalRatios, r.HealthMessages);
     }
 
-    private static SwirlChamberMarchDiagnostics BuildSwirlChamberMarchDiagnostics(
+    /// <summary>Derived source discharge (stagnation-based live path); logging is separate.</summary>
+    private static SourceDischargeConsistencyReport SourceDischargePhase_Evaluate(
+        SourceInputs source,
+        GasProperties gas,
+        double ambientPressurePa) =>
+        SourceDischargeConsistencyEvaluator.Evaluate(source, gas, ambientPressurePa);
+
+    private static void SourceDischargePhase_Log(SourceDischargeConsistencyReport report, SiVerbosityLevel verbosity)
+    {
+        if (verbosity < SiVerbosityLevel.Normal)
+            return;
+        foreach (string line in report.FormatReportLines())
+        {
+            Console.WriteLine(line);
+            try
+            {
+                Library.Log(line);
+            }
+            catch
+            {
+                // validate / headless: Library may be unavailable
+            }
+        }
+    }
+
+    private static FlowMarchDetailedResult MarchPhase_SolveSwirlChamber(
+        FlowMarcher marcher,
+        JetState inletState,
+        double sectionLengthM,
+        int stepCount,
+        Func<double, double> areaFunction,
+        Func<double, double> perimeterFunction,
+        Func<double, double> captureAreaFunction,
+        double primaryTangentialVelocityMps,
+        double swirlDecayPerStepFactor,
+        double entrainmentMassDemandMultiplier,
+        double chamberLdRatio,
+        double chamberDiameterMm,
+        bool useReynoldsOnEntrainmentCe,
+        double swirlMomentRadiusM,
+        bool validateMarchStepInvariants) =>
+        marcher.SolveDetailed(
+            inletState,
+            sectionLengthM,
+            stepCount,
+            areaFunction,
+            perimeterFunction,
+            captureAreaFunction,
+            primaryTangentialVelocityMps,
+            swirlDecayPerStepFactor,
+            entrainmentMassDemandMultiplier,
+            chamberLdRatio,
+            chamberDiameterMm,
+            useReynoldsOnEntrainmentCe,
+            swirlMomentRadiusM,
+            validateMarchStepInvariants);
+
+    private static void CapacityPhase_LogSwirlEntranceCapacity(
+        SwirlChamberMarchDiagnostics chamberMarchDiag,
+        SiVerbosityLevel verbosity)
+    {
+        if (verbosity < SiVerbosityLevel.Normal)
+            return;
+        foreach (string line in chamberMarchDiag.SwirlEntranceCapacityStations?.FormatReportLines() ?? Array.Empty<string>())
+        {
+            Console.WriteLine(line);
+            try
+            {
+                Library.Log(line);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static void MarchInvariantPhase_LogIfVerbose(IReadOnlyList<string> warnings, RunConfiguration run)
+    {
+        if (!run.ValidateMarchStepInvariants || run.SiVerbosityLevel < SiVerbosityLevel.High || warnings.Count == 0)
+            return;
+        Console.WriteLine("--- SI march invariant checks (validation mode) ---");
+        try
+        {
+            Library.Log("--- SI march invariant checks (validation mode) ---");
+        }
+        catch
+        {
+        }
+
+        foreach (string w in warnings)
+        {
+            Console.WriteLine(w);
+            try
+            {
+                Library.Log(w);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static SwirlChamberMarchDiagnostics CapacityPhase_BuildSwirlChamberMarchDiagnostics(
         NozzleDesignInputs d,
         EntrainmentModel em,
         double aChamberBoreMm2,
@@ -785,7 +911,11 @@ public static class NozzleFlowCompositionRoot
         double perimeterMarchM,
         double aCaptureM2,
         FlowMarchDetailedResult detailed,
-        double entrainmentMassDemandBoost)
+        double entrainmentMassDemandBoost,
+        JetState inletJet,
+        double primaryTangentialVelocityMps,
+        JetState lastJet,
+        GasProperties gas)
     {
         double aInletMm2 = SwirlChamberMarchGeometry.InletCaptureAreaMm2(d.InletDiameterMm);
         double aInjMm2 = Math.Max(d.TotalInjectorAreaMm2, 1e-9);
@@ -802,6 +932,21 @@ public static class NozzleFlowCompositionRoot
             warnings.Add("WARNING (SI march): A_capture < 0.5×A_inlet — intake model may starve entrainment.");
         if (aExitMm2 / aCh > 3.0)
             warnings.Add("WARNING (SI march): A_exit/A_chamber > 3 — large expansion vs bore may limit useful coupling.");
+
+        FlowStepState? firstPhysics = detailed.StepPhysicsStates.Count > 0 ? detailed.StepPhysicsStates[0] : null;
+        FlowStepState? lastPhysics = detailed.StepPhysicsStates.Count > 0 ? detailed.StepPhysicsStates[^1] : null;
+        SwirlEntranceCapacityDualResult dual = SwirlEntranceCapacityEvaluator.EvaluateDual(
+            gas,
+            firstPhysics,
+            lastPhysics,
+            inletJet,
+            lastJet,
+            primaryTangentialVelocityMps,
+            aCaptureM2,
+            aChamberBoreMm2 * 1e-6,
+            aEffM2);
+        foreach (string h in dual.EnumerateHealthMessages())
+            warnings.Add(h);
 
         return new SwirlChamberMarchDiagnostics
         {
@@ -821,6 +966,7 @@ public static class NozzleFlowCompositionRoot
             EntrainmentCeBase = em.Coefficient,
             EntrainmentCeAtFirstStep = ceFirst,
             EntrainmentMassDemandBoost = entrainmentMassDemandBoost,
+            SwirlEntranceCapacityStations = dual,
             ValidationWarnings = warnings
         };
     }
@@ -862,7 +1008,11 @@ public static class NozzleFlowCompositionRoot
         return Math.Max(ring * Math.Sin(Math.Max(halfRad, 0.03)), 1e-9);
     }
 
-    private static void PrintPhysicsSummary(JetState inlet, NozzleDesignResult d, SiFlowDiagnostics si)
+    private static void PrintPhysicsSummary(
+        JetState inlet,
+        NozzleDesignResult d,
+        SiFlowDiagnostics si,
+        SiVerbosityLevel verbosity)
     {
         Console.WriteLine("--- SI flow-driven nozzle summary (compressible entrainment path) ---");
         Console.WriteLine($"Inlet jet axial velocity [m/s]: {inlet.VelocityMps:F2}");
@@ -875,7 +1025,7 @@ public static class NozzleFlowCompositionRoot
         Console.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}");
         Console.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}");
         Console.WriteLine($"Suggested mixing length [m]: {d.SuggestedMixingLengthM:F5}");
-        if (si.ChamberMarch != null)
+        if (si.ChamberMarch != null && verbosity >= SiVerbosityLevel.Normal)
         {
             SwirlChamberMarchDiagnostics m = si.ChamberMarch;
             Console.WriteLine("--- Swirl chamber SI march geometry (aligned with CAD bore/hub annulus) ---");
@@ -889,6 +1039,11 @@ public static class NozzleFlowCompositionRoot
                 $"A_capture {m.CaptureAreaM2:E4} m2 | P_ent {m.EntrainmentPerimeterM:F5} m | A_duct_eff {m.DuctEffectiveAreaM2:E4} m2 (constant along chamber march)");
             foreach (string w in m.ValidationWarnings)
                 Console.WriteLine(w);
+            if (m.SwirlEntranceCapacityStations != null)
+            {
+                foreach (string line in m.SwirlEntranceCapacityStations.FormatReportLines())
+                    Console.WriteLine(line);
+            }
         }
 
         Console.WriteLine("---------------------------------------------------------------------");

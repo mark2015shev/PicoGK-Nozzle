@@ -61,11 +61,20 @@ internal static class ResultReporter
         Library.Log($"Equiv. source diameter [mm]:  {sourceDiameterMm:F2} (derived helper)");
         Library.Log($"CoreMassFlow [kg/s]:          {input.Source.MassFlowKgPerSec:F4}");
         Library.Log($"SourceVelocityMps [m/s]:      {input.Source.SourceVelocityMps:F2}");
-        Library.Log($"PressureRatio [-]:            {input.Source.PressureRatio:F2}");
-        Library.Log($"ExhaustTemperatureK [K]:      {(input.Source.ExhaustTemperatureK.HasValue ? input.Source.ExhaustTemperatureK.Value.ToString("F2") : "n/a (ρ_core blend uses ambient density)")}");
+        Library.Log(input.Source.HasLegacyPressureRatio
+            ? $"PressureRatio [-]:            {input.Source.PressureRatio:F2} (deprecated legacy field; not used in live SI path — see consistency block)"
+            : "PressureRatio [-]:            n/a (live SI uses derived discharge only; legacy field unset)");
+        Library.Log($"ExhaustTemperatureK [K]:      {(input.Source.ExhaustTemperatureK.HasValue ? input.Source.ExhaustTemperatureK.Value.ToString("F2") : "n/a")}");
+        Library.Log($"ExhaustTemperatureIsTotalK:   {input.Source.ExhaustTemperatureIsTotalK}");
         Library.Log($"AmbientPressurePa [Pa]:       {input.Source.AmbientPressurePa:F0}");
         Library.Log($"AmbientTemperatureK [K]:      {input.Source.AmbientTemperatureK:F2} (reporting; not used in current solver equations)");
         Library.Log($"AmbientDensityKgPerM3:        {input.Source.AmbientDensityKgPerM3:F4}");
+
+        if (result.SiFlow?.SourceDischargeConsistency != null)
+        {
+            foreach (string line in result.SiFlow.SourceDischargeConsistency.FormatReportLines())
+                Library.Log(line);
+        }
 
         if (result.SiFlow?.InjectorPressureVelocity != null)
             LogInjectorPressureVelocitySection(result.SiFlow.InjectorPressureVelocity);
@@ -166,8 +175,8 @@ internal static class ResultReporter
 
         Library.Log($"CoreGasDensity ρ_core [kg/m3]: {s.CoreGasDensityKgPerM3:F4} (heuristic ideal gas when T_exhaust set; blend only)");
         Library.Log($"Vt / Va at injector [m/s]:    {s.TangentialVelocityComponentMps:F2} / {s.AxialVelocityComponentMps:F2}");
-        Library.Log($"InjectorSwirlNumber [-]:      {s.InjectorSwirlNumber:F3} (|Vt|/|Va|, not CFD swirl)");
-        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (after inlet + expander pressure budget + tangential debit; stator heuristic)");
+        Library.Log($"InjectorSwirlNumber [-]:      {s.InjectorSwirlNumber:F3} (|Vt|/|V| at injector; bounded for 90° yaw)");
+        Library.Log($"ChamberSwirlForStator [-]:    {s.ChamberSwirlNumberForStator:F3} (bulk |Vt|/max(|Va|,Va_floor) at chamber end when SI march present)");
         Library.Log("--- Inlet suction / low-pressure (HEURISTIC — not CFD; not free energy) ---");
         Library.Log("Low-pressure inlet/core region: modeled as suction/capture recovery from same swirl/pressure budget as entrainment + expander.");
         Library.Log($"InletSuctionDeltaP_Pa:        {s.InletSuctionDeltaPPa:F1} (ρ, Vt, inlet vs chamber dia; bounded)");
@@ -242,7 +251,7 @@ internal static class ResultReporter
 
         Library.Log("--- Vortex structure and pressure field (heuristic, not CFD) ---");
         Library.Log("Interpretation: " + ch.InterpretationSummary);
-        Library.Log($"Swirl number |Vt|/|Va| [-]:     {vs.InjectorSwirlNumberSimple:F3}");
+        Library.Log($"Swirl number |Vt|/|V| [-]:       {vs.InjectorSwirlNumberSimple:F3} (injector diagnostic)");
         Library.Log($"Flux-style swirl S_flux ≈ K·S [-]: {vs.SwirlNumberFluxStyle:F3} (K={vs.FluxGeometryFactorKUsed:F2}, uniform profile assumption)");
         Library.Log($"Vortex classification:         {vs.ClassificationLabel}");
         Library.Log($"Breakdown risk score [-]:      {vs.BreakdownRiskScore:F3}");
@@ -329,6 +338,10 @@ internal static class ResultReporter
             ? Math.Clamp(1.0 - sf.Coupling.DiffuserRecoveryMultiplier, 0.0, 1.0)
             : double.NaN;
         Library.Log("--- SI first-principles snapshot (end of chamber march + CV thrust) ---");
+        Library.Log("Chamber bulk static P [Pa] (isentropic from P₀ after step losses, |V|): " + $"{last.PStaticPa:F1}  (P₀ after losses ref [Pa]: {last.TotalPressureAfterLossesPa:F1})");
+        if (sf.SourceDischargeConsistency != null)
+            Library.Log(
+                $"Source P_static derived [Pa]: {sf.SourceDischargeConsistency.DerivedStaticPressurePa:F1}  (live discharge authority)");
         Library.Log($"ṁ_jet (core) [kg/s]:           {s.CoreMassFlowKgPerSec:F5}");
         Library.Log($"ṁ_ambient (entrained) [kg/s]: {s.AmbientAirMassFlowKgPerSec:F5}");
         Library.Log($"Entrainment ratio ṁ_amb/ṁ_core: {s.EntrainmentRatio:F4}");
@@ -348,7 +361,14 @@ internal static class ResultReporter
                 ? $"Mach_bulk / Re_D (last step) [-]: {sf.MarchPhysicsClosure.FinalMachBulk:F4} / {sf.MarchPhysicsClosure.FinalReynolds:F1}"
                 : "Mach_bulk / Re_D: n/a");
         Library.Log($"Choked entrainment step:       {sf.AnyEntrainmentStepChoked}");
-        Library.Log($"Flux swirl S (last step) [-]:  {last.SwirlNumberFlux:F4}  (Ġ_θ/(R·ṁV_ax))");
+        Library.Log(
+            $"Swirl correlation (last step) [-]: {last.SwirlNumberFlux:F4}  (bounded flux or |Vt|/|V| path; chamber bulk ratio {last.ChamberSwirlBulkRatio:F4})");
+        if (sf.ChamberMarch?.SwirlEntranceCapacityStations != null)
+        {
+            SwirlEntranceCapacityDualResult cap = sf.ChamberMarch.SwirlEntranceCapacityStations;
+            Library.Log(
+                $"Swirl entrance Mach_req: {cap.EntrancePlane.MachRequired:F4}  chamber-end Mach_req: {cap.ChamberEnd.MachRequired:F4}  governing: {cap.GoverningStationLabel}");
+        }
     }
 
     private static void LogSwirlChamberMarchSection(SiFlowDiagnostics sf)
@@ -372,6 +392,12 @@ internal static class ResultReporter
                 $"Per-step A_eff [m2] (first/mid/last): {first.DuctEffectiveAreaM2:E4} / {mid.DuctEffectiveAreaM2:E4} / {last.DuctEffectiveAreaM2:E4}");
             Library.Log(
                 $"Per-step Ce (first/mid/last): {first.EntrainmentCeEffective:F4} / {mid.EntrainmentCeEffective:F4} / {last.EntrainmentCeEffective:F4}");
+        }
+
+        if (m.SwirlEntranceCapacityStations != null)
+        {
+            foreach (string line in m.SwirlEntranceCapacityStations.FormatReportLines())
+                Library.Log(line);
         }
 
         foreach (string w in m.ValidationWarnings)
@@ -435,8 +461,11 @@ internal static class ResultReporter
         Library.Log($"InjectorUpstreamTotalPressurePa [Pa]:     {ip.InjectorUpstreamTotalPressurePa:F1}");
         Library.Log($"PressureRatio (meaning):                  {ip.PressureRatioDefinition}");
         Library.Log($"AmbientStaticPressurePa [Pa]:             {ip.AmbientStaticPressurePa:F1}");
-        Library.Log($"JetSourceReferenceStaticPressurePa [Pa]:  {ip.JetSourceReferenceStaticPressurePa:F1} (static passed into JetSource — currently ambient)");
+        Library.Log($"JetSourceReferenceStaticPressurePa [Pa]:  {ip.JetSourceReferenceStaticPressurePa:F1} (derived source static P)");
         Library.Log($"MarchInletAssignedStaticPressurePa [Pa]:  {ip.MarchInletAssignedStaticPressurePa:F1} (JetState.PressurePa at march start)");
+        Library.Log("--- Chamber / injector pressure audit (bulk vs radial shaping) ---");
+        Library.Log(
+            $"  JetSourceReferenceStaticPressurePa = derived source static; march bulk P_static from isentropic (P₀, T₀, |V|); core/wall = bulk ± radial Δ (clamped).");
         Library.Log("Velocities [m/s]:");
         Library.Log($"  Injector |V| continuity (ṁ/ρA):        {ip.InjectorJetVelocityRawMps:F2}");
         Library.Log($"  Injector jet effective (Cd·√(1−K)):    {ip.InjectorJetVelocityEffectiveMps:F2}");

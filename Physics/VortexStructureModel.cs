@@ -47,9 +47,10 @@ public static class VortexStructureModel
         double mixedAxialVelocityPreStatorMps,
         double swirlDecayFractionAlongChamber)
     {
-        double va = Math.Max(Math.Abs(vaInjector), 1e-6);
-        double vt = Math.Abs(vtInjector);
-        double sSimpleDiagnostic = vt / va;
+        double va = vaInjector;
+        double vt = vtInjector;
+        double vMagInj = Math.Sqrt(va * va + vt * vt);
+        double sSimpleDiagnostic = vMagInj > 1e-9 ? Math.Abs(vt) / vMagInj : 0.0;
         double k = ChamberPhysicsCoefficients.FluxSwirlGeometryFactorK;
         double sFluxStyleDiagnostic = k * sSimpleDiagnostic;
         double sGov = Math.Clamp(
@@ -109,7 +110,7 @@ public static class VortexStructureModel
             Classification = cls,
             ClassificationLabel = Label(cls),
             CompositeVortexQuality = q,
-            Notes = "Breakdown/classify use injector-plane flux S; |Vt|/|Va| fields are diagnostic only."
+            Notes = "Breakdown/classify use injector-plane flux S; |Vt|/|V| diagnostic replaces explosive |Vt|/|Va| at 90°."
         };
     }
 

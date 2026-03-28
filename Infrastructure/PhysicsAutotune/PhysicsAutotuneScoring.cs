@@ -39,6 +39,10 @@ public static class PhysicsAutotuneScoring
             double machBulk = si.MarchPhysicsClosure?.FinalMachBulk ?? 0.0;
             if (machBulk > 0.92 || si.MaxInletMach > 0.98)
                 invalid01 += 0.35;
+            if (si.ChamberMarch?.SwirlEntranceCapacityStations?.CombinedClassification == SwirlEntranceCapacityClassification.FailChoking)
+                invalid01 += 0.45;
+            else if (si.ChamberMarch?.SwirlEntranceCapacityStations?.CombinedClassification == SwirlEntranceCapacityClassification.FailRestrictive)
+                invalid01 += 0.22;
             if (si.PhysicsStepStates.Count > 0)
             {
                 double pLast = si.PhysicsStepStates[^1].PStaticPa;
@@ -87,9 +91,21 @@ public static class PhysicsAutotuneScoring
 
         double healthPenalty = w.HealthIssuePenaltyEach * Math.Max(candidate.HealthCount, 0);
 
+        double swirlCapPenalty = 0.0;
+        if (si?.ChamberMarch?.SwirlEntranceCapacityStations is { } cap)
+        {
+            swirlCapPenalty = cap.CombinedClassification switch
+            {
+                SwirlEntranceCapacityClassification.Warning => 0.22 * w.SwirlEntranceCapacityPenaltyWeight,
+                SwirlEntranceCapacityClassification.FailRestrictive => 0.62 * w.SwirlEntranceCapacityPenaltyWeight,
+                SwirlEntranceCapacityClassification.FailChoking => w.SwirlEntranceCapacityPenaltyWeight,
+                _ => 0.0
+            };
+        }
+
         double positive = thrustTerm * axialTransportTerm * statorRecoveryTerm * usefulEntrainmentTerm;
         double penalties = chokingPenalty + separationPenalty + invalidPenalty + lossPenalty + residualSwirlPenalty
-            + lowChamberAxialPenalty + shortfallPenalty + healthPenalty;
+            + lowChamberAxialPenalty + shortfallPenalty + healthPenalty + swirlCapPenalty;
         double score = positive - penalties;
 
         var bd = new AutoTuneScoreBreakdown
@@ -106,6 +122,7 @@ public static class PhysicsAutotuneScoring
             LowChamberAxialPenalty = lowChamberAxialPenalty,
             EntrainmentShortfallPenalty = shortfallPenalty,
             HealthPenalty = healthPenalty,
+            SwirlEntranceCapacityPenalty = swirlCapPenalty,
             PositiveProduct = positive,
             PenaltiesSum = penalties,
             FinalScore = score

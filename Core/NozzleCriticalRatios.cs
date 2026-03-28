@@ -29,9 +29,10 @@ public static class NozzleCriticalRatios
         if (source != null && source.SourceVelocityMps > 1.0)
             vRef = source.SourceVelocityMps;
         var (vt, va) = SwirlMath.ResolveInjectorComponents(vRef, d.InjectorYawAngleDeg, d.InjectorPitchAngleDeg);
+        double vMagRef = Math.Sqrt(vt * vt + va * va);
         double swirlReportScalar = si != null
-            ? Math.Max(Math.Abs(si.InjectorPlaneFluxSwirlNumber), 1e-12)
-            : SwirlMath.InjectorSwirlNumberReportOnly(vt, va, vRef);
+            ? si.InjectorPlaneSwirlDirective
+            : SwirlMath.InjectorSwirlDirective(vt, Math.Max(vMagRef, 1e-9));
 
         double ld = lCh / dCh;
 

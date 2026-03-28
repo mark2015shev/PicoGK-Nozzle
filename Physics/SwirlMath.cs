@@ -4,7 +4,8 @@ namespace PicoGK_Run.Physics;
 
 /// <summary>
 /// Injector direction decomposition and swirl metrics.
-/// Governing SI chamber correlations use <see cref="FluxSwirlNumber"/>; <see cref="InjectorSwirlNumber"/> is diagnostic only.
+/// Chamber entrainment / decay use <see cref="SwirlCorrelationForEntrainment"/> (bounded); flux S when |Va| is significant.
+/// Injector directive <see cref="InjectorSwirlDirective"/> = |Vt|/|V| replaces explosive |Vt|/|Va| for 90° jets.
 /// </summary>
 public static class SwirlMath
 {
@@ -33,10 +34,48 @@ public static class SwirlMath
         return (tangential, axial);
     }
 
-    /// <summary>|Vt|/|Va| — do not use in governing physics; prefer <see cref="FluxSwirlNumber"/>.</summary>
+    /// <summary>|Vt|/|Va| — legacy only; explodes when Va→0 (e.g. 90° injector). Prefer <see cref="InjectorSwirlDirective"/>.</summary>
     public static double InjectorSwirlNumber(double tangentialVelocityMps, double axialVelocityMps)
     {
         return Math.Abs(tangentialVelocityMps) / Math.Max(Math.Abs(axialVelocityMps), 1e-6);
+    }
+
+    /// <summary>Bounded injector swirl metric: |Vt|/|V| with V = √(Va²+Vt²); in [0, 1] for a single jet direction.</summary>
+    public static double InjectorSwirlDirective(double tangentialVelocityMps, double velocityMagnitudeMps)
+    {
+        double v = Math.Max(Math.Abs(velocityMagnitudeMps), 1e-12);
+        return Math.Clamp(Math.Abs(tangentialVelocityMps) / v, 0.0, 1.0);
+    }
+
+    /// <summary>Chamber bulk swirl surrogate: |Vt|/max(|Va|, Va_floor) for diagnostics and bounded correlations.</summary>
+    public static double ChamberSwirlBulkRatio(double tangentialVelocityMps, double axialVelocityMps, double vaFloorMps)
+    {
+        double denom = Math.Max(Math.Max(Math.Abs(axialVelocityMps), Math.Abs(vaFloorMps)), 1e-9);
+        return Math.Abs(tangentialVelocityMps) / denom;
+    }
+
+    /// <summary>
+    /// Entrainment / decay correlation input: flux swirl when |Va_bulk| ≥ floor; otherwise capped bulk ratio (tangential-dominated jets).
+    /// </summary>
+    public static double SwirlCorrelationForEntrainment(
+        double angularMomentumFluxKgM2PerS2,
+        double axialMomentumFluxKgM2PerS2,
+        double massFlowKgS,
+        double referenceRadiusM,
+        double velocityMagnitudeMps,
+        double bulkTangentialVelocityMps)
+    {
+        double md = Math.Max(massFlowKgS, 1e-18);
+        double vaBulk = md > 1e-18 ? axialMomentumFluxKgM2PerS2 / md : 0.0;
+        if (Math.Abs(vaBulk) >= ChamberAerodynamicsConfiguration.VaFloorForBulkSwirlMps)
+        {
+            double s = FluxSwirlNumber(angularMomentumFluxKgM2PerS2, axialMomentumFluxKgM2PerS2, referenceRadiusM);
+            return Math.Clamp(Math.Abs(s), 0.0, 25.0);
+        }
+
+        double vmag = Math.Max(Math.Abs(velocityMagnitudeMps), 1e-9);
+        double directive = InjectorSwirlDirective(bulkTangentialVelocityMps, vmag);
+        return Math.Clamp(4.0 * directive, 0.0, 25.0);
     }
 
     /// <summary>

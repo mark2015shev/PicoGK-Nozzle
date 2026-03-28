@@ -10,6 +10,9 @@ public sealed class FlowMarchDetailedResult
 
     public IReadOnlyList<FlowStepState> StepPhysicsStates { get; init; } = System.Array.Empty<FlowStepState>();
 
+    /// <summary>Optional per-step consistency warnings from the SI march (validation mode).</summary>
+    public IReadOnlyList<string> MarchInvariantWarnings { get; init; } = System.Array.Empty<string>();
+
     public MarchClosureResult? MarchClosure { get; init; }
 
     /// <summary>Tangential velocity at end of mixing march (before stator in composition root).</summary>

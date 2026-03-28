@@ -30,7 +30,8 @@ public static class ChamberPhysicsPipeline
         double sumAct,
         double shortfall,
         double solvedEr,
-        double vtAfterStator)
+        double vtAfterStator,
+        double ejectorUpstreamPressureRatioEffective)
     {
         double rho = Math.Max(lastMarch.DensityKgM3, 1e-6);
         double coreMdot = detailed.FlowStates[0].MassFlowKgS;
@@ -38,12 +39,23 @@ public static class ChamberPhysicsPipeline
 
         var inj = InjectorLossModel.Compute(rho, injectorJetVelocityMps, design.InjectorYawAngleDeg);
 
-        var radial = RadialVortexPressureModel.Compute(
+        var gasRadial = new GasProperties();
+        CompressibleState compLast = CompressibleState.FromMixedStatic(
+            gasRadial,
+            lastMarch.PressurePa,
+            lastMarch.TemperatureK,
+            lastMarch.VelocityMps,
+            detailed.FinalTangentialVelocityMps);
+        double p0RadialCeil = Math.Max(compLast.TotalPressurePa, lastMarch.PressurePa);
+        var radial = RadialVortexPressureModel.ComputeShapingRelativeToBulk(
+            lastMarch.PressurePa,
+            p0RadialCeil,
             rho,
-            detailed.FinalTangentialVelocityMps,
+            Math.Abs(detailed.FinalTangentialVelocityMps),
             rWallM,
             ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
-            ChamberPhysicsCoefficients.RadialPressureCapPa);
+            ChamberPhysicsCoefficients.RadialPressureCapPa,
+            source.AmbientPressurePa);
 
         var budget = SwirlDecayModel.BuildBudget(
             vtInjector,
@@ -108,7 +120,7 @@ public static class ChamberPhysicsPipeline
 
         var ej = EjectorRegimeModel.Compute(
             steps,
-            source.PressureRatio,
+            ejectorUpstreamPressureRatioEffective,
             source.AmbientPressurePa,
             minInletStaticPa,
             shortfall,

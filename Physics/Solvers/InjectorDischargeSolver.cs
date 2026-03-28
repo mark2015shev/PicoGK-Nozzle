@@ -5,17 +5,17 @@ using PicoGK_Run.Parameters;
 namespace PicoGK_Run.Physics.Solvers;
 
 /// <summary>
-/// Stage 1: ṁ = C_d A √(2 ρ ΔP) with ΔP from upstream total vs chamber reference static;
-/// authoritative ṁ comes from <see cref="SourceInputs.MassFlowKgPerSec"/> when specified.
-/// Velocity magnitude ṁ/(ρA), then yaw/pitch → V_a, V_t.
+/// Stage 1: authoritative ṁ from <see cref="SourceInputs.MassFlowKgPerSec"/>; ρ from derived source discharge;
+/// |V| = ṁ/(ρ A_inj); yaw/pitch → V_a, V_t. Upstream P₀ is diagnostic (from derived stagnation), not from blind PressureRatio.
 /// </summary>
 public static class InjectorDischargeSolver
 {
-    /// <summary>Solve injector state. Chamber static is usually ambient for first-pass SI (iterate in future).</summary>
+    /// <summary>Solve injector state. <paramref name="upstreamTotalPressurePa"/> is derived P₀ (stagnation), not P_amb×PR.</summary>
     public static InjectorDischargeResult Solve(
         SourceInputs source,
         NozzleDesignInputs design,
         double gasDensityKgM3,
+        double upstreamTotalPressurePa,
         double chamberReferenceStaticPressurePa,
         double? injectorYawAngleDegOverride = null,
         double? injectorPitchAngleDegOverride = null)
@@ -26,7 +26,7 @@ public static class InjectorDischargeSolver
         double rho = Math.Max(gasDensityKgM3, 1e-9);
         double aInj = Math.Max(design.TotalInjectorAreaMm2 * 1e-6, 1e-12);
         double pCh = Math.Max(chamberReferenceStaticPressurePa, 1.0);
-        double p0 = Math.Max(source.AmbientPressurePa * source.PressureRatio, pCh + 1.0);
+        double p0 = Math.Max(upstreamTotalPressurePa, pCh + 1.0);
         double dP = Math.Max(p0 - pCh, 0.0);
 
         double cd = Math.Clamp(ChamberPhysicsCoefficients.InjectorDischargeCoefficient, 0.45, 1.0);
@@ -45,7 +45,7 @@ public static class InjectorDischargeSolver
 
         string notes = mdotAuth > 1e-12 && Math.Abs(mdotOrifice - mdotAuth) / mdotAuth > 0.12
             ? "Authoritative ṁ from source; orifice ṁ(P0−P_ch) differs >12% — refine P_chamber or C_d vs datasheet."
-            : "Discharge consistent with chosen ṁ and chamber reference P.";
+            : "Discharge uses derived-source ρ and P₀ (stagnation); PressureRatio is deprecated and not used in live SI path.";
 
         return new InjectorDischargeResult
         {

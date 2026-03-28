@@ -12,7 +12,7 @@ public sealed class EntrainmentModel
     public double Coefficient { get; set; } = 0.07;
 
     /// <summary>
-    /// Ce = Ce_base · f(S) · f(L/D) · f(Re). Use flux swirl S = Ġ_θ/(R ṁ V_ax); legacy |V_t|/|V_a| is not recommended.
+    /// Ce = Ce_base · f(S) · f(L/D) · f(Re). S = <see cref="SwirlMath.SwirlCorrelationForEntrainment"/> (bounded; not raw Ġ_θ/(R ṁ V_ax) when V_ax→0).
     /// </summary>
     public double ComputeCoefficient(
         double swirlCorrelationInput,

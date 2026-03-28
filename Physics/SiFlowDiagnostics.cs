@@ -6,8 +6,14 @@ namespace PicoGK_Run.Physics;
 /// <summary>Aggregated first-order SI march outputs for reporting (not CFD).</summary>
 public sealed class SiFlowDiagnostics
 {
-    /// <summary>Injector-plane flux swirl S = Ġθ/(R·ġx) used in governing correlations and stage ledger.</summary>
+    /// <summary>Derived source-exit discharge; legacy <c>PressureRatio</c> is diagnostic-only when set (live SI uses derived state only).</summary>
+    public SourceDischargeConsistencyReport? SourceDischargeConsistency { get; init; }
+
+    /// <summary>Bounded swirl correlation (entrainment/decay): flux S when |Va| is large, else |Vt|/|V| scaled — not raw Ġθ/(R·ṁ·Va) at 90°.</summary>
     public double InjectorPlaneFluxSwirlNumber { get; init; }
+
+    /// <summary>Injector |Vt|/|V| with V = √(Va²+Vt²); finite for 90° yaw.</summary>
+    public double InjectorPlaneSwirlDirective { get; init; }
 
     public IReadOnlyList<FlowMarchStepResult> MarchSteps { get; init; } = System.Array.Empty<FlowMarchStepResult>();
 
@@ -90,4 +96,10 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Swirl-vortex chamber openness, blockage, entrainment, and plain-language geometry warnings.</summary>
     public SwirlChamberHealthReport? SwirlChamberHealth { get; init; }
+
+    /// <summary>Populated when march-step invariant validation is enabled on the run configuration.</summary>
+    public IReadOnlyList<string> MarchInvariantWarnings { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>Regression / tooling: flat summary + <see cref="SiDiagnosticsReport.ToJson"/>.</summary>
+    public SiDiagnosticsReport ToStructuredReport() => SiDiagnosticsReport.FromDiagnostics(this);
 }

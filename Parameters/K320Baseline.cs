@@ -12,16 +12,13 @@ public static class K320Baseline
     public const double DefaultSourceAreaMm2 = 3737.4;
 
     // --- Typical published K-320G4+ class figures (retail listings / manufacturer pages — verify) ---
-    // Mass flow ~0.53 kg/s, pressure ratio ~3.6, exhaust speed often quoted ~2173 km/h ≈ 603 m/s.
+    // Mass flow ~0.53 kg/s, exhaust speed often quoted ~2173 km/h ≈ 603 m/s; total temperature ~730 °C → 1003.15 K.
+    // Live SI uses derived discharge only (ṁ, A, |V|, T); legacy pressure ratio ~3.6 is not passed — see optional diagnostics if you set it.
     private const double K320G4_MassFlowKgPerSec = 0.53;
     private const double K320G4_ExhaustSpeedMps = 2173.0 * (1000.0 / 3600.0);
-    private const double K320G4_PressureRatio = 3.6;
 
-    /// <summary>
-    /// Used for a <b>heuristic</b> ρ_core in the continuity <b>blend</b> with V_core×(A_source/A_inj).
-    /// Omit or set null to fall back to <see cref="SourceInputs.AmbientDensityKgPerM3"/>.
-    /// </summary>
-    private const double K320G4_ExhaustTemperatureK = 1003.15;
+    /// <summary>Total temperature at source exit [K] (730 °C); live path derives T_static then P_static = ρ R T_static.</summary>
+    private const double K320G4_ExhaustTotalTemperatureK = 1003.15;
 
     private const double IsaSeaLevelPressurePa = 101_325.0;
     private const double IsaSeaLevelTemperatureK = 288.15;
@@ -31,11 +28,12 @@ public static class K320Baseline
         sourceOutletAreaMm2: DefaultSourceAreaMm2,
         massFlowKgPerSec: K320G4_MassFlowKgPerSec,
         sourceVelocityMps: K320G4_ExhaustSpeedMps,
-        pressureRatio: K320G4_PressureRatio,
         ambientPressurePa: IsaSeaLevelPressurePa,
         ambientTemperatureK: IsaSeaLevelTemperatureK,
         ambientDensityKgPerM3: IsaSeaLevelDensityKgPerM3,
-        exhaustTemperatureK: K320G4_ExhaustTemperatureK);
+        exhaustTemperatureK: K320G4_ExhaustTotalTemperatureK,
+        exhaustTemperatureIsTotalK: true,
+        legacyPressureRatio: double.NaN);
 
     public static NozzleDesignInputs CreateDesign() => new()
     {
@@ -66,6 +64,35 @@ public static class K320Baseline
         WallThicknessMm = 3.0
     };
 
+    /// <summary>K320 template with a different swirl chamber bore (tests / sweeps).</summary>
+    public static NozzleDesignInputs CreateDesignWithSwirlChamberDiameterMm(double swirlChamberDiameterMm)
+    {
+        NozzleDesignInputs b = CreateDesign();
+        return new NozzleDesignInputs
+        {
+            InletDiameterMm = b.InletDiameterMm,
+            SwirlChamberDiameterMm = swirlChamberDiameterMm,
+            SwirlChamberLengthMm = b.SwirlChamberLengthMm,
+            InjectorAxialPositionRatio = b.InjectorAxialPositionRatio,
+            TotalInjectorAreaMm2 = b.TotalInjectorAreaMm2,
+            InjectorCount = b.InjectorCount,
+            InjectorWidthMm = b.InjectorWidthMm,
+            InjectorHeightMm = b.InjectorHeightMm,
+            InjectorYawAngleDeg = b.InjectorYawAngleDeg,
+            InjectorPitchAngleDeg = b.InjectorPitchAngleDeg,
+            InjectorRollAngleDeg = b.InjectorRollAngleDeg,
+            ExpanderLengthMm = b.ExpanderLengthMm,
+            ExpanderHalfAngleDeg = b.ExpanderHalfAngleDeg,
+            ExitDiameterMm = b.ExitDiameterMm,
+            StatorVaneAngleDeg = b.StatorVaneAngleDeg,
+            StatorVaneCount = b.StatorVaneCount,
+            StatorHubDiameterMm = b.StatorHubDiameterMm,
+            StatorAxialLengthMm = b.StatorAxialLengthMm,
+            StatorBladeChordMm = b.StatorBladeChordMm,
+            WallThicknessMm = b.WallThicknessMm
+        };
+    }
+
     public static RunConfiguration CreateRun() => new()
     {
         VoxelSizeMM = 0.3f,
@@ -85,7 +112,9 @@ public static class K320Baseline
         UsePhysicsInformedGeometry = false,
         UseAutotune = false,
         EnablePipelineProfiling = false,
-        ApplyHardSiThrustAndPressureAssertions = true
+        ApplyHardSiThrustAndPressureAssertions = true,
+        SiVerbosityLevel = SiVerbosityLevel.Low,
+        ValidateMarchStepInvariants = false
     };
 
     /// <summary>Same as <see cref="CreateRun"/> but enables synthesis so chamber/expander/stator/inlet follow first-order rules from the source.</summary>

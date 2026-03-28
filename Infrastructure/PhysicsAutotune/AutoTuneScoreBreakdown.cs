@@ -16,6 +16,7 @@ public sealed class AutoTuneScoreBreakdown
     public double LowChamberAxialPenalty { get; init; }
     public double EntrainmentShortfallPenalty { get; init; }
     public double HealthPenalty { get; init; }
+    public double SwirlEntranceCapacityPenalty { get; init; }
 
     public double PositiveProduct { get; init; }
     public double PenaltiesSum { get; init; }

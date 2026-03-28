@@ -33,6 +33,8 @@ public static class ValidationSweepRunner
         SourceInputs source = K320Baseline.CreateSource();
         NozzleDesignInputs baseline = K320Baseline.CreateDesign();
         RunConfiguration validationRun = K320Baseline.CreateValidationRun();
+        log(
+            $"Validation batch: SiVerbosityLevel={validationRun.SiVerbosityLevel} (Low skips SOURCE + dual swirl-capacity console blocks per SI case).");
 
         string root = csvOutputDirectory ?? Path.Combine(Environment.CurrentDirectory, "Output", "ValidationSweeps");
         Directory.CreateDirectory(root);
@@ -224,6 +226,10 @@ public static class ValidationSweepRunner
         if (Bad(vEff) && si.Coupling != null)
             return true;
         if (Bad(vq) && si.Chamber != null)
+            return true;
+        if (si.ChamberMarch?.SwirlEntranceCapacityStations is { CombinedClassification: var cc }
+            && (cc == SwirlEntranceCapacityClassification.FailRestrictive
+                || cc == SwirlEntranceCapacityClassification.FailChoking))
             return true;
         return false;
     }

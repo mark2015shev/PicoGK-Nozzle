@@ -351,16 +351,27 @@ public sealed class NozzlePhysicsSolver
     /// </summary>
     private static double EstimateCoreGasDensityKgPerM3(SourceInputs s, List<string> warnings)
     {
+        double aM2 = Math.Max(s.SourceOutletAreaMm2 * 1e-6, 1e-18);
+        double mdot = Math.Max(s.MassFlowKgPerSec, 0.0);
+        if (Math.Abs(s.SourceVelocityMps) > 1e-6 && mdot > 1e-12)
+        {
+            double v = Math.Abs(s.SourceVelocityMps);
+            double rho = mdot / (aM2 * v);
+            return Math.Clamp(rho, 0.15, 22.0);
+        }
+
         if (!s.ExhaustTemperatureK.HasValue || s.ExhaustTemperatureK.Value < 250.0)
         {
             warnings.Add("ExhaustTemperatureK missing/low; ρ_core falls back to AmbientDensityKgPerM3 (continuity blend only).");
             return s.AmbientDensityKgPerM3;
         }
 
-        double tEx = s.ExhaustTemperatureK.Value;
-        double pScale = s.AmbientPressurePa * Math.Clamp(s.PressureRatio, 1.0, 6.0);
-        double rho = pScale / (SpecificGasConstantAirJPerKgK * tEx);
-        return Math.Clamp(rho, 0.15, 22.0);
+        var gas = new GasProperties();
+        double tK = s.ExhaustTemperatureK.Value;
+        double vGuess = mdot > 1e-12 ? mdot / (Math.Max(s.AmbientDensityKgPerM3, 1e-9) * aM2) : 0.0;
+        double tStatic = s.ExhaustTemperatureIsTotalK ? gas.StaticTemperatureFromTotal(tK, vGuess) : tK;
+        double rhoFallback = s.AmbientPressurePa / (SpecificGasConstantAirJPerKgK * Math.Max(tStatic, 1.0));
+        return Math.Clamp(rhoFallback, 0.15, 22.0);
     }
 
     // HEURISTIC — NOT CFD: expansion efficiency (see prior comments in file history)
@@ -385,7 +396,14 @@ public sealed class NozzlePhysicsSolver
         double expansionRatio = d.ExitDiameterMm / Math.Max(sourceDiamMm, 1e-9);
         double ratioBand = Math.Exp(-Math.Pow((expansionRatio - 1.85) / 0.95, 2.0));
 
-        double pressureDrive = Math.Clamp((source.PressureRatio - 1.0) / 3.0, 0.0, 1.0);
+        var gas = new GasProperties();
+        LiveDerivedSourceCoreResult disp = LiveDerivedSourceDischarge.ComputeCore(source, gas);
+        double pressureDrive = 0.35;
+        if (disp.DerivedStatePhysicsPass && source.AmbientPressurePa > 1.0)
+        {
+            double prJet = disp.DerivedStaticPressurePa / source.AmbientPressurePa;
+            pressureDrive = Math.Clamp((prJet - 1.0) / 5.0, 0.0, 1.0);
+        }
 
         double eta = 0.22 + 0.38 * angleFactor * lengthFactor + 0.22 * ratioBand + 0.12 * pressureDrive;
         return Math.Clamp(eta, 0.12, 0.94);

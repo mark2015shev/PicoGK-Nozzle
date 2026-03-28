@@ -32,10 +32,11 @@ public static class NozzleSolvedStateFlowAdapter
             designInputs.InjectorYawAngleDeg,
             designInputs.InjectorPitchAngleDeg);
 
+        double vMagCoupled = Math.Sqrt(vTanInj * vTanInj + vAxInj * vAxInj);
         double injectorSwirlReport = si != null
-            ? Math.Max(Math.Abs(si.InjectorPlaneFluxSwirlNumber), 1e-12)
-            : SwirlMath.InjectorSwirlNumberReportOnly(vTanInj, vAxInj, vJetForInjectorSwirl);
-        double chamberSwirlReport = si?.MarchPhysicsClosure?.FinalFluxSwirlNumber
+            ? si.InjectorPlaneSwirlDirective
+            : SwirlMath.InjectorSwirlDirective(vTanInj, Math.Max(vMagCoupled, 1e-9));
+        double chamberSwirlReport = si?.MarchPhysicsClosure?.FinalChamberSwirlBulk
             ?? (si != null ? Math.Max(Math.Abs(si.InjectorPlaneFluxSwirlNumber), 1e-12) : 1.0);
 
         double momentumThrust = si?.MomentumThrustN ?? outlet.TotalMassFlowKgS * outlet.VelocityMps;

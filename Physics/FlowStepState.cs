@@ -28,6 +28,18 @@ public sealed class FlowStepState
     public double AngularMomentumFluxKgM2PerS2 { get; init; }
     public double AxialMomentumFluxKgM2PerS2 { get; init; }
 
+    /// <summary>P₀ after mass mixing and named Δp₀ losses, before deriving bulk static (Pa).</summary>
+    public double TotalPressureAfterLossesPa { get; init; }
+
+    /// <summary>|Vt|/max(|Va|, <see cref="ChamberAerodynamicsConfiguration.VaFloorForBulkSwirlMps"/>).</summary>
+    public double ChamberSwirlBulkRatio { get; init; }
+
+    /// <summary>Swirl metric passed to entrainment Ce correlation this step (bounded).</summary>
+    public double EntrainmentSwirlCorrelation { get; init; }
+
+    /// <summary>False if bulk static/total ordering or finiteness checks failed for this step.</summary>
+    public bool StepBulkPressureValid { get; init; } = true;
+
     public double CorePressurePa { get; init; }
     public double WallPressurePa { get; init; }
     public double RadialPressureDeltaPa { get; init; }

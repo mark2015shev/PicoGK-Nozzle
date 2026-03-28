@@ -12,16 +12,24 @@ public sealed class SourceInputs
     public double SourceVelocityMps { get; }
 
     /// <summary>
-    /// Used in SI path as: jet upstream total pressure P0 ≈ max(<see cref="AmbientPressurePa"/> × PressureRatio, AmbientPressurePa + 1 Pa).
-    /// That is a <b>supply / stagnation</b> scale for <see cref="PicoGK_Run.Physics.JetSource"/> — not post-injector static and not chamber mixed static.
+    /// <b>Deprecated legacy field</b> — not read for live SI physics. Use <see cref="double.NaN"/> when unused.
+    /// If finite and &gt; 0, an optional informational block may compare P_amb·PR to derived P₀ (does not affect ṁ, P_static, or march).
     /// </summary>
     public double PressureRatio { get; }
 
-    /// <summary>
-    /// Optional exhaust static/stagnation-scale temperature (K) used only for a
-    /// first-order core density estimate in continuity (see solver comments).
-    /// </summary>
+    /// <summary>Maps <see cref="ExhaustTemperatureIsTotalK"/> to a named mode for reporting.</summary>
+    public SourceTemperatureInterpretation TemperatureInterpretation =>
+        ExhaustTemperatureIsTotalK ? SourceTemperatureInterpretation.Total : SourceTemperatureInterpretation.Static;
+
+    /// <summary>True when a numeric legacy pressure ratio was supplied (finite, &gt; 0).</summary>
+    public bool HasLegacyPressureRatio =>
+        !double.IsNaN(PressureRatio) && !double.IsInfinity(PressureRatio) && PressureRatio > 0.0;
+
+    /// <summary>Exhaust temperature (K); static vs total per <see cref="ExhaustTemperatureIsTotalK"/>.</summary>
     public double? ExhaustTemperatureK { get; }
+
+    /// <summary>When true, <see cref="ExhaustTemperatureK"/> is stagnation temperature; when false, static at source exit.</summary>
+    public bool ExhaustTemperatureIsTotalK { get; }
 
     public double AmbientPressurePa { get; }
 
@@ -34,19 +42,21 @@ public sealed class SourceInputs
         double sourceOutletAreaMm2,
         double massFlowKgPerSec,
         double sourceVelocityMps,
-        double pressureRatio,
         double ambientPressurePa,
         double ambientTemperatureK,
         double ambientDensityKgPerM3,
-        double? exhaustTemperatureK = null)
+        double? exhaustTemperatureK = null,
+        bool exhaustTemperatureIsTotalK = true,
+        double legacyPressureRatio = double.NaN)
     {
         SourceOutletAreaMm2 = sourceOutletAreaMm2;
         MassFlowKgPerSec = massFlowKgPerSec;
         SourceVelocityMps = sourceVelocityMps;
-        PressureRatio = pressureRatio;
+        PressureRatio = legacyPressureRatio;
         AmbientPressurePa = ambientPressurePa;
         AmbientTemperatureK = ambientTemperatureK;
         AmbientDensityKgPerM3 = ambientDensityKgPerM3;
         ExhaustTemperatureK = exhaustTemperatureK;
+        ExhaustTemperatureIsTotalK = exhaustTemperatureIsTotalK;
     }
 }
