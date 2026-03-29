@@ -11,7 +11,6 @@ public static class NozzleGeometryDebugReportBuilder
 {
     public const double RadiusMatchToleranceMm = 0.51;
     public const double DiameterJumpWarnMm = 1.0;
-    public const double ExpanderExitVsExitDiameterWarnMm = 1.5;
 
     public static NozzleGeometryDebugReport Build(
         NozzleDesignInputs d,
@@ -51,14 +50,14 @@ public static class NozzleGeometryDebugReportBuilder
         if (entranceInnerR > chamberInnerR + 1e-6)
             explanations.Add("Inlet mouth inner radius is widened to match or exceed swirl chamber ID (no throat ahead of chamber).");
 
-        // --- Inlet contraction (flare) ---
+        // --- Inlet flare (same meridian as audit “Inlet” second sub-span) ---
         segments.Add(MkSeg(
-            "Inlet contraction / inlet cone",
+            "Inlet flare (inner radius to chamber ID)",
             xLipEnd, xFlareEnd,
             entranceInnerR, chamberInnerR,
             wall,
             flareHalfAngleDeg,
-            "Inner wall contracts toward swirl chamber ID; equivalent |ΔR|/L encoded as HalfAngle_deg when monotonic."));
+            "Linear inner meridian from capture radius to chamber bore ID (when widened, entrance R ≥ chamber R — flare may be zero ΔR)."));
 
         // --- Swirl chamber voxel (main segment; guard unioned in builder when InjectorUpstreamGuardLengthMm > 0) ---
         double xSwirlStart = path.XSwirlStart;
@@ -160,10 +159,10 @@ public static class NozzleGeometryDebugReportBuilder
 
         double nominalConeD = 2.0 * tgt.NominalConeOutletInnerRadiusMm;
         if (!path.UsesPostStatorExitTaper
-            && Math.Abs(nominalConeD - d.ExitDiameterMm) > ExpanderExitVsExitDiameterWarnMm)
+            && tgt.NominalConeVersusDeclaredExitInnerRadiusMm > GeometryConsistencyTolerances.NominalVersusAuthoritativeNarrativeMinDeltaMm)
         {
-            warnings.Add(
-                $"Template expander (nominal L×angle) would end at Ø {nominalConeD:F2} mm vs declared exit Ø {d.ExitDiameterMm:F2} mm — built expander length is adjusted so outlet matches declared exit (see effective L in path).");
+            explanations.Add(
+                $"Reference nominal expander (design L={tgt.NominalExpanderLengthMm:F2} mm × half-angle) would reach inner Ø {nominalConeD:F2} mm; authoritative built path uses inner Ø {impliedExitD:F2} mm at expander outlet (matches declared exit) with effective axial L={expLen:F3} mm — see GeometryAssemblyPath / DownstreamGeometryResolver.");
         }
 
         segments.Add(MkSeg(

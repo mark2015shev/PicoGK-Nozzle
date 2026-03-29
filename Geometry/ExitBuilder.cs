@@ -21,16 +21,16 @@ public static class ExitBuilder
         return Math.Max(12f, Math.Max(fromDiameter, fromDelta));
     }
 
-    /// <summary>Build exit section from shared <paramref name="downstream"/> targets (no independent exit R math).</summary>
+    /// <summary>Build exit section from path radii and axial length (authoritative — no recomputed L).</summary>
     public static Voxels Build(
         NozzleDesignInputs d,
-        float xStart,
-        DownstreamGeometryTargets downstream,
+        GeometryAssemblyPath path,
         out float xEnd,
         out float downstreamInnerRadiusMm)
     {
-        float r0 = Math.Max(0.5f, (float)downstream.RecoveryAnnulusRadiusMm);
-        float r1 = Math.Max(0.5f, (float)downstream.ExitEndInnerRadiusMm);
+        float xStart = (float)path.XExitStart;
+        float r0 = Math.Max(0.5f, (float)path.ExitInnerRadiusStartMm);
+        float r1 = Math.Max(0.5f, (float)path.ExitInnerRadiusEndMm);
         downstreamInnerRadiusMm = r1;
 
         float wallThicknessMm = (float)d.WallThicknessMm;
@@ -46,7 +46,7 @@ public static class ExitBuilder
         if (rOut0 <= r0 || rOut1 <= r1)
             throw new InvalidOperationException("Exit geometry invalid: outer radius must exceed inner radius at both ends.");
 
-        float length = ComputeExitSectionLengthMm(r0, r1);
+        float length = (float)path.ExitSectionLengthMm;
 
         Vector3 p0 = new(xStart, 0f, 0f);
         Vector3 p1 = new(xStart + length, 0f, 0f);
@@ -63,12 +63,6 @@ public static class ExitBuilder
         outer.BoolSubtract(inner);
 
         xEnd = xStart + length;
-
-        Library.Log("[ExitBuilder] Hollow exit: outer/inner truncated cones, BoolSubtract — no sphere/dome union, no extra cap step.");
-        Library.Log($"[ExitBuilder] length_mm={length:F3}  R_inner_start/end={r0:F3}/{r1:F3}  R_outer_start/end={rOut0:F3}/{rOut1:F3}  wall_mm={wallThicknessMm:F3}  taper={downstream.UsesPostStatorExitTaper}");
-        Library.Log($"[ExitBuilder] AddBeam roundCap={flatAnnulusEnds} (false = open annulus at exit plane; true would close bore with caps).");
-        Library.Log($"[ExitBuilder] Meridian profile points (X_mm, R_inner_bore, R_outer_wall): ({xStart:F3},{r0:F3},{rOut0:F3}) -> ({xEnd:F3},{r1:F3},{rOut1:F3})");
-
         return outer;
     }
 }

@@ -6,17 +6,17 @@ using PicoGK_Run.Parameters;
 namespace PicoGK_Run.Geometry;
 
 /// <summary>
-/// Conical expander: inner wall runs from chamber ID to <see cref="DownstreamGeometryTargets.RecoveryAnnulusRadiusMm"/>
-/// over <see cref="DownstreamGeometryTargets.EffectiveExpanderLengthMm"/> (single authoritative downstream radius).
+/// Conical expander: inner wall from path chamber ID to path recovery R over path expander axial length — no local length solve.
 /// </summary>
 public static class ExpanderBuilder
 {
-    public static Voxels Build(NozzleDesignInputs d, float xStart, DownstreamGeometryTargets downstream, out float xEnd, out float endInnerRadiusMm)
+    public static Voxels Build(NozzleDesignInputs d, GeometryAssemblyPath path, out float xEnd, out float endInnerRadiusMm)
     {
-        float length = (float)downstream.EffectiveExpanderLengthMm;
-        float chamberInnerR = (float)downstream.ChamberInnerRadiusMm;
+        float xStart = (float)path.XExpanderStart;
+        float length = (float)path.ExpanderAxialLengthMm;
+        float chamberInnerR = (float)path.ChamberInnerRadiusMm;
         float wallThicknessMm = (float)d.WallThicknessMm;
-        float exitInnerR = (float)downstream.RecoveryAnnulusRadiusMm;
+        float exitInnerR = (float)path.ExpanderEndInnerRadiusMm;
         endInnerRadiusMm = exitInnerR;
 
         Vector3 p0 = new(xStart, 0f, 0f);

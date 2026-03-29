@@ -1,7 +1,7 @@
+using System;
 using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Geometry;
-
 /// <summary>
 /// Single source of truth for axial stations and inner radii used by <see cref="NozzleGeometryBuilder"/>
 /// and geometry audits (mm). Downstream radii come from <see cref="DownstreamGeometryResolver"/> only.
@@ -45,6 +45,12 @@ public sealed class GeometryAssemblyPath
     /// <summary>Alias for <see cref="SwirlChamberPhysicalLengthMm"/> (legacy name).</summary>
     public double SwirlChamberEffectiveLengthMm { get; init; }
 
+    /// <summary>Authoritative expander axial extent (matches <see cref="DownstreamGeometryTargets.EffectiveExpanderLengthMm"/>).</summary>
+    public double ExpanderAxialLengthMm { get; init; }
+
+    /// <summary>Authoritative stator casing annulus axial extent (matches builders).</summary>
+    public double StatorAxialLengthMm { get; init; }
+
     /// <summary>Shared swirl + injector stations for voxels, SI handoff, and audits.</summary>
     public SwirlChamberPlacement SwirlPlacement { get; init; } = null!;
 
@@ -53,19 +59,13 @@ public sealed class GeometryAssemblyPath
         DownstreamGeometryTargets t = DownstreamGeometryResolver.Resolve(d, run);
         double overlap = NozzleGeometryBuilder.AssemblyOverlapMm;
         double wall = Math.Max(d.WallThicknessMm, 0.0);
-        double inletD = Math.Max(d.InletDiameterMm, 1.0);
-        double chamberD = Math.Max(d.SwirlChamberDiameterMm, 1.0);
-        double refD = Math.Max(inletD, chamberD);
-        double lipLen = Math.Max(4.0, 0.08 * refD);
-        double flareLen = Math.Max(14.0, 0.30 * refD);
-        double inletNominalR = 0.5 * inletD;
-        double chamberInnerR = 0.5 * chamberD;
-        double entranceInnerR = Math.Max(inletNominalR, chamberInnerR);
+        InletSegmentStations inlet = InletSegmentStations.Compute(d);
+        double chamberInnerR = inlet.ChamberInnerRadiusMm;
+        double entranceInnerR = inlet.EntranceInnerRadiusMm;
 
-        double x = 0.0;
-        double xLipEnd = x + lipLen;
-        double xFlareEnd = xLipEnd + flareLen;
-        double xAfterInlet = xFlareEnd;
+        double x = inlet.XInletStart;
+        double xLipEnd = inlet.XLipEnd;
+        double xAfterInlet = inlet.XAfterInlet;
 
         SwirlChamberPlacement swirl = SwirlChamberPlacement.Compute(d, xAfterInlet, run);
         double xSwirlStart = swirl.MainChamberStartXMm;
@@ -97,8 +97,8 @@ public sealed class GeometryAssemblyPath
             XInletStart = x,
             XAfterInlet = xAfterInlet,
             XLipEnd = xLipEnd,
-            LipLengthMm = lipLen,
-            FlareLengthMm = flareLen,
+            LipLengthMm = inlet.LipLengthMm,
+            FlareLengthMm = inlet.FlareLengthMm,
             EntranceInnerRadiusMm = entranceInnerR,
             XSwirlStart = xSwirlStart,
             XAfterSwirl = xAfterSwirl,
@@ -119,6 +119,8 @@ public sealed class GeometryAssemblyPath
             UsesPostStatorExitTaper = t.UsesPostStatorExitTaper,
             SwirlChamberPhysicalLengthMm = chamberLen,
             SwirlChamberEffectiveLengthMm = chamberLen,
+            ExpanderAxialLengthMm = expLen,
+            StatorAxialLengthMm = statorLen,
             SwirlPlacement = swirl
         };
     }

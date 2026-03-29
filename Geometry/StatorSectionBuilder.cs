@@ -11,19 +11,18 @@ namespace PicoGK_Run.Geometry;
 /// </summary>
 public static class StatorSectionBuilder
 {
+    /// <summary>Authoritative casing annulus: axial extent and inner R from <see cref="GeometryAssemblyPath"/> only.</summary>
     public static Voxels Build(
         NozzleDesignInputs d,
-        float xStart,
-        DownstreamGeometryTargets downstream,
+        GeometryAssemblyPath path,
         out float xEnd,
         out float downstreamInnerRadiusMm)
     {
-        float innerR = Math.Max(0.5f, (float)downstream.RecoveryAnnulusRadiusMm);
+        float xStart = (float)path.XStatorStart;
+        float innerR = Math.Max(0.5f, (float)path.RecoveryAnnulusInnerRadiusMm);
         downstreamInnerRadiusMm = innerR;
         float wallThicknessMm = (float)d.WallThicknessMm;
-
-        double lenAuto = Math.Max(10.0, 0.10 * Math.Max(innerR * 2.0, downstream.RecoveryAnnulusDiameterMm));
-        float length = (float)(d.StatorAxialLengthMm > 1.0 ? d.StatorAxialLengthMm : lenAuto);
+        float length = (float)path.StatorAxialLengthMm;
 
         Vector3 p0 = new(xStart, 0f, 0f);
         Vector3 p1 = new(xStart + length, 0f, 0f);

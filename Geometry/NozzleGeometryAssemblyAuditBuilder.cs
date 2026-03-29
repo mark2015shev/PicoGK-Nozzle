@@ -25,7 +25,7 @@ public static class NozzleGeometryAssemblyAuditBuilder
             ResultPropertyName: nameof(NozzleGeometryResult.Inlet),
             GeneratorType: nameof(InletBuilder),
             GeneratorMethod: nameof(InletBuilder.Build),
-            SolidDescription: "Single annular shell: constant-bore lip + inner-contracting flare (outer wall follows).",
+            SolidDescription: "Single annular shell: constant-bore capture lip + flare to chamber ID (same meridian as debug table ‘Inlet lip’ + ‘Inlet flare’).",
             XStartMm: x0,
             XEndMm: xInEnd,
             LengthMm: xInEnd - x0,
@@ -35,7 +35,7 @@ public static class NozzleGeometryAssemblyAuditBuilder
             ROuterEndMm: ch + w,
             HalfAngleDeg: ent > ch + 1e-9 ? R2D(Math.Atan((ent - ch) / Math.Max(p.FlareLengthMm, 1e-6))) : null,
             WallThicknessMm: w,
-            SolidKind: "Composite: ConstantArea(lip) + Converging(inner flare)",
+            SolidKind: "Composite: ConstantArea(lip) + Flare(inner to chamber ID)",
             PicoGkLatticeNotes: "Two outer/inner AddBeam pairs, BoolSubtract; AddBeam(..., roundCap:false) on all nozzle shells → flat normal caps at segment ends (overlap hides most seams).",
             ProfilePoints: new[]
             {
@@ -105,7 +105,7 @@ public static class NozzleGeometryAssemblyAuditBuilder
             nameof(NozzleGeometryResult.Expander),
             nameof(ExpanderBuilder),
             nameof(ExpanderBuilder.Build),
-            "Diverging conical annulus (inner half-angle = ExpanderHalfAngleDeg).",
+            "Diverging conical annulus: axial L = path ExpanderAxialLengthMm (DownstreamGeometryResolver effective L); outlet R = recovery annulus (declared exit in constant-area mode).",
             p.XExpanderStart,
             p.XAfterExpander,
             p.XAfterExpander - p.XExpanderStart,
@@ -202,11 +202,12 @@ public static class NozzleGeometryAssemblyAuditBuilder
 
         if (builtGeometry != null)
         {
-            double lenReported = builtGeometry.TotalLengthMm;
-            if (Math.Abs(lenReported - p.XAfterExit) > 0.05)
+            foreach (GeometryPathBuildCheckItem chk in GeometryPathBuildConsistencyValidator.Validate(p, builtGeometry))
             {
-                consistency.Add(
-                    $"MISMATCH: NozzleGeometryResult.TotalLengthMm={lenReported:F3} vs GeometryAssemblyPath.XAfterExit={p.XAfterExit:F3} — design drift or builder changed without updating path.");
+                if (chk.Passed)
+                    continue;
+                string prefix = chk.Severity == GeometryPathBuildCheckSeverity.Reject ? "REJECT: " : "WARN: ";
+                consistency.Add(prefix + chk.Message);
             }
         }
 

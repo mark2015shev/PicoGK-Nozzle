@@ -6,9 +6,8 @@ using PicoGK_Run.Parameters;
 namespace PicoGK_Run.Geometry;
 
 /// <summary>
-/// Assembles nozzle segments along +X. Neighboring solids overlap slightly so voxel unions stay watertight;
-/// exact face-touching bodies can look detached in the viewer — overlap is intentional.
-/// Axial stations and radii for logging: <see cref="GeometryAssemblyPath"/> (keep in sync when changing overlap or segment lengths).
+/// Assembles nozzle segments along +X. Axial stations and lengths are taken only from
+/// <see cref="GeometryAssemblyPath"/> after <see cref="GeometryAssemblyPath.Compute"/> — no per-segment length re-solve.
 /// </summary>
 public sealed class NozzleGeometryBuilder
 {
@@ -22,56 +21,32 @@ public sealed class NozzleGeometryBuilder
         Voxels? jetTrajectoryDebug = null)
     {
         _ = solved;
-        DownstreamGeometryTargets downstream = DownstreamGeometryResolver.Resolve(design, run);
-        float overlap = AssemblyOverlapMm;
+        GeometryAssemblyPath assembly = GeometryAssemblyPath.Compute(design, run);
 
-        float x = 0f;
-
-        float xAfterInlet;
         Voxels inlet;
         using (PipelineProfiler.Stage("geometry.segment.inlet"))
-            inlet = InletBuilder.Build(design, x, out xAfterInlet);
+            inlet = InletBuilder.Build(design, assembly);
 
-        GeometryAssemblyPath assembly = GeometryAssemblyPath.Compute(design, run);
         SwirlChamberPlacement swirlPl = assembly.SwirlPlacement;
-        float xAfterSwirl;
         Voxels swirl;
         using (PipelineProfiler.Stage("geometry.segment.swirlChamber"))
-            swirl = SwirlChamberBuilder.BuildSwirlChamberAssembly(design, swirlPl, out xAfterSwirl);
+            swirl = SwirlChamberBuilder.BuildSwirlChamberAssembly(design, swirlPl, out _);
 
         Voxels injectorMarkers;
         using (PipelineProfiler.Stage("geometry.segment.injectorMarkers"))
             injectorMarkers = InjectorRingBuilder.Build(design, swirlPl);
 
-        float xExpStart = xAfterSwirl - overlap;
-        float xAfterExpander;
-        float expanderEndInnerR;
         Voxels expander;
         using (PipelineProfiler.Stage("geometry.segment.expander"))
-            expander = ExpanderBuilder.Build(design, xExpStart, downstream, out xAfterExpander, out expanderEndInnerR);
+            expander = ExpanderBuilder.Build(design, assembly, out _, out _);
 
-        float xStatorStart = xAfterExpander - overlap;
-        float xAfterStator;
-        float statorDownstreamInnerR;
         Voxels stator;
         using (PipelineProfiler.Stage("geometry.segment.stator"))
-            stator = StatorSectionBuilder.Build(
-                design,
-                xStatorStart,
-                downstream,
-                out xAfterStator,
-                out statorDownstreamInnerR);
+            stator = StatorSectionBuilder.Build(design, assembly, out _, out _);
 
-        float xExitStart = xAfterStator - overlap;
-        float xAfterExit;
         Voxels exit;
         using (PipelineProfiler.Stage("geometry.segment.exit"))
-            exit = ExitBuilder.Build(
-                design,
-                xExitStart,
-                downstream,
-                out xAfterExit,
-                out _);
+            exit = ExitBuilder.Build(design, assembly, out _, out _);
 
         return new NozzleGeometryResult(
             inlet: inlet,
@@ -81,7 +56,7 @@ public sealed class NozzleGeometryBuilder
             statorSection: stator,
             exit: exit,
             injectorCountPlaced: design.InjectorCount,
-            totalLengthMm: xAfterExit,
+            totalLengthMm: assembly.XAfterExit,
             jetTrajectoryDebug: jetTrajectoryDebug);
     }
 }

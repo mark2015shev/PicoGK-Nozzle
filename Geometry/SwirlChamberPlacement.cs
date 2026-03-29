@@ -77,7 +77,10 @@ public sealed class SwirlChamberPlacement
         double xStart;
         if (anchorLen > 0.0)
         {
-            xEnd = baseJunction + anchorLen;
+            // Pin downstream face at least at junction+anchor, but never force the chamber upstream of the inlet
+            // junction when physical length exceeds anchor (physical L stays authoritative).
+            double spanFromJunction = Math.Max(anchorLen, physicalL);
+            xEnd = baseJunction + spanFromJunction;
             xStart = xEnd - physicalL;
         }
         else
