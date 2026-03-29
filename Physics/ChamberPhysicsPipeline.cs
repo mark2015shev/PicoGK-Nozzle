@@ -189,11 +189,9 @@ public static class ChamberPhysicsPipeline
         double pDownLumped = lastMarch.PressurePa + 0.22 * Math.Max(0.0, expanderDeltaPEffectivePa);
         double inletSpillMarginPa = pWallRep - pCap;
         double exitDriveMarginPa = pDownLumped - pWallRep;
-        double spillBi = Math.Clamp(
-            0.48 * Math.Tanh(Math.Max(inletSpillMarginPa, 0.0) / 8500.0)
-            + 0.38 * Math.Tanh(Math.Max(-exitDriveMarginPa, 0.0) / 10500.0),
-            0.0,
-            1.0);
+        double inletSpillR = Math.Clamp(0.55 * Math.Tanh(Math.Max(inletSpillMarginPa, 0.0) / 8200.0), 0.0, 1.0);
+        double downDriveR = Math.Clamp(0.55 * Math.Tanh(Math.Max(-exitDriveMarginPa, 0.0) / 9500.0), 0.0, 1.0);
+        double spillBi = Math.Clamp(0.5 * inletSpillR + 0.5 * downDriveR, 0.0, 1.0);
 
         double aInjMm2 = Math.Max(design.TotalInjectorAreaMm2, 1e-9);
         double aFreeMm2 = aFreeChamberMm2 > 1e-6 ? aFreeChamberMm2 : aInjMm2 * 4.0;
@@ -206,17 +204,24 @@ public static class ChamberPhysicsPipeline
             0.0,
             1.0);
 
+        double driveMarginNorm = Math.Clamp(exitDriveMarginPa / 14_000.0, 0.0, 1.0);
+        double ldDevNorm = Math.Clamp(ld / 2.6, 0.0, 1.0);
+        double annulusRelief = 1.0 - Math.Min(blockage, 1.0);
         double tuningQ = Math.Clamp(
-            0.40 * structure.CompositeVortexQuality
-            + 0.26 * radialUsefulNorm
-            + 0.16 * remSwirlFrac
-            - 0.21 * structure.BreakdownRiskScore
-            - 0.17 * diffuser.SeparationRiskScore
-            - 0.13 * lossNorm
-            - 0.11 * ej.RegimeScore
-            - 0.10 * captureWeakness01
-            - 0.08 * spillBi
-            - 0.06 * inletContainRisk,
+            0.28 * (1.0 - captureWeakness01)
+            + 0.20 * driveMarginNorm
+            + 0.14 * remSwirlFrac
+            + 0.12 * ldDevNorm
+            + 0.10 * annulusRelief
+            + 0.08 * (1.0 - deficitNorm01 * 0.5)
+            + 0.06 * structure.CompositeVortexQuality
+            + 0.05 * radialUsefulNorm
+            - 0.20 * spillBi
+            - 0.15 * inletContainRisk
+            - 0.14 * lossNorm
+            - 0.12 * structure.BreakdownRiskScore
+            - 0.11 * diffuser.SeparationRiskScore
+            - 0.10 * ej.RegimeScore,
             0.0,
             1.0);
 
@@ -231,6 +236,8 @@ public static class ChamberPhysicsPipeline
         {
             InletSpillPressureMarginPa = inletSpillMarginPa,
             ExitDrivePressureMarginPa = exitDriveMarginPa,
+            InletSpillRisk01 = inletSpillR,
+            DownstreamDriveRisk01 = downDriveR,
             BidirectionalSpillRisk01 = spillBi
         };
 
@@ -242,15 +249,20 @@ public static class ChamberPhysicsPipeline
             InletContainmentRisk01 = inletContainRisk
         };
 
+        double rWallMm = 1e3 * rWallM;
+        double rCoreMm = 1e3 * rCoreM;
         var radialBal = new SwirlRadialPressureBalanceState
         {
             CoreStaticPressurePa = pCoreRep,
             WallStaticPressurePa = pWallRep,
             BulkStaticPressurePa = pBulkRep,
             CaptureBoundaryStaticPressurePa = pCap,
-            DownstreamBoundaryStaticPressurePa = lastMarch.PressurePa,
+            DownstreamBoundaryStaticPressurePa = pDownLumped,
+            RadialPressureGradientRepresentativePaPerM = dpDr,
+            AssumedCoreRadiusMm = rCoreMm,
+            AssumedOuterRadiusMm = rWallMm,
             ModelAssumptionNote =
-                "Reduced-order radial balance: mixed forced-core + free-outer Vt(r), integrated as dP/dr≈ρVt²/r with bulk-relative clamps (see RadialVortexPressureModel)."
+                "Reduced-order radial balance: solid-body core r≤r_core, free-vortex shell r>r_core; Ω=Γ/r_core², Γ≈Vt·R_wall; dP/dr≈ρVt(r)²/r with bulk-relative clamps (RadialVortexPressureModel)."
         };
 
         var flowDir = new SwirlFlowDirectionState
@@ -262,8 +274,8 @@ public static class ChamberPhysicsPipeline
             CoreStaticPressurePa = pCoreRep,
             CaptureBoundaryStaticPressurePa = pCap,
             DownstreamBoundaryStaticPressurePa = pDownLumped,
-            InletSpillRisk01 = spillBi,
-            DownstreamDriveRisk01 = Math.Clamp(0.5 + 0.5 * Math.Tanh(exitDriveMarginPa / 7500.0), 0.0, 1.0),
+            InletSpillRisk01 = inletSpillR,
+            DownstreamDriveRisk01 = downDriveR,
             TangentialDominatesAxial = tangDom,
             AxialDownstreamTendency = axDown,
             InletReverseDriveTendency = inletRev,
@@ -278,14 +290,54 @@ public static class ChamberPhysicsPipeline
             ExpanderDeltaPEffectivePa = expanderDeltaPEffectivePa
         };
 
+        double meanAeffEntry = 0.0;
+        if (detailed.StepPhysicsStates.Count > 0)
+        {
+            double accAe = 0.0;
+            foreach (FlowStepState ph in detailed.StepPhysicsStates)
+                accAe += ph.EffectiveEntrainmentEntryAreaM2;
+            meanAeffEntry = accAe / detailed.StepPhysicsStates.Count;
+        }
+
         var entEst = new EntrainmentDriveSummary
         {
             MeanCapturePressureDeficitPa = meanCaptureDeficitPa,
             CapturePressureDeficitNorm01 = deficitNorm01,
             TotalEntrainedMassFlowKgS = lastMarch.EntrainedMassFlowKgS,
             AmbientDensityKgM3 = rhoAmb,
-            EffectiveCaptureAreaM2 = Math.Max(captureAreaM2, 0.0)
+            EffectiveCaptureAreaM2 = Math.Max(captureAreaM2, 0.0),
+            MeanEffectiveEntrainmentEntryAreaM2 = meanAeffEntry
         };
+
+        SwirlAngularMomentumState? angMom = null;
+        ChamberExpanderInletHandoffState? handoff = null;
+        if (lastPh != null)
+        {
+            double vxHand = lastMarch.VelocityMps;
+            double vtHand = detailed.FinalTangentialVelocityMps;
+            angMom = new SwirlAngularMomentumState
+            {
+                AngularMomentumFluxKgM2PerS2 = lastPh.AngularMomentumFluxKgM2PerS2,
+                WallLossTermKgM2PerS2 = lastPh.AngularMomentumWallLossKgM2PerS2,
+                MixingLossTermKgM2PerS2 = lastPh.AngularMomentumMixingLossKgM2PerS2,
+                EntrainmentDilutionTermKgM2PerS2 = lastPh.AngularMomentumEntrainmentDilutionLossKgM2PerS2,
+                ResidualTangentialVelocityMps = vtHand,
+                ResidualSwirlRatioVtOverVx = SwirlMath.ChamberSwirlBulkRatio(
+                    vtHand,
+                    vxHand,
+                    ChamberAerodynamicsConfiguration.VaFloorForBulkSwirlMps)
+            };
+            handoff = new ChamberExpanderInletHandoffState
+            {
+                MdotTotalKgS = lastMarch.TotalMassFlowKgS,
+                AxialVelocityMps = vxHand,
+                TangentialVelocityMps = vtHand,
+                WallStaticPressurePa = pWallRep,
+                BulkStaticPressurePa = lastMarch.PressurePa,
+                ResidualSwirlRatioVtOverVx = angMom.ResidualSwirlRatioVtOverVx,
+                DownstreamPressureDriveMarginPa = exitDriveMarginPa
+            };
+        }
 
         var segmentReport = new SwirlSegmentReducedOrderReport
         {
@@ -295,7 +347,9 @@ public static class ChamberPhysicsPipeline
             Spill = spillEst,
             Containment = containmentEst,
             FlowDirection = flowDir,
-            Expander = expEst
+            Expander = expEst,
+            AngularMomentum = angMom,
+            ExpanderInletHandoff = handoff
         };
 
         return new ChamberFirstOrderPhysics

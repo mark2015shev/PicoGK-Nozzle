@@ -105,12 +105,14 @@ public sealed class FlowMarcher
     /// <summary>
     /// Compressible entrainment (choked cap): carry h₀ and P₀ by mass mixing of stagnation properties, apply named
     /// <see cref="ChamberMarchLossModel"/> P₀ decrements, derive (P,T) from P₀, h₀, and |V|; evolve ṁ and axial momentum
-    /// via mixing; evolve Ġ_θ explicitly (entrainment at V_θ=0 dilutes V_θ,bulk);
-    /// entrainment demand: pressure deficit at capture (Bernoulli entry speed) × lumped mixing effectiveness from
-    /// <see cref="SwirlMath.SwirlCorrelationForEntrainment"/>, plus a small bounded shear term;
+    /// via mixing; evolve Ġ_θ with wall / mixing / entrainment-dilution loss terms (plus ṁ growth diluting V_θ,bulk);
+    /// entrainment demand: pressure deficit at capture (Bernoulli entry speed) × lumped η_mix(L/D, Re) for axial distribution,
+    /// plus a small bounded shear term;
     /// bulk P_static from <see cref="CompressibleFlowMath.BulkChamberThermoFromStagnationAndSpeedMagnitude"/> (P₀, T₀, |V|);
     /// radial shaping only via <see cref="RadialVortexPressureModel.ComputeShapingRelativeToBulk"/> (reduced-order dP/dr balance).
     /// Optional swirl-passage Mach cap limits ṁ before inlet suction when <paramref name="chamberFullBoreAreaM2"/> &gt; 0.
+    /// <paramref name="swirlDecayPerStepFactor"/> is unused (call-site stability); Ġ_θ uses explicit loss terms.
+    /// <paramref name="freeAnnulusAreaM2"/> when &gt; 0 enters min(capture, annulus, bore, free) for entrainment entry area.
     /// </summary>
     public FlowMarchDetailedResult SolveDetailed(
         JetState inletState,
@@ -128,6 +130,7 @@ public sealed class FlowMarcher
         double swirlMomentRadiusM = double.NaN,
         bool validateMarchStepInvariants = false,
         double chamberFullBoreAreaM2 = 0.0,
+        double freeAnnulusAreaM2 = 0.0,
         bool capEntrainmentToSwirlPassageMach = true,
         SwirlEntranceCapacityLimits? swirlPassageMachLimitsForEntrainmentCap = null,
         SwirlChamberDischargePathSpec? dischargePathSpec = null)
@@ -170,7 +173,6 @@ public sealed class FlowMarcher
         double pOld = Math.Max(current.PressurePa, 1.0);
         double tOld = Math.Max(current.TemperatureK, 1.0);
         double va = current.VelocityMps;
-        double decay = Math.Clamp(swirlDecayPerStepFactor, 0.5, 1.0);
         bool anyChoked = false;
 
         double areaFirst = Math.Max(areaFunction(dx), 1e-12);
@@ -197,6 +199,8 @@ public sealed class FlowMarcher
         double sumCorrelationEntrainmentDemandKgS = 0.0;
         double sumEntrainmentTrimmedByGovernorKgS = 0.0;
 
+        _ = swirlDecayPerStepFactor;
+
         for (int step = 1; step <= stepCount; step++)
         {
             double x = step * dx;
@@ -212,38 +216,39 @@ public sealed class FlowMarcher
                 mOld,
                 rRef);
 
-            double angularMomFluxForCe = angularMomentumFluxKgM2PerS2;
-            double axialMomFluxForCe = mOld * va;
+            double angularMomFluxDiag = angularMomentumFluxKgM2PerS2;
+            double axialMomFluxDiag = mOld * va;
             double vMagPreStep = Math.Sqrt(va * va + vtOldBulk * vtOldBulk);
             double vMagCorr = Math.Max(vMagPreStep, 1e-9);
-            double sForCe = SwirlMath.SwirlCorrelationForEntrainment(
-                angularMomFluxForCe,
-                axialMomFluxForCe,
+            double sFluxDiagnostic = SwirlMath.SwirlCorrelationForEntrainment(
+                angularMomFluxDiag,
+                axialMomFluxDiag,
                 mOld,
                 rRef,
                 vMagCorr,
                 vtOldBulk);
 
             double reApprox = SwirlChamberMarchGeometry.ChamberReynoldsApprox(vMagCorr, chamberDiameterMm);
-            double ceStep = _entrainment.ComputeCoefficient(
-                sForCe,
+            double etaMixStep = _entrainment.LumpedAxialMixingEffectiveness(
                 chamberLdRatio,
                 reApprox,
                 useReynoldsOnEntrainmentCe);
+
+            double aEffEntry = EffectiveEntrainmentEntryAreaM2(aCap, area, chamberFullBoreAreaM2, freeAnnulusAreaM2);
 
             double dmPress = EntrainmentModel.ComputeCapturePressureDrivenMassIncrement(
                 pAmbEnt,
                 rhoAmbEnt,
                 pOld,
-                aCap,
+                aEffEntry,
                 ChamberPhysicsCoefficients.CaptureEntrainmentDischargeCoefficient,
                 dx,
                 sectionLengthM,
-                ceStep,
+                etaMixStep,
                 captureStaticPressureDeficitAugmentationPa,
                 maxEntEntryMps);
             double dmShear = _entrainment.ComputeShearAugmentedMassIncrement(
-                    ceStep,
+                    etaMixStep,
                     rhoAmbEnt,
                     vMagCorr,
                     perimeter,
@@ -336,7 +341,21 @@ public sealed class FlowMarcher
 
             double vaNew = _mixing.ComputeMixedVelocity(mOld, va, dmActual, intake.EntrainmentVelocityMps);
 
-            angularMomentumFluxKgM2PerS2 *= decay;
+            double dHyd = 2.0 * Math.Max(rWallGeom, 1e-5);
+            double lBeforeStep = angularMomentumFluxKgM2PerS2;
+            ChamberMarchLossModel.AngularMomentumFluxLossesStep(
+                lBeforeStep,
+                dx,
+                dHyd,
+                dmActual,
+                mOld,
+                out double wallLossAngMom,
+                out double mixingLossAngMom,
+                out double dilutionLossAngMom);
+            double lAbs0 = Math.Abs(lBeforeStep);
+            double lAbs1 = Math.Max(lAbs0 - wallLossAngMom - mixingLossAngMom - dilutionLossAngMom, 0.0);
+            angularMomentumFluxKgM2PerS2 = lAbs0 < 1e-30 ? 0.0 : Math.Sign(lBeforeStep) * lAbs1;
+
             double vtMixed = SwirlMath.BulkTangentialVelocityFromAngularMomentumFlux(
                 angularMomentumFluxKgM2PerS2,
                 mNew,
@@ -346,10 +365,13 @@ public sealed class FlowMarcher
             double vmagMixGuess = Math.Sqrt(vaNew * vaNew + vtMixed * vtMixed);
             double qBar = 0.5 * rhoApprox * Math.Max(vmagMixGuess * vmagMixGuess, 1e-12);
             double qSwirl = 0.5 * rhoApprox * vtMixed * vtMixed;
-            double dHyd = 2.0 * Math.Max(rWallGeom, 1e-5);
             double dp0Mix = ChamberMarchLossModel.MixingTotalPressureLossPa(dmActual, mNew, qBar);
             double dp0Wall = ChamberMarchLossModel.WallTotalPressureLossPa(dx, dHyd, qBar);
-            double dp0Swirl = ChamberMarchLossModel.SwirlDecayTotalPressureLossPa(decay, qSwirl);
+            double dp0Swirl = ChamberMarchLossModel.AngularMomentumTotalPressureLossPa(
+                lBeforeStep,
+                angularMomentumFluxKgM2PerS2,
+                qSwirl);
+            double dp0StepTotal = dp0Mix + dp0Wall + dp0Swirl;
             double p0AfterLoss = p0Mix - dp0Mix - dp0Wall - dp0Swirl;
             p0AfterLoss = Math.Max(p0AfterLoss, _ambient.PressurePa + 1.0);
 
@@ -556,7 +578,12 @@ public sealed class FlowMarcher
                 AxialMomentumFluxKgM2PerS2 = axialMomFluxNew,
                 TotalPressureAfterLossesPa = p0AfterLoss,
                 ChamberSwirlBulkRatio = chamberBulk,
-                EntrainmentSwirlCorrelation = sForCe,
+                EntrainmentSwirlCorrelation = sFluxDiagnostic,
+                EffectiveEntrainmentEntryAreaM2 = aEffEntry,
+                AngularMomentumWallLossKgM2PerS2 = wallLossAngMom,
+                AngularMomentumMixingLossKgM2PerS2 = mixingLossAngMom,
+                AngularMomentumEntrainmentDilutionLossKgM2PerS2 = dilutionLossAngMom,
+                TotalPressureLossStepPa = dp0StepTotal,
                 StepBulkPressureValid = stepBulkValid,
                 CorePressurePa = pCore,
                 WallPressurePa = pWall,
@@ -615,7 +642,7 @@ public sealed class FlowMarcher
                 PressureForceN = dFN,
                 DuctEffectiveAreaM2 = area,
                 CaptureAreaM2 = aCap,
-                EntrainmentCeEffective = ceStep
+                EntrainmentMixingEffectivenessUsed = etaMixStep
             });
 
             states.Add(next);
@@ -669,5 +696,21 @@ public sealed class FlowMarcher
             AppliedDischargePathSpec = dischargePathSpec,
             FinalChamberDischargeSplit = finalSplit
         };
+    }
+
+    /// <summary>Pressure-driven entrainment bottleneck: min of positive geometric areas supplied.</summary>
+    private static double EffectiveEntrainmentEntryAreaM2(
+        double captureAreaM2,
+        double mixedAnnulusAreaM2,
+        double chamberFullBoreAreaM2,
+        double freeAnnulusAreaM2)
+    {
+        double a = Math.Max(captureAreaM2, 1e-18);
+        a = Math.Min(a, Math.Max(mixedAnnulusAreaM2, 1e-18));
+        if (chamberFullBoreAreaM2 > 1e-18)
+            a = Math.Min(a, chamberFullBoreAreaM2);
+        if (freeAnnulusAreaM2 > 1e-18)
+            a = Math.Min(a, freeAnnulusAreaM2);
+        return Math.Max(a, 1e-18);
     }
 }

@@ -271,13 +271,13 @@ internal static class ResultReporter
         StatorLossResult st = ch.StatorLoss;
         EjectorRegimeResult ej = ch.EjectorRegime;
 
-        Library.Log("--- Vortex structure and pressure field (reduced-order correlation model, not CFD) ---");
+        Library.Log("--- Vortex structure and pressure field (reduced-order structure model, not CFD) ---");
         Library.Log("Interpretation: " + ch.InterpretationSummary);
         Library.Log($"Swirl number |Vt|/|V| [-]:       {vs.InjectorSwirlNumberSimple:F3} (injector diagnostic)");
         Library.Log($"Flux-style swirl S_flux ≈ K·S [-]: {vs.SwirlNumberFluxStyle:F3} (K={vs.FluxGeometryFactorKUsed:F2}, uniform profile assumption)");
         Library.Log($"Vortex classification:         {vs.ClassificationLabel}");
         Library.Log($"Breakdown risk score [-]:      {vs.BreakdownRiskScore:F3}");
-        Library.Log($"Composite vortex quality [-]:  {vs.CompositeVortexQuality:F3} (structure model)");
+        Library.Log($"Structure composite score [-]: {vs.CompositeVortexQuality:F3} (regime / radial / decay blend)");
         Library.Log($"Tuning composite quality [-]:   {ch.TuningCompositeQuality:F3} (autotune scalar)");
         Library.Log("--- Radial vortex pressure (mixed forced core + free outer) ---");
         Library.Log($"Core radius estimate [m]:      {rp.CoreRadiusM:F5}  Chamber R [m]: {rp.ChamberRadiusM:F5}");
@@ -423,7 +423,7 @@ internal static class ResultReporter
             Library.Log(
                 $"Per-step A_eff [m2] (first/mid/last): {first.DuctEffectiveAreaM2:E4} / {mid.DuctEffectiveAreaM2:E4} / {last.DuctEffectiveAreaM2:E4}");
             Library.Log(
-                $"Per-step Ce (first/mid/last): {first.EntrainmentCeEffective:F4} / {mid.EntrainmentCeEffective:F4} / {last.EntrainmentCeEffective:F4}");
+                $"Per-step entrainment η_mix (first/mid/last): {first.EntrainmentMixingEffectivenessUsed:F4} / {mid.EntrainmentMixingEffectivenessUsed:F4} / {last.EntrainmentMixingEffectivenessUsed:F4}");
         }
 
         if (m.SwirlEntranceCapacityStations != null)
@@ -542,7 +542,7 @@ internal static class ResultReporter
         Library.Log($"Wall pressure rise [Pa]:      {vx.WallPressureRisePa:F1}");
         Library.Log($"Swirl decay fraction [-]:      {vx.SwirlDecayFractionAlongChamber:F3}");
         Library.Log($"Remaining swirl at stator [-]: {vx.RemainingSwirlFractionAtStator:F3}");
-        Library.Log($"Vortex quality metric [-]:     {vx.VortexQualityMetric:F3}");
+        Library.Log($"Chamber tuning composite [-]:  {vx.VortexQualityMetric:F3} (maps to autotune scalar)");
         Library.Log($"  buckets E/R/R/D: {vx.FractionSwirlForEntrainment:F3} / {vx.FractionSwirlRemainingAtStator:F3} / {vx.FractionSwirlToAxialRecovery:F3} / {vx.FractionSwirlDissipated:F3}");
     }
 
@@ -556,7 +556,8 @@ internal static class ResultReporter
         Library.Log("- Legacy NozzlePhysicsSolver: separate bounded entrainment and loss fractions (reference only when that path runs).");
         Library.Log("- Mixed velocity: axial momentum dilution × (1 - loss_total), then optional numeric floor.");
         Library.Log("- Expansion / stator / inlet suction in legacy solved state: reduced-order correlations (see NozzleSolvedState when not SI-driven).");
-        Library.Log("- Chamber swirl decay: k_total = k_wall + k_mix + k_entrain + k_instability; per-step factor = exp(-k_total·Δx/D).");
+        Library.Log("- Chamber swirl budget audit: k_total = k_wall + k_mix + k_entrain + k_instability; per-step factor = exp(-k_total·Δx/D) for primary-stream bookkeeping.");
+        Library.Log("- Live SI march: Ġ_θ updated with explicit wall / mixing / entrainment-dilution losses; statics from P₀ mixing + named Δp₀ terms.");
         Library.Log("- Radial static structure: mixed forced-core + free-outer Vt(r), integrated as dP/dr≈ρVt²/r with bulk-relative clamps (RadialVortexPressureModel).");
         Library.Log("- Diffuser: approximate Cp vs angle, L/D, area ratio; swirl aids or hurts separation in SwirlDiffuserRecoveryModel.");
         Library.Log("- Yaw/pitch/roll: see SwirlMath; roll ignored for axisymmetric injector decomposition.");

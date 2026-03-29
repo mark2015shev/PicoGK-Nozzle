@@ -66,13 +66,21 @@ public static class ChamberPhysicsCoefficients
     /// <summary>Cap on Δp_core passed into entrainment boost [Pa] (avoid over-pull).</summary>
     public static double CouplingInletCorePressureUseCapPa { get; set; } = 35_000.0;
 
-    // --- Entrainment Ce(S, L/D, Re) multipliers (EntrainmentModel) ---
-    public static double EntrainmentSwirlGainS0 { get; set; } = 0.35;
-    public static double EntrainmentSwirlGainK { get; set; } = 0.40;
+    // --- Entrainment: lumped axial mixing effectiveness η_mix(L/D, Re) only (pressure deficit is primary driver) ---
     public static double EntrainmentLdRef { get; set; } = 2.5;
     public static double EntrainmentLdGain { get; set; } = 0.15;
     public static double EntrainmentReRef { get; set; } = 50_000.0;
     public static double EntrainmentReGain { get; set; } = 0.08;
+
+    // --- Angular-momentum march (Ġ_θ = ṁ r V_θ): explicit lumped loss terms per axial step [kg·m²/s²] ---
+    /// <summary>Wall / friction-like loss ∝ (Δx/D_h)·|Ġ_θ| (reduced-order).</summary>
+    public static double AngularMomentumWallLossPerDxOverD { get; set; } = 0.14;
+
+    /// <summary>Mixing irreversibility ∝ (Δṁ/ṁ_old)·|Ġ_θ| when secondary joins the mixed stream.</summary>
+    public static double AngularMomentumMixingLossPerDeltaMOverM { get; set; } = 0.055;
+
+    /// <summary>Organized-swirl erosion when entrained mass carries ~0 tangential momentum (lumped dilution).</summary>
+    public static double AngularMomentumEntrainmentDilutionPerDeltaMOverM { get; set; } = 0.048;
 
     /// <summary>Upper clamp (legacy) on multiplicative entrainment scaling — march now uses capture pressure deficit [Pa].</summary>
     public static double EntrainmentMassDemandBoostClampMax { get; set; } = 4.0;
@@ -92,7 +100,7 @@ public static class ChamberPhysicsCoefficients
     /// <summary>Wall / wetted-duct loss ∝ (Δx/D_h)·q̄ on P₀ [-].</summary>
     public static double MarchWallDp0OverDynamicHeadPerDxOverD { get; set; } = 0.18;
 
-    /// <summary>Swirl-decay irreversibility ∝ (1−decay)·q_θ on P₀ [-].</summary>
+    /// <summary>Angular-momentum P₀ loss ∝ (fractional |Ġ_θ| loss this step)·q_θ on P₀ [-].</summary>
     public static double MarchSwirlDecayDp0OverSwirlDynamicHead { get; set; } = 0.22;
 
     /// <summary>

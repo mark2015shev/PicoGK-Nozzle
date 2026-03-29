@@ -12,7 +12,7 @@ public sealed class FlowMarchStepResult
     public double MixedVelocityMps { get; init; }
     public double PrimaryMassFlowKgS { get; init; }
     public double EntrainedMassFlowKgS { get; init; }
-    /// <summary>Requested entrainment increment this step (correlation) [kg/s].</summary>
+    /// <summary>Requested entrainment increment this step (pressure-driven demand) [kg/s].</summary>
     public double RequestedDeltaEntrainedMassFlowKgS { get; init; }
     /// <summary>Actual entrainment increment after compressible intake limit [kg/s].</summary>
     public double DeltaEntrainedMassFlowKgS { get; init; }
@@ -33,6 +33,6 @@ public sealed class FlowMarchStepResult
     /// <summary>Compressible intake capture area (constant along chamber march) [m²].</summary>
     public double CaptureAreaM2 { get; init; }
 
-    /// <summary>Entrainment coefficient Ce used this step (includes swirl/LD/Re factors).</summary>
-    public double EntrainmentCeEffective { get; init; }
+    /// <summary>Lumped axial mixing effectiveness η_mix used this step (L/D, Re; not a Ce coefficient).</summary>
+    public double EntrainmentMixingEffectivenessUsed { get; init; }
 }

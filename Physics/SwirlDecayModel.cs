@@ -93,7 +93,7 @@ public static class SwirlDecayModel
         double dissMetric = Math.Max(0.0, Math.Abs(vtInjected) - Math.Abs(vtMixedPreStator));
 
         string notes =
-            "Vt_primary decays per step; mixed Vt includes dilution. Entrainment metric is heuristic coupling, not CFD." +
+            "Vt_primary decays per step (budget audit); mixed Vt includes dilution. Entrainment coupling here is a lumped first-order estimate, not CFD." +
             (string.IsNullOrEmpty(extraNote) ? "" : " " + extraNote);
 
         return new SwirlBudgetResult

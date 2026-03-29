@@ -59,7 +59,7 @@ public sealed class RunConfiguration
     /// <summary>Objective weight for F_net / F_source-only (with soft floor near 0.88×).</summary>
     public double AutotuneWeightThrust { get; init; } = 0.34;
 
-    /// <summary>Objective weight for controlled-vortex quality (moderate swirl, stable regime, recovery) — not axial-ejector bias.</summary>
+    /// <summary>Objective weight for controlled-vortex regime score (moderate swirl, stable regime, recovery) — not axial-ejector bias.</summary>
     public double AutotuneWeightVortexQuality { get; init; } = 0.18;
 
     /// <summary>Weight for useful radial pressure structure (core drop + wall rise), normalized vs baseline.</summary>

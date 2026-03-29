@@ -38,8 +38,18 @@ public sealed class FlowStepState
     /// <summary>|Vt|/max(|Va|, <see cref="ChamberAerodynamicsConfiguration.VaFloorForBulkSwirlMps"/>).</summary>
     public double ChamberSwirlBulkRatio { get; init; }
 
-    /// <summary>Swirl metric passed to entrainment Ce correlation this step (bounded).</summary>
+    /// <summary>Flux swirl number S at step start (diagnostic only; entrainment scaling uses η_mix(L/D, Re)).</summary>
     public double EntrainmentSwirlCorrelation { get; init; }
+
+    /// <summary>min(capture, mixed annulus, bore, free annulus) used for pressure-driven entrainment this step [m²].</summary>
+    public double EffectiveEntrainmentEntryAreaM2 { get; init; }
+
+    public double AngularMomentumWallLossKgM2PerS2 { get; init; }
+    public double AngularMomentumMixingLossKgM2PerS2 { get; init; }
+    public double AngularMomentumEntrainmentDilutionLossKgM2PerS2 { get; init; }
+
+    /// <summary>ΔP₀ mixing + wall + angular-momentum this step [Pa].</summary>
+    public double TotalPressureLossStepPa { get; init; }
 
     /// <summary>False if bulk static/total ordering or finiteness checks failed for this step.</summary>
     public bool StepBulkPressureValid { get; init; } = true;

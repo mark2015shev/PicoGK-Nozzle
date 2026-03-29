@@ -11,7 +11,7 @@ public sealed class MarchClosureResult
     /// <summary>Last step |Vt|/max(|Va|, Va_floor).</summary>
     public double FinalChamberSwirlBulk { get; init; }
 
-    /// <summary>Last step entrainment correlation input (bounded).</summary>
+    /// <summary>Last step flux swirl number S (diagnostic; not used to scale entrainment).</summary>
     public double FinalEntrainmentSwirlCorrelation { get; init; }
 
     public double FinalContinuityResidualRelative { get; init; }

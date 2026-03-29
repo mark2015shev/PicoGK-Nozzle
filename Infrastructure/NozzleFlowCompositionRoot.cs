@@ -588,6 +588,7 @@ public static class NozzleFlowCompositionRoot
             rSwirlMomM,
             run.ValidateMarchStepInvariants,
             aChamberBoreMm2 * 1e-6,
+            aFreeChamberMm2 * 1e-6,
             dischargeSpec);
 
         IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
@@ -1060,6 +1061,7 @@ public static class NozzleFlowCompositionRoot
         double swirlMomentRadiusM,
         bool validateMarchStepInvariants,
         double chamberFullBoreAreaM2,
+        double freeAnnulusAreaM2,
         SwirlChamberDischargePathSpec? dischargePathSpec) =>
         marcher.SolveDetailed(
             inletState,
@@ -1077,6 +1079,7 @@ public static class NozzleFlowCompositionRoot
             swirlMomentRadiusM,
             validateMarchStepInvariants,
             chamberFullBoreAreaM2,
+            freeAnnulusAreaM2,
             capEntrainmentToSwirlPassageMach: true,
             swirlPassageMachLimitsForEntrainmentCap: null,
             dischargePathSpec);
@@ -1149,7 +1152,7 @@ public static class NozzleFlowCompositionRoot
         double aExitMm2 = SwirlChamberMarchGeometry.ExitInnerAreaMm2(d.ExitDiameterMm);
         double aCh = Math.Max(aChamberBoreMm2, 1e-9);
         double ceFirst = detailed.StepResults.Count > 0
-            ? detailed.StepResults[0].EntrainmentCeEffective
+            ? detailed.StepResults[0].EntrainmentMixingEffectivenessUsed
             : em.Coefficient;
         var warnings = new List<string>();
         if (aInjMm2 / aCh > 0.9)

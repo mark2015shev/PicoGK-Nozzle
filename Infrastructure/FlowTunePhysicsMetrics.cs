@@ -6,6 +6,7 @@ namespace PicoGK_Run.Infrastructure;
 /// <summary>Scalar physics metrics for autotune (same SI path as full run).</summary>
 public sealed class FlowTunePhysicsMetrics
 {
+    /// <summary>Chamber autotune scalar (same as <c>TuningCompositeQuality</c> on first-order physics; legacy property name).</summary>
     public double VortexQualityComposite { get; init; }
     public double RadialPressureUsefulNorm { get; init; }
     public double RecoverableSwirlAtStatorNorm { get; init; }

@@ -4,7 +4,7 @@ namespace PicoGK_Run.Physics;
 
 /// <summary>
 /// Injector direction decomposition and swirl metrics.
-/// Chamber entrainment / decay use <see cref="SwirlCorrelationForEntrainment"/> (bounded); flux S when |Va| is significant.
+/// <see cref="SwirlCorrelationForEntrainment"/> is a bounded flux swirl number for diagnostics; entrainment scaling uses η_mix(L/D, Re) only.
 /// Injector directive <see cref="InjectorSwirlDirective"/> = |Vt|/|V| replaces explosive |Vt|/|Va| for 90° jets.
 /// </summary>
 public static class SwirlMath
