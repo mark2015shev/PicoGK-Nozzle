@@ -60,4 +60,10 @@ public sealed class FlowStepState
 
     public FlowStepUpdate StepUpdate { get; init; }
     public CompressibleState Compressible { get; init; }
+
+    /// <summary>
+    /// Quasi-steady upstream vs downstream escape split at this bulk state (finite control-volume narrative).
+    /// Null when dual-path discharge is disabled for the march.
+    /// </summary>
+    public SwirlChamberDualPathDischargeResult? DualPathDischarge { get; init; }
 }

@@ -230,7 +230,7 @@ internal sealed class AppPipeline
         bool pitch = Math.Abs(tuned.InjectorPitchAngleDeg - baseline.InjectorPitchAngleDeg) > 0.05;
         bool any = inlet || chD || chL || exit || exL || exA || st || ax || yaw || pitch;
 
-        Console.WriteLine("[Autotune] Geometry delta vs hand template: " + (any ? "YES (at least one knob changed)" : "NO — winner matches template within tolerance"));
+        ConsoleStatusWriter.WriteLine("[Autotune] Geometry delta vs hand template: " + (any ? "YES (at least one knob changed)" : "NO — winner matches template within tolerance"), StatusLevel.Normal);
         if (!any)
             ConsoleReportColor.WriteWarning(
                 "[Autotune] WARNING: widen search bounds or increase trials if you expected visible geometry changes.");

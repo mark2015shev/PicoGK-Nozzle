@@ -9,49 +9,40 @@ namespace PicoGK_Run.Infrastructure;
 /// </summary>
 public static class ConsoleStatusWriter
 {
+    /// <summary>Default foreground for non-status text (bright white on typical Windows consoles).</summary>
+    private const ConsoleColor NormalForeground = ConsoleColor.White;
+
+    /// <summary>Call once at startup so the first lines are white before any status color runs.</summary>
+    public static void PrimeConsoleForStatusOutput() => Console.ForegroundColor = NormalForeground;
+
     /// <summary>Reset console colors to defaults (call once at process exit as a safety net).</summary>
     public static void SafetyResetConsoleColors() => Console.ResetColor();
 
-    private static ConsoleColor Map(StatusLevel level) => level switch
+    private static ConsoleColor MapStatus(StatusLevel level) => level switch
     {
         StatusLevel.Pass => ConsoleColor.Green,
         StatusLevel.Warning => ConsoleColor.Yellow,
         StatusLevel.Error => ConsoleColor.Red,
-        _ => Console.ForegroundColor
+        StatusLevel.Normal => NormalForeground,
+        _ => NormalForeground
     };
 
-    private static void SaveColors(out ConsoleColor fg, out ConsoleColor bg)
-    {
-        fg = Console.ForegroundColor;
-        bg = Console.BackgroundColor;
-    }
-
-    private static void RestoreColors(ConsoleColor fg, ConsoleColor bg)
-    {
-        Console.ForegroundColor = fg;
-        Console.BackgroundColor = bg;
-    }
-
+    /// <summary>Writes text then leaves foreground white so later output does not inherit status colors.</summary>
     public static void Write(string text, StatusLevel level)
     {
         if (string.IsNullOrEmpty(text))
             return;
 
-        if (level == StatusLevel.Normal)
-        {
-            Console.Write(text);
-            return;
-        }
-
-        SaveColors(out ConsoleColor pf, out ConsoleColor pb);
+        ConsoleColor pb = Console.BackgroundColor;
         try
         {
-            Console.ForegroundColor = Map(level);
+            Console.ForegroundColor = MapStatus(level);
             Console.Write(text);
         }
         finally
         {
-            RestoreColors(pf, pb);
+            Console.ForegroundColor = NormalForeground;
+            Console.BackgroundColor = pb;
         }
     }
 
@@ -59,7 +50,18 @@ public static class ConsoleStatusWriter
     {
         if (level == StatusLevel.Normal)
         {
-            Console.WriteLine(text ?? string.Empty);
+            ConsoleColor pb = Console.BackgroundColor;
+            try
+            {
+                Console.ForegroundColor = NormalForeground;
+                Console.WriteLine(text ?? string.Empty);
+            }
+            finally
+            {
+                Console.ForegroundColor = NormalForeground;
+                Console.BackgroundColor = pb;
+            }
+
             return;
         }
 
@@ -67,7 +69,17 @@ public static class ConsoleStatusWriter
             return;
 
         Write(text ?? string.Empty, level);
-        Console.WriteLine();
+        ConsoleColor pb2 = Console.BackgroundColor;
+        try
+        {
+            Console.ForegroundColor = NormalForeground;
+            Console.WriteLine();
+        }
+        finally
+        {
+            Console.ForegroundColor = NormalForeground;
+            Console.BackgroundColor = pb2;
+        }
     }
 
     public static void WriteLabeledLine(string label, string text, StatusLevel labelLevel)
@@ -97,7 +109,18 @@ public static class ConsoleStatusWriter
         Write(prefix, StatusLevel.Normal);
         Write(sep, StatusLevel.Normal);
         Write(tok, tokLevel);
-        Console.WriteLine();
+        ConsoleColor pb = Console.BackgroundColor;
+        try
+        {
+            Console.ForegroundColor = NormalForeground;
+            Console.WriteLine();
+        }
+        finally
+        {
+            Console.ForegroundColor = NormalForeground;
+            Console.BackgroundColor = pb;
+        }
+
         return true;
     }
 
@@ -135,7 +158,18 @@ public static class ConsoleStatusWriter
     {
         if (string.IsNullOrEmpty(line))
         {
-            Console.WriteLine();
+            ConsoleColor pb = Console.BackgroundColor;
+            try
+            {
+                Console.ForegroundColor = NormalForeground;
+                Console.WriteLine();
+            }
+            finally
+            {
+                Console.ForegroundColor = NormalForeground;
+                Console.BackgroundColor = pb;
+            }
+
             return;
         }
 
@@ -320,7 +354,7 @@ public static class ConsoleStatusWriter
         if (s != StatusLevel.Normal)
             WriteClassifiedLine(line);
         else
-            Console.WriteLine(line);
+            WriteLine(line, StatusLevel.Normal);
     }
 
     public static void WriteLineToConsoleWithOptionalLibrary(Action<string>? libraryLog, string line)

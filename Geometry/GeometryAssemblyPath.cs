@@ -39,6 +39,9 @@ public sealed class GeometryAssemblyPath
 
     public bool UsesPostStatorExitTaper { get; init; }
 
+    /// <summary>Swirl segment length used for stations (matches <see cref="SwirlChamberBuilder.EffectiveLengthMm"/>).</summary>
+    public double SwirlChamberEffectiveLengthMm { get; init; }
+
     public static GeometryAssemblyPath Compute(NozzleDesignInputs d, RunConfiguration? run = null)
     {
         DownstreamGeometryTargets t = DownstreamGeometryResolver.Resolve(d, run);
@@ -46,7 +49,7 @@ public sealed class GeometryAssemblyPath
         double wall = Math.Max(d.WallThicknessMm, 0.0);
         double inletD = Math.Max(d.InletDiameterMm, 1.0);
         double chamberD = Math.Max(d.SwirlChamberDiameterMm, 1.0);
-        double chamberLen = Math.Max(d.SwirlChamberLengthMm, 1.0);
+        double chamberLen = SwirlChamberBuilder.EffectiveLengthMm(d, run);
         double refD = Math.Max(inletD, chamberD);
         double lipLen = Math.Max(4.0, 0.08 * refD);
         double flareLen = Math.Max(14.0, 0.30 * refD);
@@ -59,10 +62,23 @@ public sealed class GeometryAssemblyPath
         double xFlareEnd = xLipEnd + flareLen;
         double xAfterInlet = xFlareEnd;
 
-        double xSwirlStart = xAfterInlet - overlap;
-        double xAfterSwirl = xSwirlStart + chamberLen;
+        double baseSwirl = xAfterInlet - overlap;
+        double anchorLen = run?.SwirlChamberLengthDownstreamAnchorMm ?? 0.0;
+        double xSwirlStart;
+        double xAfterSwirl;
+        if (anchorLen > 0.0)
+        {
+            xAfterSwirl = baseSwirl + anchorLen;
+            xSwirlStart = xAfterSwirl - chamberLen;
+        }
+        else
+        {
+            xSwirlStart = baseSwirl;
+            xAfterSwirl = baseSwirl + chamberLen;
+        }
+
         double ratio = Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
-        double xInjectorPlane = xAfterInlet + ratio * chamberLen;
+        double xInjectorPlane = xSwirlStart + ratio * chamberLen;
 
         double xExpStart = xAfterSwirl - overlap;
         double expLen = t.EffectiveExpanderLengthMm;
@@ -107,7 +123,8 @@ public sealed class GeometryAssemblyPath
             ExitInnerRadiusStartMm = rExit0,
             ExitInnerRadiusEndMm = rExit1,
             ExitSectionLengthMm = exitLen,
-            UsesPostStatorExitTaper = t.UsesPostStatorExitTaper
+            UsesPostStatorExitTaper = t.UsesPostStatorExitTaper,
+            SwirlChamberEffectiveLengthMm = chamberLen
         };
     }
 }

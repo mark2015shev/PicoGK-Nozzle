@@ -38,7 +38,7 @@ public static class ConsoleReportColor
         if (ConsoleStatusWriter.ClassifyReportingLine(line) != StatusLevel.Normal)
             ConsoleStatusWriter.WriteClassifiedLine(line);
         else
-            Console.WriteLine(line);
+            ConsoleStatusWriter.WriteLine(line, StatusLevel.Normal);
     }
 
     public static void WriteLineToConsoleWithOptionalLibrary(Action<string>? libraryLog, string line) =>

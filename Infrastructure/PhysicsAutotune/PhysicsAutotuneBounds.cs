@@ -24,8 +24,9 @@ public static class PhysicsAutotuneBounds
     public const double ExitDiameterMinMm = 70.0;
     public const double ExitDiameterMaxMm = 170.0;
 
-    public const double InjectorAxialPositionRatioMin = 0.35;
-    public const double InjectorAxialPositionRatioMax = 0.92;
+    /// <summary>Locked to downstream (expander-side) injection with legacy random autotune.</summary>
+    public const double InjectorAxialPositionRatioMin = 1.0;
+    public const double InjectorAxialPositionRatioMax = 1.0;
 
     public const double StatorHubDiameterMinMm = 12.0;
     public const double StatorHubDiameterMaxMm = 52.0;

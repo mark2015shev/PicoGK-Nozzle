@@ -127,7 +127,8 @@ public sealed class FlowMarcher
         bool validateMarchStepInvariants = false,
         double chamberFullBoreAreaM2 = 0.0,
         bool capEntrainmentToSwirlPassageMach = true,
-        SwirlEntranceCapacityLimits? swirlPassageMachLimitsForEntrainmentCap = null)
+        SwirlEntranceCapacityLimits? swirlPassageMachLimitsForEntrainmentCap = null,
+        SwirlChamberDischargePathSpec? dischargePathSpec = null)
     {
         if (sectionLengthM <= 0 || stepCount < 1)
         {
@@ -145,7 +146,9 @@ public sealed class FlowMarcher
                 SumCorrelationEntrainmentDemandKgS = 0.0,
                 SumEntrainmentMassTrimmedByPassageGovernorKgS = 0.0,
                 EntrainmentGovernorMachMaxUsed =
-                    (swirlPassageMachLimitsForEntrainmentCap ?? SwirlEntranceCapacityLimits.Default).EntrainmentGovernorMachMax
+                    (swirlPassageMachLimitsForEntrainmentCap ?? SwirlEntranceCapacityLimits.Default).EntrainmentGovernorMachMax,
+                AppliedDischargePathSpec = null,
+                FinalChamberDischargeSplit = null
             };
         }
 
@@ -500,6 +503,19 @@ public sealed class FlowMarcher
                 passageMdotCeil,
                 cappedBySwirlPassage);
 
+            SwirlChamberDualPathDischargeResult? dualPath = null;
+            if (dischargePathSpec is { } dps)
+            {
+                dualPath = SwirlChamberDualPathDischargeModel.Compute(
+                    pNew,
+                    rhoNew,
+                    primaryMdot,
+                    entrainedTotal,
+                    vaFinal,
+                    vtMixed,
+                    dps);
+            }
+
             var stepPhysics = new FlowStepState
             {
                 X = x,
@@ -534,7 +550,8 @@ public sealed class FlowMarcher
                 RadialShapingInvariantNote = radial.ShapingInvariantNote,
                 ContinuityResidualRelative = contRes,
                 StepUpdate = stepUpdate,
-                Compressible = comp
+                Compressible = comp,
+                DualPathDischarge = dualPath
             };
             physicsSteps.Add(stepPhysics);
             if (invariantSink != null)
@@ -614,6 +631,8 @@ public sealed class FlowMarcher
                 EntrainmentStepsLimitedBySwirlPassageCapacity = entrainmentPassageCapSteps
             };
 
+        SwirlChamberDualPathDischargeResult? finalSplit = physicsSteps.Count > 0 ? physicsSteps[^1].DualPathDischarge : null;
+
         return new FlowMarchDetailedResult
         {
             FlowStates = states,
@@ -630,7 +649,9 @@ public sealed class FlowMarcher
             EntrainmentStepsLimitedBySwirlPassageCapacity = entrainmentPassageCapSteps,
             SumCorrelationEntrainmentDemandKgS = sumCorrelationEntrainmentDemandKgS,
             SumEntrainmentMassTrimmedByPassageGovernorKgS = sumEntrainmentTrimmedByGovernorKgS,
-            EntrainmentGovernorMachMaxUsed = passageLim.EntrainmentGovernorMachMax
+            EntrainmentGovernorMachMaxUsed = passageLim.EntrainmentGovernorMachMax,
+            AppliedDischargePathSpec = dischargePathSpec,
+            FinalChamberDischargeSplit = finalSplit
         };
     }
 }

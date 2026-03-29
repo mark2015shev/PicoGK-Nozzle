@@ -34,4 +34,7 @@ public sealed class SwirlChamberMarchDiagnostics
     public IReadOnlyList<string> RadialShapingReportLines { get; init; } = System.Array.Empty<string>();
 
     public IReadOnlyList<string> ValidationWarnings { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>Last-station quasi-steady inlet vs expander escape split (bulk P from march).</summary>
+    public SwirlChamberDualPathDischargeResult? ChamberDischargeSplit { get; init; }
 }

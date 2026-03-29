@@ -1,14 +1,25 @@
+using System;
 using System.Numerics;
 using PicoGK;
 using PicoGK_Run.Parameters;
+using PicoGK_Run.Physics;
 
 namespace PicoGK_Run.Geometry;
 
 public static class SwirlChamberBuilder
 {
-    public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd)
+    /// <summary>Axial swirl segment length [mm] used for voxels and <see cref="GeometryAssemblyPath"/> (includes rule-of-six floor when enabled).</summary>
+    public static double EffectiveLengthMm(NozzleDesignInputs d, RunConfiguration? run = null)
     {
-        float length = (float)d.SwirlChamberLengthMm;
+        double lenMm = Math.Max(d.SwirlChamberLengthMm, 1.0);
+        if (run?.EnforceEjectorMixingRuleOfSix == true)
+            lenMm = Math.Max(lenMm, VortexEntrainmentPhysics.MixingLengthMinimumMmRuleOfSix(d));
+        return lenMm;
+    }
+
+    public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd, RunConfiguration? run = null)
+    {
+        float length = (float)EffectiveLengthMm(d, run);
         float rInner = 0.5f * (float)d.SwirlChamberDiameterMm;
         float wallThicknessMm = (float)d.WallThicknessMm;
         float rOuter = rInner + wallThicknessMm;

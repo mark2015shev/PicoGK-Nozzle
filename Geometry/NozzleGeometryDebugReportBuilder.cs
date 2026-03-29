@@ -27,7 +27,7 @@ public static class NozzleGeometryDebugReportBuilder
 
         double wall = path.WallMm;
         double chamberD = Math.Max(d.SwirlChamberDiameterMm, 1.0);
-        double chamberLen = Math.Max(d.SwirlChamberLengthMm, 1.0);
+        double chamberLen = path.SwirlChamberEffectiveLengthMm;
         double chamberInnerR = path.ChamberInnerRadiusMm;
         double entranceInnerR = path.EntranceInnerRadiusMm;
 
@@ -62,13 +62,17 @@ public static class NozzleGeometryDebugReportBuilder
         // --- Swirl chamber voxel ---
         double xSwirlStart = path.XSwirlStart;
         double xAfterSwirl = path.XAfterSwirl;
+        double anchorMm = run?.SwirlChamberLengthDownstreamAnchorMm ?? 0.0;
+        string swirlAssemblyNote = anchorMm > 0.0
+            ? $"Downstream face fixed at inlet end − overlap + {anchorMm:F2} mm; axial length changes move the upstream face toward the inlet (L_eff={chamberLen:F2} mm)."
+            : $"Upstream face at inlet end − assembly overlap ({overlap:F2} mm); segment length L_eff={chamberLen:F2} mm.";
         segments.Add(MkSeg(
             "Swirl chamber",
             xSwirlStart, xAfterSwirl,
             chamberInnerR, chamberInnerR,
             wall,
             null,
-            $"Voxel start = inlet end − assembly overlap ({overlap:F2} mm) for watertight union."));
+            swirlAssemblyNote));
 
         double ratio = Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
         double xInjectorPlane = path.XInjectorPlane;
@@ -86,7 +90,7 @@ public static class NozzleGeometryDebugReportBuilder
             chamberInnerR, chamberInnerR,
             wall,
             null,
-            $"X = nominal chamber inlet plane (x={xAfterInlet:F3} mm) + ratio×L_ch = {ratio:F4}×{chamberLen:F2} mm."));
+            $"X = swirl segment start (x={path.XSwirlStart:F3} mm) + ratio×L_eff = {ratio:F4}×{chamberLen:F2} mm."));
 
         if (Math.Abs(xInjectorPlane - xSwirlStart) < overlap + 0.01 || Math.Abs(xInjectorPlane - xAfterSwirl) < overlap + 0.01)
             warnings.Add("Injector reference plane lies near a swirl overlap boundary — viewer overlap can visually shift markers vs chamber bore.");

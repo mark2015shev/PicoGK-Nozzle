@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using PicoGK_Run.Core;
 using PicoGK_Run.Parameters;
 
@@ -24,7 +25,8 @@ public static class NozzleGeometrySynthesis
     /// <summary>Design plus audit of how chamber diameter was chosen.</summary>
     public readonly record struct GeometrySynthesisResult(
         NozzleDesignInputs Design,
-        SwirlChamberSizingModel.SizingDiagnostics ChamberSizing);
+        SwirlChamberSizingModel.SizingDiagnostics ChamberSizing,
+        IReadOnlyList<string>? VortexEntrainmentHints = null);
 
     /// <summary>
     /// Overwrites template fields that should follow physics; keeps injector count, wall thickness, roll, slot aspect when sensible.
@@ -45,6 +47,7 @@ public static class NozzleGeometrySynthesis
     {
         targetEntrainmentRatio = Math.Clamp(targetEntrainmentRatio, 0.05, 1.2);
         RunConfiguration runEff = run ?? new RunConfiguration();
+        List<string> vortexHints = new();
 
         double aSourceMm2 = Math.Max(source.SourceOutletAreaMm2, 1.0);
         double dJetMm = 2.0 * Math.Sqrt(aSourceMm2 / Math.PI);
@@ -89,6 +92,22 @@ public static class NozzleGeometrySynthesis
             double ld1 = lChamberMm / Math.Max(dChamberMm, 1e-6);
             if (ld1 > runEff.DerivedChamberTargetMaxLd)
                 lChamberMm = Math.Max(28.0, dChamberMm * runEff.DerivedChamberTargetMaxLd);
+        }
+
+        // --- Ejector Rule of 6: mixing length ≥ 6× primary jet equivalent diameter (tangential → axial turnover).
+        if (runEff.EnforceEjectorMixingRuleOfSix)
+        {
+            double lMinRo6 = VortexEntrainmentPhysics.MixingLengthMinimumMmRuleOfSix(totalInjArea);
+            if (lChamberMm + 1e-6 < lMinRo6)
+            {
+                double lPrev = lChamberMm;
+                lChamberMm = Math.Min(lenCap, Math.Max(lChamberMm, lMinRo6));
+                if (Math.Abs(lChamberMm - lPrev) > 0.5)
+                {
+                    vortexHints.Add(
+                        $"VORTEX ENTRAINMENT: Rule-of-6 — SwirlChamberLengthMm {lPrev:F1} → {lChamberMm:F1} mm (≥ 6× injector equivalent ⌀ {lMinRo6 / VortexEntrainmentPhysics.EjectorMixingLengthToJetDiameterRatio:F1} mm).");
+                }
+            }
         }
 
         // --- Inlet: capture openness σ = (D_in/D_ch)² ; favor σ > 1 for ambient mouth ≥ bore (bellmouth rule in geometry).
@@ -161,6 +180,23 @@ public static class NozzleGeometrySynthesis
             WallThicknessMm = template.WallThicknessMm
         };
 
-        return new GeometrySynthesisResult(design, sizingDiag);
+        double throatAM2 = Math.PI * Math.Pow(0.5e-3 * dChamberMm, 2);
+        double exitAM2 = Math.PI * Math.Pow(0.5e-3 * dExitMm, 2);
+        double erAreaModel = VortexEntrainmentPhysics.CalculateEntrainmentRatio(throatAM2, exitAM2, halfRad);
+        vortexHints.Add(
+            $"VORTEX ENTRAINMENT: Jet-area ER estimate = {erAreaModel:F3} (k·sin(θ)·√(A_ex/A_th), θ = expander half-angle); target ER = {targetEntrainmentRatio:F3}.");
+
+        var (vtInj, vaInj) = SwirlMath.ResolveInjectorComponents(vCore, design.InjectorYawAngleDeg, design.InjectorPitchAngleDeg);
+        if (!VortexEntrainmentPhysics.TryVerifyAxialDominatesSwirl(
+                Math.Abs(vaInj),
+                Math.Abs(vtInj),
+                halfRad,
+                out string? stallHint))
+            vortexHints.Add("VORTEX ENTRAINMENT: " + stallHint!);
+
+        return new GeometrySynthesisResult(
+            design,
+            sizingDiag,
+            vortexHints.Count > 0 ? vortexHints : null);
     }
 }

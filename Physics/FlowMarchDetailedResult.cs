@@ -35,4 +35,10 @@ public sealed class FlowMarchDetailedResult
 
     /// <summary>Mach limit used in <see cref="FlowMarcher"/> for ṁ ceiling (from <see cref="SwirlEntranceCapacityLimits.EntrainmentGovernorMachMax"/>).</summary>
     public double EntrainmentGovernorMachMaxUsed { get; init; }
+
+    /// <summary>Path resistances / reference pressures used when dual-path discharge is enabled.</summary>
+    public SwirlChamberDischargePathSpec? AppliedDischargePathSpec { get; init; }
+
+    /// <summary>Dual-path split at the last march station (same bulk P as that step).</summary>
+    public SwirlChamberDualPathDischargeResult? FinalChamberDischargeSplit { get; init; }
 }

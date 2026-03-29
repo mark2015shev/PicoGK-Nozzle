@@ -66,7 +66,7 @@ public static class TrialDiagnosticsFormatter
 
     public static void PrintTableHeaderToConsole()
     {
-        Console.WriteLine(CsvHeader.Replace(',', '\t'));
+        ConsoleStatusWriter.WriteLine(CsvHeader.Replace(',', '\t'), StatusLevel.Normal);
     }
 
     private static string BuildRejectReason(FlowTuneEvaluation ev)

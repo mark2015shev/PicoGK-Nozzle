@@ -16,6 +16,8 @@ internal static class Program
     {
         try
         {
+            ConsoleStatusWriter.PrimeConsoleForStatusOutput();
+
             // First-order SI validation sweeps (no voxels/viewer; CSV under ./Output/ValidationSweeps):
             //   dotnet run -- validate
             // Or call: ValidationSweepRunner.RunDefaultK320Validation();

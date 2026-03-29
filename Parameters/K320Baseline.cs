@@ -42,8 +42,8 @@ public static class K320Baseline
         SwirlChamberDiameterMm = 82.0,
         // Longer chamber for vortex development before expander (hand template; autotune may still vary when enabled).
         SwirlChamberLengthMm = 80.0,
-        // Mid-chamber injection gives axial runout before expander (90° tangential case).
-        InjectorAxialPositionRatio = 0.74,
+        // Downstream (expander-side) reference ring; autotune varies chamber length upstream only when anchor is set.
+        InjectorAxialPositionRatio = 1.0,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
         InjectorCount = 16,
         InjectorWidthMm = 10.0,
@@ -158,6 +158,7 @@ public static class K320Baseline
         AutotuneSwirlChamberLengthMaxMm = 92.0,
         AutotuneSwirlChamberLengthScaleMin = 0.80,
         AutotuneSwirlChamberLengthScaleMax = 1.04,
+        SwirlChamberLengthDownstreamAnchorMm = 80.0,
         ApplyHardSiThrustAndPressureAssertions = true
     };
 
@@ -201,6 +202,7 @@ public static class K320Baseline
             AutotuneSwirlChamberLengthMaxMm = 92.0,
             AutotuneSwirlChamberLengthScaleMin = 0.80,
             AutotuneSwirlChamberLengthScaleMax = 1.04,
+            SwirlChamberLengthDownstreamAnchorMm = 80.0,
             ApplyHardSiThrustAndPressureAssertions = true
         };
 
@@ -224,6 +226,7 @@ public static class K320Baseline
         AutotuneFinalizeApplyEntrainmentDerivedChamberBore = false,
         PhysicsAutotunePreserveWinningChamberDiameter = true,
         AutotuneUseSynthesisBaseline = false,
+        SwirlChamberLengthDownstreamAnchorMm = 80.0,
         PhysicsAutotuneStageACandidates = 200,
         PhysicsAutotuneStageBTopSeeds = 15,
         PhysicsAutotuneStageBLocalTrialsPerSeed = 6,

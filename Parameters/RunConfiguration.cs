@@ -86,6 +86,13 @@ public sealed class RunConfiguration
     /// <summary>If true, search centers on <see cref="NozzleGeometrySynthesis.Synthesize"/>; if false, on a copy of template design.</summary>
     public bool AutotuneUseSynthesisBaseline { get; init; } = true;
 
+    /// <summary>
+    /// When &gt; 0, the swirl chamber downstream face (expander side) stays at
+    /// (inlet axial end − assembly overlap) + this length [mm]; chamber length changes move the upstream face only (toward the inlet).
+    /// When 0, legacy: upstream face fixed at inlet end − overlap and length grows downstream.
+    /// </summary>
+    public double SwirlChamberLengthDownstreamAnchorMm { get; init; }
+
     /// <summary>Hard cap on swirl chamber axial length after each trial’s length scale [mm]. Keeps the green segment short.</summary>
     public double AutotuneSwirlChamberLengthMaxMm { get; init; } = 100.0;
 
@@ -241,6 +248,12 @@ public sealed class RunConfiguration
     public double DerivedChamberTargetMaxLd { get; init; } = 1.28;
 
     /// <summary>
+    /// When true (default), swirl chamber axial mixing length is at least 6× the injector equivalent diameter (ejector “rule of 6”).
+    /// Applied in <see cref="PicoGK_Run.Physics.NozzleGeometrySynthesis"/> and <see cref="PicoGK_Run.Geometry.SwirlChamberBuilder"/>.
+    /// </summary>
+    public bool EnforceEjectorMixingRuleOfSix { get; init; } = true;
+
+    /// <summary>
     /// When false with <see cref="UseDerivedSwirlChamberDiameter"/>, autotune must not rescale bore via ChamberD knobs (tune ER / other axes only).
     /// Set true to allow direct ChamberD multipliers to fight derived sizing.
     /// </summary>
@@ -291,6 +304,7 @@ public sealed class RunConfiguration
         AutotuneWeightLowAxialPenalty = AutotuneWeightLowAxialPenalty,
         AutotuneRandomSeed = AutotuneRandomSeed,
         AutotuneUseSynthesisBaseline = AutotuneUseSynthesisBaseline,
+        SwirlChamberLengthDownstreamAnchorMm = SwirlChamberLengthDownstreamAnchorMm,
         AutotuneSwirlChamberLengthMaxMm = AutotuneSwirlChamberLengthMaxMm,
         AutotuneSwirlChamberLengthScaleMin = AutotuneSwirlChamberLengthScaleMin,
         AutotuneSwirlChamberLengthScaleMax = AutotuneSwirlChamberLengthScaleMax,
@@ -325,6 +339,7 @@ public sealed class RunConfiguration
         DerivedChamberMinDiameterMultiplierVsJet = DerivedChamberMinDiameterMultiplierVsJet,
         DerivedChamberTargetMinLd = DerivedChamberTargetMinLd,
         DerivedChamberTargetMaxLd = DerivedChamberTargetMaxLd,
+        EnforceEjectorMixingRuleOfSix = EnforceEjectorMixingRuleOfSix,
         AllowAutotuneDirectChamberDiameterOverride = AllowAutotuneDirectChamberDiameterOverride,
         AutotuneFinalizeApplyEntrainmentDerivedChamberBore = AutotuneFinalizeApplyEntrainmentDerivedChamberBore,
         PhysicsAutotuneStageACandidates = PhysicsAutotuneStageACandidates,

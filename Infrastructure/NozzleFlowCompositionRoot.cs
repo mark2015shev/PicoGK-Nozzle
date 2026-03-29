@@ -65,6 +65,11 @@ public static class NozzleFlowCompositionRoot
                 run);
             activeDesign = syn.Design;
             chamberSizing = syn.ChamberSizing;
+            if (syn.VortexEntrainmentHints is { Count: > 0 } vh)
+            {
+                foreach (string line in vh)
+                    Library.Log(line);
+            }
         }
         else if (run.UseDerivedSwirlChamberDiameter)
         {
@@ -474,6 +479,13 @@ public static class NozzleFlowCompositionRoot
         double swirlDecayPerStep = SwirlDecayModel.DecayPerStepFromK(kTotal, sectionLengthM, chamberDM, DefaultMarchSteps);
 
         double rSwirlMomM = 0.5e-3 * Math.Max(activeDesign.SwirlChamberDiameterMm, 1.0);
+        SwirlChamberDischargePathSpec dischargeSpec = SwirlChamberDischargePathSpec.ForNozzleChamber(
+            ambient.PressurePa,
+            aCaptureM2,
+            aFreeChamberMm2 * 1e-6,
+            aChamberBoreMm2 * 1e-6,
+            outletAreaM2,
+            activeDesign.ExpanderHalfAngleDeg);
         FlowMarchDetailedResult detailed = MarchPhase_SolveSwirlChamber(
             marcher,
             inletState,
@@ -490,7 +502,8 @@ public static class NozzleFlowCompositionRoot
             run.UseReynoldsEntrainmentFactor,
             rSwirlMomM,
             run.ValidateMarchStepInvariants,
-            aChamberBoreMm2 * 1e-6);
+            aChamberBoreMm2 * 1e-6,
+            dischargeSpec);
 
         IReadOnlyList<FlowMarchStepResult> steps = detailed.StepResults;
         JetState lastMarch = detailed.FlowStates[^1];
@@ -955,7 +968,8 @@ public static class NozzleFlowCompositionRoot
         bool useReynoldsOnEntrainmentCe,
         double swirlMomentRadiusM,
         bool validateMarchStepInvariants,
-        double chamberFullBoreAreaM2) =>
+        double chamberFullBoreAreaM2,
+        SwirlChamberDischargePathSpec? dischargePathSpec) =>
         marcher.SolveDetailed(
             inletState,
             sectionLengthM,
@@ -973,7 +987,8 @@ public static class NozzleFlowCompositionRoot
             validateMarchStepInvariants,
             chamberFullBoreAreaM2,
             capEntrainmentToSwirlPassageMach: true,
-            swirlPassageMachLimitsForEntrainmentCap: null);
+            swirlPassageMachLimitsForEntrainmentCap: null,
+            dischargePathSpec);
 
     private static void CapacityPhase_LogSwirlEntranceCapacity(
         SwirlChamberMarchDiagnostics chamberMarchDiag,
@@ -999,7 +1014,7 @@ public static class NozzleFlowCompositionRoot
     {
         if (!run.ValidateMarchStepInvariants || run.SiVerbosityLevel < SiVerbosityLevel.High || warnings.Count == 0)
             return;
-        Console.WriteLine("--- SI march invariant checks (validation mode) ---");
+        ConsoleStatusWriter.WriteLine("--- SI march invariant checks (validation mode) ---", StatusLevel.Normal);
         try
         {
             Library.Log("--- SI march invariant checks (validation mode) ---");
@@ -1093,7 +1108,8 @@ public static class NozzleFlowCompositionRoot
             SwirlEntranceCapacityStations = dual,
             EntrainmentGovernor = gov,
             RadialShapingReportLines = radialLines,
-            ValidationWarnings = warnings
+            ValidationWarnings = warnings,
+            ChamberDischargeSplit = detailed.FinalChamberDischargeSplit
         };
     }
 
@@ -1159,30 +1175,35 @@ public static class NozzleFlowCompositionRoot
         SiFlowDiagnostics si,
         SiVerbosityLevel verbosity)
     {
-        Console.WriteLine("--- SI flow-driven nozzle summary (compressible entrainment path) ---");
-        Console.WriteLine($"Inlet jet axial velocity [m/s]: {inlet.VelocityMps:F2}");
-        Console.WriteLine($"Estimated exit velocity [m/s]: {d.EstimatedExitVelocityMps:F2}");
-        Console.WriteLine($"Estimated total mass flow [kg/s]: {d.EstimatedTotalMassFlowKgS:F4}");
-        Console.WriteLine($"Estimated thrust [N]:       {d.EstimatedThrustN:F2} (momentum + pressure CV terms, first-order)");
-        Console.WriteLine(
-            $"Min inlet static (entrain.) [Pa]: {si.MinInletLocalStaticPressurePa:F1} ({SiPressureGuards.PaToBar(si.MinInletLocalStaticPressurePa):F4} bar)");
+        ConsoleStatusWriter.WriteLine("--- SI flow-driven nozzle summary (compressible entrainment path) ---", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine($"Inlet jet axial velocity [m/s]: {inlet.VelocityMps:F2}", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine($"Estimated exit velocity [m/s]: {d.EstimatedExitVelocityMps:F2}", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine($"Estimated total mass flow [kg/s]: {d.EstimatedTotalMassFlowKgS:F4}", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine($"Estimated thrust [N]:       {d.EstimatedThrustN:F2} (momentum + pressure CV terms, first-order)", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine(
+            $"Min inlet static (entrain.) [Pa]: {si.MinInletLocalStaticPressurePa:F1} ({SiPressureGuards.PaToBar(si.MinInletLocalStaticPressurePa):F4} bar)",
+            StatusLevel.Normal);
         ConsoleReportColor.WriteClassifiedLine(
             $"Max entrainment Mach [-]:   {si.MaxInletMach:F3}  Choked step: {si.AnyEntrainmentStepChoked}");
-        Console.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}");
-        Console.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}");
-        Console.WriteLine($"Suggested mixing length [m]: {d.SuggestedMixingLengthM:F5}");
+        ConsoleStatusWriter.WriteLine($"Suggested inlet radius [m]: {d.SuggestedInletRadiusM:F5}", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine($"Suggested outlet radius [m]: {d.SuggestedOutletRadiusM:F5}", StatusLevel.Normal);
+        ConsoleStatusWriter.WriteLine($"Suggested mixing length [m]: {d.SuggestedMixingLengthM:F5}", StatusLevel.Normal);
         if (si.ChamberMarch != null && verbosity >= SiVerbosityLevel.Normal)
         {
             SwirlChamberMarchDiagnostics m = si.ChamberMarch;
-            Console.WriteLine("--- Swirl chamber SI march geometry (aligned with CAD bore/hub annulus) ---");
-            Console.WriteLine(
-                $"A_inlet {m.AInletMm2:F2} | A_chamber(bore) {m.AChamberBoreMm2:F2} | A_free_ch {m.AFreeChamberMm2:F2} | A_inj {m.AInjTotalMm2:F2} | A_exit {m.AExitMm2:F2} [mm2]");
-            Console.WriteLine(
-                $"Ratios A_in/A_ch {m.RatioInletToChamber:F3} | A_inj/A_ch {m.RatioInjToChamber:F3} | A_free/A_ch {m.RatioFreeToChamber:F3} | A_exit/A_ch {m.RatioExitToChamber:F3}");
-            Console.WriteLine(
-                $"Ce_base {m.EntrainmentCeBase:F4} | Ce@step1 {m.EntrainmentCeAtFirstStep:F4} | B_ent {m.EntrainmentMassDemandBoost:F3}");
-            Console.WriteLine(
-                $"A_capture {m.CaptureAreaM2:E4} m2 | P_ent {m.EntrainmentPerimeterM:F5} m | A_duct_eff {m.DuctEffectiveAreaM2:E4} m2 (constant along chamber march)");
+            ConsoleStatusWriter.WriteLine("--- Swirl chamber SI march geometry (aligned with CAD bore/hub annulus) ---", StatusLevel.Normal);
+            ConsoleStatusWriter.WriteLine(
+                $"A_inlet {m.AInletMm2:F2} | A_chamber(bore) {m.AChamberBoreMm2:F2} | A_free_ch {m.AFreeChamberMm2:F2} | A_inj {m.AInjTotalMm2:F2} | A_exit {m.AExitMm2:F2} [mm2]",
+                StatusLevel.Normal);
+            ConsoleStatusWriter.WriteLine(
+                $"Ratios A_in/A_ch {m.RatioInletToChamber:F3} | A_inj/A_ch {m.RatioInjToChamber:F3} | A_free/A_ch {m.RatioFreeToChamber:F3} | A_exit/A_ch {m.RatioExitToChamber:F3}",
+                StatusLevel.Normal);
+            ConsoleStatusWriter.WriteLine(
+                $"Ce_base {m.EntrainmentCeBase:F4} | Ce@step1 {m.EntrainmentCeAtFirstStep:F4} | B_ent {m.EntrainmentMassDemandBoost:F3}",
+                StatusLevel.Normal);
+            ConsoleStatusWriter.WriteLine(
+                $"A_capture {m.CaptureAreaM2:E4} m2 | P_ent {m.EntrainmentPerimeterM:F5} m | A_duct_eff {m.DuctEffectiveAreaM2:E4} m2 (constant along chamber march)",
+                StatusLevel.Normal);
             foreach (string w in m.ValidationWarnings)
                 ConsoleReportColor.WriteClassifiedLine(w);
             if (m.SwirlEntranceCapacityStations != null)
@@ -1190,8 +1211,14 @@ public static class NozzleFlowCompositionRoot
                 foreach (string line in m.SwirlEntranceCapacityStations.FormatReportLines())
                     ConsoleReportColor.WriteClassifiedLine(line);
             }
+
+            if (m.ChamberDischargeSplit != null)
+            {
+                foreach (string line in m.ChamberDischargeSplit.FormatReportLines())
+                    ConsoleReportColor.WriteClassifiedLine(line);
+            }
         }
 
-        Console.WriteLine("---------------------------------------------------------------------");
+        ConsoleStatusWriter.WriteLine("---------------------------------------------------------------------", StatusLevel.Normal);
     }
 }

@@ -432,6 +432,12 @@ internal static class ResultReporter
         foreach (string line in m.RadialShapingReportLines)
             ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), line);
 
+        if (m.ChamberDischargeSplit != null)
+        {
+            foreach (string line in m.ChamberDischargeSplit.FormatReportLines())
+                ConsoleReportColor.LogLibraryAndConsoleIfSignificant(static s => Library.Log(s), line);
+        }
+
         foreach (string w in m.ValidationWarnings)
             Library.Log(w);
     }
