@@ -6,6 +6,7 @@ using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.Continuous;
 using PicoGK_Run.Physics.Reports;
 using PicoGK_Run.Physics.Solvers;
 
@@ -516,6 +517,28 @@ internal static class PhysicsSiPathService
                 statorOut.RecoveredPressureRisePa,
                 pCoreEstimatedPa,
                 physicsInjectorYawDegrees: yawPhysicsDeg);
+
+            GeometryAssemblyPath continuousGeom = GeometryAssemblyPath.Compute(activeDesign, run);
+            ContinuousNozzleSolution continuousPath = ContinuousNozzleSolver.Solve(
+                continuousGeom,
+                activeDesign,
+                source,
+                detailed,
+                inletState,
+                vt0,
+                va0,
+                minInletP,
+                gas,
+                closure: null,
+                diffuserCoupling,
+                statorOut,
+                vaAfterStator,
+                vtAfterStator,
+                pAfterStator,
+                rhoAfterStator,
+                Math.Max(lastMarch.TemperatureK, 1.0),
+                tTotalForDiagnostics,
+                finalOutlet);
     
             var siDiag = new SiFlowDiagnostics
             {
@@ -560,7 +583,8 @@ internal static class PhysicsSiPathService
                 ChamberMarch = chamberMarchDiag,
                 SwirlChamberHealth = swirlChamberHealth,
                 SourceDischargeConsistency = dischargeReport,
-                MarchInvariantWarnings = detailed.MarchInvariantWarnings
+                MarchInvariantWarnings = detailed.MarchInvariantWarnings,
+                ContinuousPath = continuousPath
             };
     
             MarchInvariantPhase_LogIfVerbose(detailed.MarchInvariantWarnings, run);

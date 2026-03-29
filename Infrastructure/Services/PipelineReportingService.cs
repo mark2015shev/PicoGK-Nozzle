@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using PicoGK;
 using PicoGK_Run.Parameters;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.Continuous;
 using PicoGK_Run.Physics.Reports;
 
 namespace PicoGK_Run.Infrastructure.Services;
@@ -55,6 +57,36 @@ internal static class PipelineReportingService
             {
                 foreach (string line in m.ChamberDischargeSplit.FormatReportLines())
                     ConsoleReportColor.WriteClassifiedLine(line);
+            }
+        }
+
+        if (si.ContinuousPath != null && verbosity >= SiVerbosityLevel.Normal)
+        {
+            foreach (string line in ContinuousSolverDiagnosticsWriter.FormatSummaryLines(si.ContinuousPath))
+            {
+                ConsoleStatusWriter.WriteLine(line, StatusLevel.Normal);
+                try
+                {
+                    Library.Log(line);
+                }
+                catch
+                {
+                }
+            }
+
+            if (verbosity >= SiVerbosityLevel.High)
+            {
+                foreach (string line in ContinuousSolverDiagnosticsWriter.FormatStationTableLines(si.ContinuousPath))
+                {
+                    ConsoleStatusWriter.WriteLine(line, StatusLevel.Normal);
+                    try
+                    {
+                        Library.Log(line);
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 

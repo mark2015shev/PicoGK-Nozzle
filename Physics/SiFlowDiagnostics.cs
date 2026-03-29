@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PicoGK_Run.Physics.Continuous;
 using PicoGK_Run.Physics.Reports;
 using PicoGK_Run.Physics.SwirlSegment;
 
@@ -112,6 +113,12 @@ public sealed class SiFlowDiagnostics
 
     /// <summary>Populated when march-step invariant validation is enabled on the run configuration.</summary>
     public IReadOnlyList<string> MarchInvariantWarnings { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// Full-nozzle continuous station table (chamber from march + integrated expander + stator handoff).
+    /// Reduced-order engineering model for calibration vs data — not CFD.
+    /// </summary>
+    public ContinuousNozzleSolution? ContinuousPath { get; init; }
 
     /// <summary>Regression / tooling: flat summary + <see cref="SiDiagnosticsReport.ToJson"/>.</summary>
     public SiDiagnosticsReport ToStructuredReport() => SiDiagnosticsReport.FromDiagnostics(this);
