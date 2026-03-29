@@ -2,7 +2,7 @@ namespace PicoGK_Run.Core;
 
 /// <summary>
 /// Four dimensionless groups (plus supporting numbers) that control whether a swirl–entrainment
-/// nozzle is in a plausible operating envelope. <b>Heuristic guidance only — not CFD pass/fail.</b>
+/// nozzle is in a plausible operating envelope. <b>Approximate guidance only — not CFD pass/fail.</b>
 /// </summary>
 public sealed class NozzleCriticalRatiosSnapshot
 {

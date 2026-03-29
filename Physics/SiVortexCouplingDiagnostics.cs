@@ -21,7 +21,8 @@ public sealed class SiVortexCouplingDiagnostics
     public double InjectorVtEffectiveMps { get; init; }
     public double InjectorVaEffectiveMps { get; init; }
 
-    public double EntrainmentDemandBoostFactor { get; init; }
+    /// <summary>Added to capture pressure deficit in entrainment velocity (Pa); zero when core-suction coupling is off.</summary>
+    public double CaptureStaticPressureDeficitAugmentationPa { get; init; }
     public double DeltaPCoreUsefulForEntrainmentPa { get; init; }
 
     public double StatorEtaBase { get; init; }
@@ -57,7 +58,7 @@ public sealed class SwirlEnergyCouplingLedger
     /// <summary>½·ṁ_mix,end·Vt_mixed² at chamber end (pre-stator) [W].</summary>
     public double EThetaAfterChamberDecay_W { get; init; }
 
-    /// <summary>Heuristic debit to entrainment mixing/dilution [W].</summary>
+    /// <summary>Reduced-order debit to entrainment mixing/dilution [W].</summary>
     public double EThetaUsedForEntrainment_W { get; init; }
 
     /// <summary>Bookkeeping tie to diffuser coupling (reduced recovery vs ideal) [W].</summary>

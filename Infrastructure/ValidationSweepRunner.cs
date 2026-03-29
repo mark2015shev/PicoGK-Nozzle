@@ -374,7 +374,7 @@ public static class ValidationSweepRunner
     {
         var lines = new List<string>
         {
-            $"Sweep '{sweepKey}' ({parameterDisplayName}): heuristic readout only — not CFD-validated."
+            $"Sweep '{sweepKey}' ({parameterDisplayName}): reduced-order readout only — not CFD-validated."
         };
 
         if (bestThrust >= 0)
@@ -408,7 +408,7 @@ public static class ValidationSweepRunner
                 lines.Add("Diameter changes L/D and capture ratio; radial pressure model scales with R.");
                 break;
             case "ExpanderHalfAngleDeg":
-                lines.Add("Steep half-angles typically raise separation risk in the diffuser heuristic.");
+                lines.Add("Steep half-angles typically raise separation risk in the reduced-order diffuser model.");
                 break;
             case "StatorVaneAngleDeg":
                 lines.Add("Stator angle vs implied swirl affects incidence loss and effective η.");

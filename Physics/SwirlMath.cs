@@ -35,8 +35,26 @@ public static class SwirlMath
     }
 
     /// <summary>
-    /// |Vt|/|Va| — <b>legacy heuristic solver only</b> (see <c>NozzlePhysicsSolver</c>); explodes when Va→0.
-    /// Live SI march / entrainment / critical ratios use <see cref="InjectorSwirlDirective"/> and flux correlations.
+    /// Axisymmetric injector: yaw rotates +x toward +tangential; pitch tilts toward inward radial (−r in meridional plane).
+    /// <paramref name="radialInwardMps"/> is positive toward the chamber axis. Roll is ignored (straight port; axisymmetric SI).
+    /// </summary>
+    public static (double AxialMps, double TangentialMps, double RadialInwardMps) DecomposeInjectorVelocityMps(
+        double velocityMagnitudeMps,
+        double injectorYawAngleDeg,
+        double injectorPitchAngleDeg)
+    {
+        double v = Math.Max(velocityMagnitudeMps, 0.0);
+        double yawRad = DegreesToRad(injectorYawAngleDeg);
+        double pitchRad = DegreesToRad(injectorPitchAngleDeg);
+        double tangential = v * Math.Sin(yawRad);
+        double axial = v * Math.Cos(yawRad) * Math.Cos(pitchRad);
+        double radialInward = v * Math.Cos(yawRad) * Math.Sin(pitchRad);
+        return (axial, tangential, radialInward);
+    }
+
+    /// <summary>
+    /// |Vt|/|Va| — legacy reference solver only (see <c>NozzlePhysicsSolver</c>); singular when Va→0.
+    /// Live SI path uses <see cref="InjectorSwirlDirective"/> and flux correlations.
     /// </summary>
     public static double InjectorSwirlNumber(double tangentialVelocityMps, double axialVelocityMps)
     {

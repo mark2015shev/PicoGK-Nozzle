@@ -21,8 +21,8 @@ public sealed class SwirlChamberMarchDiagnostics
     public double EntrainmentCeBase { get; init; }
     public double EntrainmentCeAtFirstStep { get; init; }
 
-    /// <summary>B_vortex multiplier applied to correlation demand (1 if swirl entrainment boost disabled in run config).</summary>
-    public double EntrainmentMassDemandBoost { get; init; }
+    /// <summary>Optional Pa added to (P_amb − P_local) in capture-boundary entrainment driver when core suction coupling is on.</summary>
+    public double CaptureStaticPressureDeficitAugmentationPa { get; init; }
 
     /// <summary>Mixed ṁ_total vs min(capture, free annulus) at swirl entrance plane and chamber end.</summary>
     public SwirlEntranceCapacityDualResult? SwirlEntranceCapacityStations { get; init; }

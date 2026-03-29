@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace PicoGK_Run.Infrastructure;
 
 /// <summary>
-/// Aggregated sweep outcome — heuristic consistency check, not proof of correctness or CFD agreement.
+/// Aggregated sweep outcome — reduced-order consistency check, not proof of correctness or CFD agreement.
 /// </summary>
 public sealed record ValidationSweepResult
 {

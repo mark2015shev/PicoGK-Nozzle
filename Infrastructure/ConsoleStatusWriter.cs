@@ -212,7 +212,7 @@ public static class ConsoleStatusWriter
         return StatusLevel.Normal;
     }
 
-    /// <summary>Heuristic classifier for known report strings — conservative; returns <see cref="StatusLevel.Normal"/> when unsure.</summary>
+    /// <summary>Pattern-based classifier for known report strings — conservative; returns <see cref="StatusLevel.Normal"/> when unsure.</summary>
     public static StatusLevel ClassifyReportingLine(string line)
     {
         if (string.IsNullOrEmpty(line))

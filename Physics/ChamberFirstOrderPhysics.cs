@@ -1,7 +1,9 @@
+using PicoGK_Run.Physics.SwirlSegment;
+
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Aggregated first-order chamber / vortex / ejector diagnostics for one SI solve — not CFD.
+/// Aggregated reduced-order chamber / vortex / ejector diagnostics for one SI solve — not CFD.
 /// </summary>
 public sealed class ChamberFirstOrderPhysics
 {
@@ -27,4 +29,10 @@ public sealed class ChamberFirstOrderPhysics
     public double NormalizedTotalPressureLoss01 { get; init; }
     public double RadialPressureUsefulNorm { get; init; }
     public double RecoverableSwirlFraction01 { get; init; }
+
+    /// <summary>Injector / swirl-segment snapshot for logs and autotune penalties.</summary>
+    public SwirlSegmentReducedOrderReport? SwirlSegmentReport { get; init; }
+
+    /// <summary>Higher when mean capture pressure deficit is weak vs a reference dynamic head (0–1).</summary>
+    public double CapturePressureDeficitWeakness01 { get; init; }
 }

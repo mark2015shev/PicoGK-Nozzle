@@ -15,7 +15,11 @@ public sealed class NozzleGeometryBuilder
     /// <summary>Axial overlap between consecutive segments [mm] for robust <see cref="Voxels.BoolAdd"/>.</summary>
     public const float AssemblyOverlapMm = 0.75f;
 
-    public NozzleGeometryResult Build(NozzleDesignInputs design, NozzleSolvedState solved, RunConfiguration? run = null)
+    public NozzleGeometryResult Build(
+        NozzleDesignInputs design,
+        NozzleSolvedState solved,
+        RunConfiguration? run = null,
+        Voxels? jetTrajectoryDebug = null)
     {
         _ = solved;
         DownstreamGeometryTargets downstream = DownstreamGeometryResolver.Resolve(design, run);
@@ -77,6 +81,7 @@ public sealed class NozzleGeometryBuilder
             statorSection: stator,
             exit: exit,
             injectorCountPlaced: design.InjectorCount,
-            totalLengthMm: xAfterExit);
+            totalLengthMm: xAfterExit,
+            jetTrajectoryDebug: jetTrajectoryDebug);
     }
 }

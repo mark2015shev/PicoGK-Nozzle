@@ -15,6 +15,10 @@ public sealed class FlowTunePhysicsMetrics
     public double EjectorStress01 { get; init; }
     public double LowAxialMomentum01 { get; init; }
 
+    public double CapturePressureDeficitWeakness01 { get; init; }
+    public double BidirectionalSpillRisk01 { get; init; }
+    public double InletContainmentRisk01 { get; init; }
+
     public static FlowTunePhysicsMetrics FromChamber(ChamberFirstOrderPhysics? ch, double mixedAxialMps)
     {
         if (ch == null)
@@ -34,7 +38,10 @@ public sealed class FlowTunePhysicsMetrics
             SeparationRisk01 = ch.DiffuserRecovery.SeparationRiskScore,
             TotalLoss01 = ch.NormalizedTotalPressureLoss01,
             EjectorStress01 = ch.EjectorRegime.RegimeScore,
-            LowAxialMomentum01 = lowAx
+            LowAxialMomentum01 = lowAx,
+            CapturePressureDeficitWeakness01 = ch.CapturePressureDeficitWeakness01,
+            BidirectionalSpillRisk01 = ch.SwirlSegmentReport?.Spill?.BidirectionalSpillRisk01 ?? 0.0,
+            InletContainmentRisk01 = ch.SwirlSegmentReport?.Containment?.InletContainmentRisk01 ?? 0.0
         };
     }
 }

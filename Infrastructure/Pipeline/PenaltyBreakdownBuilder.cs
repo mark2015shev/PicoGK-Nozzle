@@ -24,7 +24,10 @@ public static class PenaltyBreakdownBuilder
             return new PhysicsPenaltyBreakdown(
                 0, 0, 0.5, 0.3, metrics.SeparationRisk01 * 0.4, 0.2, 0, 0.3,
                 0.8, 0.2, 0.2, 0.3,
-                HealthPenaltyPerMessage * Math.Max(healthMessages.Count, 0));
+                HealthPenaltyPerMessage * Math.Max(healthMessages.Count, 0),
+                CaptureBoundaryDeficitPenalty: metrics.CapturePressureDeficitWeakness01 * 0.35,
+                InletSpillTendencyPenalty: metrics.BidirectionalSpillRisk01 * 0.28,
+                SwirlContainmentPenalty: metrics.InletContainmentRisk01 * 0.24);
         }
 
         double massBal = 0.0;
@@ -95,8 +98,36 @@ public static class PenaltyBreakdownBuilder
         int nonDesignHealth = healthMessages.Count(m => !m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
         double healthPen = HealthPenaltyPerMessage * nonDesignHealth + 0.35 * designErrorCount;
 
+        double capDefPen = 0.0;
+        double spillPen = 0.0;
+        double containPen = 0.0;
+        if (si.Chamber != null)
+        {
+            capDefPen = Math.Clamp(si.Chamber.CapturePressureDeficitWeakness01 * 0.38, 0.0, 0.55);
+            spillPen = Math.Clamp((si.Chamber.SwirlSegmentReport?.Spill?.BidirectionalSpillRisk01 ?? 0.0) * 0.30, 0.0, 0.48);
+            containPen = Math.Clamp(
+                (si.Chamber.SwirlSegmentReport?.Containment?.InletContainmentRisk01 ?? 0.0) * 0.28,
+                0.0,
+                0.45);
+        }
+
         return new PhysicsPenaltyBreakdown(
-            massBal, momBal, contRes, choke, sep, exSwirl, govClip, shortfall, thrustInv, lowP, machBand, capCls, healthPen);
+            massBal,
+            momBal,
+            contRes,
+            choke,
+            sep,
+            exSwirl,
+            govClip,
+            shortfall,
+            thrustInv,
+            lowP,
+            machBand,
+            capCls,
+            healthPen,
+            capDefPen,
+            spillPen,
+            containPen);
     }
 
     /// <summary>

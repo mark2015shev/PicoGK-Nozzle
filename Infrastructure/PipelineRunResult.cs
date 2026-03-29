@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using PicoGK_Run.Core;
 using PicoGK_Run.Geometry;
 using PicoGK_Run.Physics;
+using PicoGK_Run.Physics.JetTrajectory;
 using PicoGK_Run.Physics.Solvers;
 
 namespace PicoGK_Run.Infrastructure;
@@ -16,7 +17,7 @@ public sealed class PipelineRunResult
     /// <summary>Compressible SI march diagnostics when the detailed path ran; null if legacy-only.</summary>
     public SiFlowDiagnostics? SiFlow { get; }
 
-    /// <summary>Four critical ratio groups + supporting radii (heuristic design envelope).</summary>
+    /// <summary>Four critical ratio groups + supporting radii (approximate design envelope).</summary>
     public NozzleCriticalRatiosSnapshot? CriticalRatios { get; }
 
     /// <summary>Populated when autotune selected the seed before this run.</summary>
@@ -31,11 +32,14 @@ public sealed class PipelineRunResult
     /// <summary>Wall-clock breakdown when <see cref="Parameters.RunConfiguration.EnablePipelineProfiling"/> was true.</summary>
     public PipelineProfileReport? PerformanceProfile { get; }
 
-    /// <summary>How swirl chamber bore was chosen (user / heuristic synthesis / entrainment-derived).</summary>
+    /// <summary>How swirl chamber bore was chosen (user / synthesis rules / entrainment-derived).</summary>
     public SwirlChamberSizingModel.SizingDiagnostics? ChamberSizing { get; }
 
     /// <summary>End-to-end bore diameter trace for this run.</summary>
     public ChamberDiameterAudit? ChamberDiameterAudit { get; }
+
+    /// <summary>Populated when <see cref="Parameters.RunConfiguration.UsePhysicsTracedJetTrajectory"/> was true for this run.</summary>
+    public JetTrajectoryResult? JetTrajectory { get; }
 
     public PipelineRunResult(
         NozzleInput input,
@@ -49,7 +53,8 @@ public sealed class PipelineRunResult
         GeometryContinuityReport? geometryContinuity = null,
         PipelineProfileReport? performanceProfile = null,
         SwirlChamberSizingModel.SizingDiagnostics? chamberSizing = null,
-        ChamberDiameterAudit? chamberDiameterAudit = null)
+        ChamberDiameterAudit? chamberDiameterAudit = null,
+        JetTrajectoryResult? jetTrajectory = null)
     {
         Input = input;
         Solved = solved;
@@ -63,5 +68,6 @@ public sealed class PipelineRunResult
         PerformanceProfile = performanceProfile;
         ChamberSizing = chamberSizing;
         ChamberDiameterAudit = chamberDiameterAudit;
+        JetTrajectory = jetTrajectory;
     }
 }

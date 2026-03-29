@@ -1,6 +1,9 @@
 namespace PicoGK_Run.Geometry;
 
-/// <summary>Order and naming must match <see cref="Infrastructure.AppPipeline.DisplayGeometryInViewer"/>.</summary>
+/// <summary>
+/// Order and naming match the primary six segments in <see cref="Infrastructure.AppPipeline.DisplayGeometryInViewer"/>.
+/// When <see cref="NozzleGeometryResult.JetTrajectoryDebug"/> is present, the viewer adds a seventh group (teal) after these.
+/// </summary>
 public static class NozzleViewerGroupCatalog
 {
     public sealed record Entry(int GroupId, string DisplayName, string NozzleGeometryResultProperty, string ColorHex);

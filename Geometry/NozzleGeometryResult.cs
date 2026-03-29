@@ -20,6 +20,9 @@ public sealed class NozzleGeometryResult
     public int InjectorCountPlaced { get; }
     public double TotalLengthMm { get; }
 
+    /// <summary>Optional physics-traced jet path debug overlay (not part of the metal CAD envelope).</summary>
+    public Voxels? JetTrajectoryDebug { get; }
+
     public NozzleGeometryResult(
         Voxels inlet,
         Voxels swirlChamber,
@@ -28,7 +31,8 @@ public sealed class NozzleGeometryResult
         Voxels statorSection,
         Voxels exit,
         int injectorCountPlaced,
-        double totalLengthMm)
+        double totalLengthMm,
+        Voxels? jetTrajectoryDebug = null)
     {
         Inlet = inlet;
         SwirlChamber = swirlChamber;
@@ -38,5 +42,6 @@ public sealed class NozzleGeometryResult
         Exit = exit;
         InjectorCountPlaced = injectorCountPlaced;
         TotalLengthMm = totalLengthMm;
+        JetTrajectoryDebug = jetTrajectoryDebug;
     }
 }

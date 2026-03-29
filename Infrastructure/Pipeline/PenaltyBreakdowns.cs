@@ -18,13 +18,17 @@ public sealed record PhysicsPenaltyBreakdown(
     double LowStaticPressurePenalty,
     double MachBandPenalty,
     double CapacityClassificationPenalty,
-    double HealthMessagePenalty)
+    double HealthMessagePenalty,
+    double CaptureBoundaryDeficitPenalty = 0,
+    double InletSpillTendencyPenalty = 0,
+    double SwirlContainmentPenalty = 0)
 {
     public double Sum =>
         MassBalancePenalty + MomentumBalancePenalty + ContinuityResidualPenalty + ChokingPenalty
         + SeparationRiskPenalty + ExcessiveSwirlPenalty + GovernorClippingPenalty
         + EntrainmentShortfallPenalty + ThrustCvInvalidPenalty + LowStaticPressurePenalty
-        + MachBandPenalty + CapacityClassificationPenalty + HealthMessagePenalty;
+        + MachBandPenalty + CapacityClassificationPenalty + HealthMessagePenalty
+        + CaptureBoundaryDeficitPenalty + InletSpillTendencyPenalty + SwirlContainmentPenalty;
 
     public string TopSource
     {
@@ -44,7 +48,10 @@ public sealed record PhysicsPenaltyBreakdown(
                 (nameof(LowStaticPressurePenalty), LowStaticPressurePenalty),
                 (nameof(MachBandPenalty), MachBandPenalty),
                 (nameof(CapacityClassificationPenalty), CapacityClassificationPenalty),
-                (nameof(HealthMessagePenalty), HealthMessagePenalty)
+                (nameof(HealthMessagePenalty), HealthMessagePenalty),
+                (nameof(CaptureBoundaryDeficitPenalty), CaptureBoundaryDeficitPenalty),
+                (nameof(InletSpillTendencyPenalty), InletSpillTendencyPenalty),
+                (nameof(SwirlContainmentPenalty), SwirlContainmentPenalty)
             };
             return pairs.OrderByDescending(p => p.Value).First().Name;
         }

@@ -14,7 +14,7 @@ namespace PicoGK_Run.Physics;
 /// </para>
 /// <para>
 /// Optional <see cref="RunConfiguration.UseDerivedSwirlChamberDiameter"/> sizes bore from target ṁ_amb/ṁ_core and a
-/// nominal chamber axial velocity (<see cref="SwirlChamberSizingModel"/>), instead of a fixed jet×scale heuristic.
+/// nominal chamber axial velocity (<see cref="SwirlChamberSizingModel"/>), instead of a fixed jet×scale approximation.
 /// </para>
 /// </summary>
 public static class NozzleGeometrySynthesis

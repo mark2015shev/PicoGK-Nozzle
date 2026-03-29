@@ -1,3 +1,5 @@
+using PicoGK_Run.Physics.SwirlSegment;
+
 namespace PicoGK_Run.Physics.Solvers;
 
 /// <summary>Stage 1 — pressure-driven injector discharge (orifice-style) + yaw/pitch decomposition.</summary>
@@ -19,6 +21,10 @@ public sealed class InjectorDischargeResult
     public double AxialVelocityMps { get; init; }
     public double TangentialVelocityMps { get; init; }
     public double SwirlNumberVtOverVa { get; init; }
+
+    /// <summary>Explicit Vx, Vt, Vr decomposition carried through the swirl segment.</summary>
+    public InjectorVelocityState? VelocityState { get; init; }
+
     /// <summary>Equals <see cref="VelocityMagnitudeFromContinuityMps"/>; legacy field name retained for callers.</summary>
     public double LegacyBlendedDriverVelocityMps { get; init; }
     public string Notes { get; init; } = "";

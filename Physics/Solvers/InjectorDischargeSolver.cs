@@ -1,6 +1,7 @@
 using System;
 using PicoGK_Run.Core;
 using PicoGK_Run.Parameters;
+using PicoGK_Run.Physics.SwirlSegment;
 
 namespace PicoGK_Run.Physics.Solvers;
 
@@ -40,8 +41,20 @@ public static class InjectorDischargeSolver
         double vCont = mdotAuth / (rho * aInj);
 
         double vEff = InjectorLossModel.EffectiveJetVelocityMps(vCont, rho, yawDeg);
-        var (vt, va) = SwirlMath.ResolveInjectorComponents(vEff, yawDeg, pitchDeg);
-        double s = Math.Abs(vt) / Math.Max(Math.Abs(va), 1e-6);
+        var (va, vt, vr) = SwirlMath.DecomposeInjectorVelocityMps(vEff, yawDeg, pitchDeg);
+        double s = SwirlMath.InjectorSwirlNumberReportOnly(vt, va, vEff);
+        double flowAngleDeg = Math.Atan2(
+            Math.Sqrt(vt * vt + vr * vr),
+            Math.Max(Math.Abs(va), 1e-12)) * (180.0 / Math.PI);
+        var velocityState = new InjectorVelocityState
+        {
+            VelocityMagnitudeMps = vEff,
+            AxialVelocityMps = va,
+            TangentialVelocityMps = vt,
+            RadialVelocityMps = vr,
+            SwirlRatioVtOverVx = s,
+            FlowAngleDeg = flowAngleDeg
+        };
 
         string notes = mdotAuth > 1e-12 && Math.Abs(mdotOrifice - mdotAuth) / mdotAuth > 0.12
             ? "Authoritative ṁ from source; orifice ṁ(P0−P_ch) differs >12% — refine P_chamber or C_d vs datasheet."
@@ -62,6 +75,7 @@ public static class InjectorDischargeSolver
             AxialVelocityMps = va,
             TangentialVelocityMps = vt,
             SwirlNumberVtOverVa = s,
+            VelocityState = velocityState,
             LegacyBlendedDriverVelocityMps = vCont,
             Notes = notes
         };

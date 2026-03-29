@@ -126,7 +126,7 @@ public sealed class RunConfiguration
     /// </summary>
     public bool UseExplicitInletCapture { get; init; }
 
-    /// <summary>Apply core-suction entrainment demand boost B_vortex (still capped by dynamic head + absolute max).</summary>
+    /// <summary>When true, add bounded ΔP to the capture-boundary pressure deficit (core suction from reduced-order radial balance), still capped vs dynamic head.</summary>
     public bool UseSwirlEntrainmentBoost { get; init; } = true;
 
     /// <summary>Optional Re_D factor in Ce (chamber diameter, kinematic ν).</summary>
@@ -253,10 +253,10 @@ public sealed class RunConfiguration
     /// <summary>Base multiplier on jet diameter for minimum bore (vortex preservation floor); scaled by swirl in the model.</summary>
     public double DerivedChamberMinDiameterMultiplierVsJet { get; init; } = 0.88;
 
-    /// <summary>After length heuristic, clamp L/D to at least this when derived sizing is on (0 = skip).</summary>
+    /// <summary>After approximate length scaling, clamp L/D to at least this when derived sizing is on (0 = skip).</summary>
     public double DerivedChamberTargetMinLd { get; init; } = 0.88;
 
-    /// <summary>After length heuristic, clamp L/D to at most this when derived sizing is on (0 = skip).</summary>
+    /// <summary>After approximate length scaling, clamp L/D to at most this when derived sizing is on (0 = skip).</summary>
     public double DerivedChamberTargetMaxLd { get; init; } = 1.28;
 
     /// <summary>
@@ -283,6 +283,48 @@ public sealed class RunConfiguration
     /// pressure-thrust inconsistent with low momentum, and |F_net| &gt; 5000 N (see SiThrustSanity).
     /// </summary>
     public bool ApplyHardSiThrustAndPressureAssertions { get; init; }
+
+    // --- Optional reduced-order jet trajectory (engineering model; not CFD) ---
+
+    /// <summary>
+    /// When true, runs <see cref="Physics.JetTrajectory.JetTrajectorySolver"/> after the SI path and logs comparison vs legacy 1-D injector station.
+    /// Default false preserves all prior behavior.
+    /// </summary>
+    public bool UsePhysicsTracedJetTrajectory { get; init; }
+
+    /// <summary>Trajectory step: damp wall-normal velocity vs tangential slip along the wall (not specular reflection).</summary>
+    public bool UseWallDeflection { get; init; } = true;
+
+    /// <summary>Blend each jet’s direction toward neighbors with dissipation (no solid collision).</summary>
+    public bool UseJetJetInteraction { get; init; } = true;
+
+    /// <summary>Track approximate jet envelope radius growing downstream, clipped by wall proximity.</summary>
+    public bool UseTrajectoryExpansionEnvelope { get; init; } = true;
+
+    /// <summary>
+    /// When true, emit qualitative geometry-guidance hints from trajectories (no automatic mesh change by default).
+    /// </summary>
+    public bool UseTrajectoryForGeometryGuidance { get; init; }
+
+    /// <summary>Spatial step along each traced ray [mm].</summary>
+    public double TrajectoryStepMm { get; init; } = 1.0;
+
+    /// <summary>Stop each ray after this accumulated path length [mm].</summary>
+    public double MaxTrajectoryLengthMm { get; init; } = 200.0;
+
+    /// <summary>Fraction of tangential (wall-parallel) velocity retained after wall interaction [0–1].</summary>
+    public double WallSlipRetention { get; init; } = 0.92;
+
+    /// <summary>Multiplier on wall-normal velocity after interaction (small = strong damping into the wall normal direction).</summary>
+    public double WallNormalDamping { get; init; } = 0.08;
+
+    /// <summary>Strength of jet–jet direction blending [0–1].</summary>
+    public double JetInteractionStrength { get; init; } = 0.35;
+
+    /// <summary>
+    /// When true with <see cref="UsePhysicsTracedJetTrajectory"/>, union debug trajectory beams into <see cref="Geometry.NozzleGeometryResult.JetTrajectoryDebug"/>.
+    /// </summary>
+    public bool BuildJetTrajectoryDebugVoxels { get; init; } = true;
 
     /// <summary>
     /// Run flags after autotune: no second autotune pass, and no <c>UsePhysicsInformedGeometry</c> so the winning seed is not re-synthesized away.
@@ -366,6 +408,17 @@ public sealed class RunConfiguration
         PhysicsAutotuneStageCRelativeSpan = PhysicsAutotuneStageCRelativeSpan,
         PhysicsAutotunePreserveWinningChamberDiameter = PhysicsAutotunePreserveWinningChamberDiameter,
         PhysicsAutotuneStageCUnlockTierB = PhysicsAutotuneStageCUnlockTierB,
-        ApplyHardSiThrustAndPressureAssertions = ApplyHardSiThrustAndPressureAssertions
+        ApplyHardSiThrustAndPressureAssertions = ApplyHardSiThrustAndPressureAssertions,
+        UsePhysicsTracedJetTrajectory = UsePhysicsTracedJetTrajectory,
+        UseWallDeflection = UseWallDeflection,
+        UseJetJetInteraction = UseJetJetInteraction,
+        UseTrajectoryExpansionEnvelope = UseTrajectoryExpansionEnvelope,
+        UseTrajectoryForGeometryGuidance = UseTrajectoryForGeometryGuidance,
+        TrajectoryStepMm = TrajectoryStepMm,
+        MaxTrajectoryLengthMm = MaxTrajectoryLengthMm,
+        WallSlipRetention = WallSlipRetention,
+        WallNormalDamping = WallNormalDamping,
+        JetInteractionStrength = JetInteractionStrength,
+        BuildJetTrajectoryDebugVoxels = BuildJetTrajectoryDebugVoxels
     };
 }

@@ -34,7 +34,7 @@ public sealed class NozzleDesignInputs
     public double StatorVaneAngleDeg { get; init; }
     public int StatorVaneCount { get; init; }
 
-    /// <summary>Centerbody / hub OD at stator row [mm]. If ≤ 0.5, synthesis/heuristics may derive ~0.28× chamber OD.</summary>
+    /// <summary>Centerbody / hub OD at stator row [mm]. If ≤ 0.5, synthesis may derive ~0.28× chamber OD.</summary>
     public double StatorHubDiameterMm { get; init; }
 
     /// <summary>Axial extent of stator row (hub + blade passage) [mm]. If ≤ 1, builders use a short default.</summary>

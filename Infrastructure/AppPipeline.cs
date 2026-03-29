@@ -101,7 +101,8 @@ internal sealed class AppPipeline
             pr.GeometryContinuity,
             pr.PerformanceProfile,
             pr.ChamberSizing,
-            auditMerged);
+            auditMerged,
+            pr.JetTrajectory);
     }
 
     private static ChamberDiameterAudit? MergeAutotuneIntoChamberAudit(
@@ -167,6 +168,9 @@ internal sealed class AppPipeline
         int g = 1;
         foreach (NozzleViewerGroupCatalog.Entry e in NozzleViewerGroupCatalog.Ordered)
             AddSegment(viewer, ref g, VoxelsForCatalogProperty(geometry, e.NozzleGeometryResultProperty), e.ColorHex);
+
+        if (geometry.JetTrajectoryDebug != null)
+            AddSegment(viewer, ref g, geometry.JetTrajectoryDebug, NozzleViewerSegmentColors.JetTrajectoryDebugHex);
     }
 
     private static Voxels VoxelsForCatalogProperty(NozzleGeometryResult geometry, string propertyName) =>

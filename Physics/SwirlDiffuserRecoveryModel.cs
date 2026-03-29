@@ -2,10 +2,10 @@ using System;
 
 namespace PicoGK_Run.Physics;
 
-/// <summary>First-order swirling diffuser / expander recovery — not CFD.</summary>
+/// <summary>Reduced-order swirling diffuser / expander recovery — not CFD.</summary>
 public sealed class SwirlDiffuserRecoveryResult
 {
-    /// <summary>Cp = (p_out - p_in) / (0.5 rho u_ref^2), heuristic.</summary>
+    /// <summary>Cp = (p_out - p_in) / (0.5 ρ u_ref²), bounded correlation.</summary>
     public double EstimatedPressureRecoveryCoefficient { get; init; }
     public double SeparationRiskScore { get; init; }
     public double EffectivePressureRecoveryEfficiency { get; init; }

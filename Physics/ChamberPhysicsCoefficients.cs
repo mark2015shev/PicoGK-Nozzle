@@ -74,8 +74,16 @@ public static class ChamberPhysicsCoefficients
     public static double EntrainmentReRef { get; set; } = 50_000.0;
     public static double EntrainmentReGain { get; set; } = 0.08;
 
-    /// <summary>Upper clamp on entrainment mass-demand multiplier passed into <see cref="FlowMarcher"/> [-].</summary>
+    /// <summary>Upper clamp (legacy) on multiplicative entrainment scaling — march now uses capture pressure deficit [Pa].</summary>
     public static double EntrainmentMassDemandBoostClampMax { get; set; } = 4.0;
+
+    /// <summary>
+    /// Discharge coefficient C_d on √(2 ΔP/ρ) for capture-boundary entrainment velocity (lumped intake; not full port CFD).
+    /// </summary>
+    public static double CaptureEntrainmentDischargeCoefficient { get; set; } = 0.62;
+
+    /// <summary>Small bounded shear-entrainment addition to pressure-driven increment (stability) [-].</summary>
+    public static double EntrainmentShearAugmentationFraction { get; set; } = 0.12;
 
     // --- Chamber march: first-order total-pressure losses (see ChamberMarchLossModel) ---
     /// <summary>Ė_mix loss ∝ (Δṁ/ṁ) · q̄ applied to P₀ [-].</summary>

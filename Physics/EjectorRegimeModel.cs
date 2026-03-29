@@ -71,7 +71,7 @@ public static class EjectorRegimeModel
             score = 0.18;
         }
 
-        string notes = $"PR={pr:F2}, max entr. Mach≈{maxM:F3}, admit={admit:F2}, choked steps={anyChoked}. Heuristic regime only.";
+        string notes = $"PR={pr:F2}, max entr. Mach≈{maxM:F3}, admit={admit:F2}, choked steps={anyChoked}. Reduced-order regime classification only.";
 
         return new EjectorRegimeResult
         {

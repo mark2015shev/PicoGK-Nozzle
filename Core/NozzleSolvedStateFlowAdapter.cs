@@ -5,7 +5,7 @@ namespace PicoGK_Run.Core;
 
 /// <summary>
 /// Builds a <see cref="NozzleSolvedState"/> for reporting/viewer when the SI flow pipeline is used
-/// (legacy heuristic fields are zero or derived from <see cref="SiFlowDiagnostics"/> when present).
+/// (legacy lumped-estimate fields are zero or derived from <see cref="SiFlowDiagnostics"/> when present).
 /// </summary>
 public static class NozzleSolvedStateFlowAdapter
 {

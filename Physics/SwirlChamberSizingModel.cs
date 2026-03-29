@@ -78,7 +78,7 @@ public static class SwirlChamberSizingModel
             Mode switch
             {
                 DiameterMode.UserTemplate => "Chamber diameter: user / template (no synthesis).",
-                DiameterMode.SynthesisHeuristic => "Chamber diameter: synthesis heuristic (jet × swirl/ER scale; not entrainment-area derived).",
+                DiameterMode.SynthesisHeuristic => "Chamber diameter: synthesis approximate scale (jet × swirl/ER; not entrainment-area derived).",
                 DiameterMode.EntrainmentDerived => $"Chamber diameter: entrainment-derived (ER={TargetEntrainmentRatio:F3}, D={ChamberDiameterTargetMm:F2} mm, A_inj/A_bore={InjectorToBoreAreaRatio:F3}).",
                 DiameterMode.ReferenceDerivedAtConfiguredTargetEr => $"Reference bore at configured target ER (audit): D={ChamberDiameterTargetMm:F2} mm — compare to actual seed bore in chamber-diameter trace.",
                 _ => "Chamber diameter: unknown mode."

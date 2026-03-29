@@ -105,9 +105,11 @@ public sealed class FlowMarcher
     /// <summary>
     /// Compressible entrainment (choked cap): carry h₀ and P₀ by mass mixing of stagnation properties, apply named
     /// <see cref="ChamberMarchLossModel"/> P₀ decrements, derive (P,T) from P₀, h₀, and |V|; evolve ṁ and axial momentum
-    /// via mixing; evolve Ġ_θ explicitly (entrainment at V_θ=0 dilutes V_θ,bulk); Ce uses <see cref="SwirlMath.SwirlCorrelationForEntrainment"/>;
+    /// via mixing; evolve Ġ_θ explicitly (entrainment at V_θ=0 dilutes V_θ,bulk);
+    /// entrainment demand: pressure deficit at capture (Bernoulli entry speed) × lumped mixing effectiveness from
+    /// <see cref="SwirlMath.SwirlCorrelationForEntrainment"/>, plus a small bounded shear term;
     /// bulk P_static from <see cref="CompressibleFlowMath.BulkChamberThermoFromStagnationAndSpeedMagnitude"/> (P₀, T₀, |V|);
-    /// radial shaping only via <see cref="RadialVortexPressureModel.ComputeShapingRelativeToBulk"/>.
+    /// radial shaping only via <see cref="RadialVortexPressureModel.ComputeShapingRelativeToBulk"/> (reduced-order dP/dr balance).
     /// Optional swirl-passage Mach cap limits ṁ before inlet suction when <paramref name="chamberFullBoreAreaM2"/> &gt; 0.
     /// </summary>
     public FlowMarchDetailedResult SolveDetailed(
@@ -119,7 +121,7 @@ public sealed class FlowMarcher
         Func<double, double> captureAreaFunction,
         double primaryTangentialVelocityMps,
         double swirlDecayPerStepFactor,
-        double entrainmentMassDemandMultiplier = 1.0,
+        double captureStaticPressureDeficitAugmentationPa = 0.0,
         double chamberLdRatio = 1.0,
         double chamberDiameterMm = 50.0,
         bool useReynoldsOnEntrainmentCe = false,
@@ -154,10 +156,10 @@ public sealed class FlowMarcher
 
         var invariantSink = validateMarchStepInvariants ? new List<string>() : null;
 
-        double boost = Math.Clamp(
-            entrainmentMassDemandMultiplier,
-            0.25,
-            ChamberPhysicsCoefficients.EntrainmentMassDemandBoostClampMax);
+        double pAmbEnt = Math.Max(_ambient.PressurePa, 1.0);
+        double rhoAmbEnt = Math.Max(_ambient.DensityKgM3, 1e-9);
+        double aSoundAmb = _gas.SpeedOfSound(_ambient.TemperatureK);
+        double maxEntEntryMps = 0.92 * Math.Max(aSoundAmb, 1.0);
         double dx = sectionLengthM / stepCount;
         double primaryMdot = inletState.MassFlowKgS;
         var states = new List<JetState> { inletState };
@@ -229,11 +231,25 @@ public sealed class FlowMarcher
                 reApprox,
                 useReynoldsOnEntrainmentCe);
 
-            double dmRequested = _entrainment.ComputeEntrainedMassPerLength(
+            double dmPress = EntrainmentModel.ComputeCapturePressureDrivenMassIncrement(
+                pAmbEnt,
+                rhoAmbEnt,
+                pOld,
+                aCap,
+                ChamberPhysicsCoefficients.CaptureEntrainmentDischargeCoefficient,
+                dx,
+                sectionLengthM,
                 ceStep,
-                _ambient.DensityKgM3,
-                vMagCorr,
-                perimeter) * dx * boost;
+                captureStaticPressureDeficitAugmentationPa,
+                maxEntEntryMps);
+            double dmShear = _entrainment.ComputeShearAugmentedMassIncrement(
+                    ceStep,
+                    rhoAmbEnt,
+                    vMagCorr,
+                    perimeter,
+                    dx)
+                * ChamberPhysicsCoefficients.EntrainmentShearAugmentationFraction;
+            double dmRequested = dmPress + dmShear;
             sumCorrelationEntrainmentDemandKgS += dmRequested;
 
             double pMixClamped = Math.Clamp(pOld, 1.0, _ambient.PressurePa * 0.99999);

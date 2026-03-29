@@ -12,6 +12,9 @@ public static class NozzleViewerSegmentColors
     public const string StatorSectionHex = "#9B5DE5";
     public const string ExitHex = "#A8A8A8";
 
+    /// <summary>Optional jet trajectory debug polylines (<see cref="NozzleGeometryResult.JetTrajectoryDebug"/>).</summary>
+    public const string JetTrajectoryDebugHex = "#2EC4B6";
+
     public const float Roughness = 0.02f;
     public const float Metallic = 0.42f;
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PicoGK_Run.Physics.Reports;
+using PicoGK_Run.Physics.SwirlSegment;
 
 namespace PicoGK_Run.Physics;
 
@@ -40,7 +41,7 @@ public sealed class SiFlowDiagnostics
     /// <summary>Σ (requested − actual) per step [kg/s].</summary>
     public double EntrainmentShortfallSumKgS { get; init; }
 
-    /// <summary>diagnostic_force_only — expander ΔP×A_proj heuristic; not added to net thrust CV.</summary>
+    /// <summary>diagnostic_force_only — expander ΔP×A_proj lumped wall contribution; not added to net thrust CV.</summary>
     public double ExpanderAxialPressureForceN { get; init; }
 
     /// <summary>diagnostic_force_only — Σ per-step inlet capture (P_amb−P_local)×A; not added to net thrust CV.</summary>
@@ -82,11 +83,14 @@ public sealed class SiFlowDiagnostics
     /// <summary>True when near-injector or march-inlet static exceeded 10 bar abs (hard assertion).</summary>
     public bool ChamberPressureHardAssertionTripped { get; init; }
 
-    /// <summary>Chamber vortex / radial pressure / swirl budget bookkeeping (first-order, not CFD).</summary>
+    /// <summary>Chamber vortex / radial pressure / swirl budget bookkeeping (reduced-order, not CFD).</summary>
     public VortexFlowDiagnostics? Vortex { get; init; }
 
     /// <summary>Extended radial / structure / diffuser / ejector / loss diagnostics — not CFD.</summary>
     public ChamberFirstOrderPhysics? Chamber { get; init; }
+
+    /// <summary>Injector + swirl-segment reduced-order snapshot (velocity split, entrainment deficit, spill, expander).</summary>
+    public SwirlSegmentReducedOrderReport? SwirlSegmentPhysics { get; init; }
 
     /// <summary>Raw vs effective coupling audit for SI thrust path (first-order).</summary>
     public SiVortexCouplingDiagnostics? Coupling { get; init; }

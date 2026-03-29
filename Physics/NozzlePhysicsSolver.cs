@@ -172,7 +172,7 @@ public sealed class NozzlePhysicsSolver
         double inletCaptureEfficiency = Math.Min(entrainmentRatio / Math.Max(entrainmentRatioBase, 1e-9), 1.09);
 
         if (entrainmentRatio >= 1.32)
-            warnings.Add("Unrealistic entrainment: ratio hit upper heuristic cap (1.35); treat as optimistic.");
+            warnings.Add("Unrealistic entrainment: ratio hit upper calibrated cap (1.35); treat as optimistic.");
 
         if (entrainmentRatio > 0.90 && inletToSource < 1.12)
             warnings.Add("Unrealistic entrainment: high ratio with only modest inlet capture (A_inlet/A_source).");
@@ -186,7 +186,7 @@ public sealed class NozzlePhysicsSolver
             out double mixedVelocity);
 
         if (mixedVelocityAfterLoss < 0.45 * vCore && mixedVelocityIdeal > 1e-6)
-            warnings.Add("Severe mixed-velocity collapse: dilution and/or heuristic losses reduced axial speed well below core speed (before numeric floor).");
+            warnings.Add("Severe mixed-velocity collapse: dilution and/or lumped losses reduced axial speed well below core speed (before numeric floor).");
 
         if (mixedVelocityAfterLoss < vFloor && mixedVelocityIdeal > 1e-6)
             warnings.Add("Severe mixed-velocity collapse: applied minimum floor (0.42 * V_core); raw mixed speed was lower.");
@@ -380,9 +380,9 @@ public sealed class NozzlePhysicsSolver
     {
         double halfDeg = d.ExpanderHalfAngleDeg;
         if (halfDeg > 18.0)
-            warnings.Add("Aggressive expander: half-angle > 18°; expansion efficiency is heavily penalized in this heuristic model.");
+            warnings.Add("Aggressive expander: half-angle > 18°; expansion efficiency is heavily penalized in this reduced-order model.");
         else if (halfDeg > 14.0)
-            warnings.Add("Aggressive expander: half-angle > 14°; watch separation risk in real flow (heuristic model only).");
+            warnings.Add("Aggressive expander: half-angle > 14°; watch separation risk in real flow (reduced-order model only).");
 
         double angleRad = halfDeg * (Math.PI / 180.0);
         double steepPenalty = Math.Clamp((halfDeg - 10.0) / 12.0, 0.0, 1.0);
@@ -431,7 +431,7 @@ public sealed class NozzlePhysicsSolver
         double eta = 0.34 + 0.36 * combinedMatch * vaneFactor * (1.0 - 0.26 * overload);
         eta = Math.Clamp(eta, 0.22, 0.82);
         if (eta >= 0.78 && chamberSwirlNumber > 2.2)
-            warnings.Add("Stator recovery is near the model cap; unlikely to recover all swirl energy (heuristic cap).");
+            warnings.Add("Stator recovery is near the model cap; unlikely to recover all swirl energy (bounded recovery cap).");
         return eta;
     }
 

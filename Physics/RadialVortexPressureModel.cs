@@ -11,7 +11,7 @@ public enum RadialVortexPressureModelType
     FreeDominated
 }
 
-/// <summary>Outputs from the radial equilibrium model dp/dr = rho * v_theta^2 / r (axisymmetric, small Vr).</summary>
+/// <summary>Outputs from the reduced-order radial pressure-balance model dp/dr ≈ ρ V_θ²/r (axisymmetric, small V_r).</summary>
 public sealed class RadialVortexPressureResult
 {
     public double CoreRadiusM { get; init; }
@@ -32,7 +32,7 @@ public sealed class RadialVortexPressureResult
 }
 
 /// <summary>
-/// <b>Secondary field model only:</b> derives Δp_core, Δp_wall vs bulk chamber static from ρ, V_t, and geometry.
+/// <b>Secondary field model only:</b> reduced-order radial pressure balance — Δp_core, Δp_wall vs bulk chamber static from ρ, V_θ, and geometry.
 /// Bulk <c>P_static</c> must come from the chamber march (<see cref="CompressibleFlowMath.BulkChamberThermoFromStagnationAndSpeedMagnitude"/>);
 /// this class never overrides bulk pressure.
 /// </summary>

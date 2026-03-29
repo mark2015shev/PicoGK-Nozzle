@@ -2,7 +2,7 @@ using System;
 
 namespace PicoGK_Run.Physics;
 
-/// <summary>Stability / usefulness classification for controlled-vortex nozzle (heuristic).</summary>
+/// <summary>Stability / usefulness classification for controlled-vortex nozzle (reduced-order correlation).</summary>
 public enum VortexStabilityClassification
 {
     StableLow,
@@ -27,7 +27,7 @@ public sealed class VortexStructureDiagnosticsResult
     public string Notes { get; init; } = "";
 }
 
-/// <summary>Heuristic vortex structure / stability — not CFD.</summary>
+/// <summary>Reduced-order vortex structure / stability — not CFD.</summary>
 public static class VortexStructureModel
 {
     /// <param name="injectorFluxSwirlNumber">
@@ -134,11 +134,11 @@ public static class VortexStructureModel
 
     private static string Label(VortexStabilityClassification c) => c switch
     {
-        VortexStabilityClassification.StableLow => "stable low swirl (heuristic)",
-        VortexStabilityClassification.StableUseful => "stable useful vortex (heuristic)",
-        VortexStabilityClassification.StrongSwirl => "strong controlled swirl (heuristic)",
-        VortexStabilityClassification.BreakdownRisk => "vortex breakdown risk (heuristic)",
-        VortexStabilityClassification.LikelyUnstable => "likely unstable / heavy recirculation risk (heuristic)",
+        VortexStabilityClassification.StableLow => "stable low swirl (reduced-order)",
+        VortexStabilityClassification.StableUseful => "stable useful vortex (reduced-order)",
+        VortexStabilityClassification.StrongSwirl => "strong controlled swirl (reduced-order)",
+        VortexStabilityClassification.BreakdownRisk => "vortex breakdown risk (reduced-order)",
+        VortexStabilityClassification.LikelyUnstable => "likely unstable / heavy recirculation risk (reduced-order)",
         _ => "unknown"
     };
 }
