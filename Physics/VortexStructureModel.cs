@@ -22,7 +22,7 @@ public sealed class VortexStructureDiagnosticsResult
     public double BreakdownRiskScore { get; init; }
     public VortexStabilityClassification Classification { get; init; }
     public string ClassificationLabel { get; init; } = "";
-    /// <summary>0–1 tuning quality: entrainment + recoverable swirl + radial structure − risks.</summary>
+    /// <summary>0–1 diagnostic regime blend (structure model only); swirl chamber authority is march + radial pressures + Ġ_θ.</summary>
     public double CompositeVortexQuality { get; init; }
     public string Notes { get; init; } = "";
 }

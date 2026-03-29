@@ -277,8 +277,8 @@ internal static class ResultReporter
         Library.Log($"Flux-style swirl S_flux ≈ K·S [-]: {vs.SwirlNumberFluxStyle:F3} (K={vs.FluxGeometryFactorKUsed:F2}, uniform profile assumption)");
         Library.Log($"Vortex classification:         {vs.ClassificationLabel}");
         Library.Log($"Breakdown risk score [-]:      {vs.BreakdownRiskScore:F3}");
-        Library.Log($"Structure composite score [-]: {vs.CompositeVortexQuality:F3} (regime / radial / decay blend)");
-        Library.Log($"Tuning composite quality [-]:   {ch.TuningCompositeQuality:F3} (autotune scalar)");
+        Library.Log($"Structure regime blend [-]:     {vs.CompositeVortexQuality:F3} (diagnostic; not primary chamber authority)");
+        Library.Log($"Swirl chamber autotune score [-]: {ch.SwirlChamberAutotuneScore01:F3} (pressures, margins, entrainment, containment)");
         Library.Log("--- Radial vortex pressure (mixed forced core + free outer) ---");
         Library.Log($"Core radius estimate [m]:      {rp.CoreRadiusM:F5}  Chamber R [m]: {rp.ChamberRadiusM:F5}");
         Library.Log($"Wall pressure rise [Pa]:        {rp.WallPressureRisePa:F1}");

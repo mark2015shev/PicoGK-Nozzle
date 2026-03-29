@@ -19,6 +19,11 @@ public sealed class PhysicsResidualSummary
     /// <summary>|Ġ_θ − ṁ r V_t| / max(|Ġ_θ|, ε) at worst march step.</summary>
     public double MaxChamberAngularMomentumFluxClosureResidualRelative { get; init; }
 
+    /// <summary>
+    /// max_x |P_bulk,isentropic(M,|V|) − P_bulk,closure| / max(P_bulk, ε) when isentropic consistency branch applies.
+    /// </summary>
+    public double MaxChamberBulkPressureConsistencyResidualRelative { get; init; }
+
     /// <summary>|ṁ_exit − ρ_exit A_exit V_exit| / max(ṁ_exit, ε) at nozzle exit CV.</summary>
     public double ExitControlVolumeMassFluxResidualRelative { get; init; }
 }

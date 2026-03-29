@@ -64,6 +64,14 @@ public static class PenaltyBreakdownBuilder
                         0.0,
                         0.35));
             }
+
+            double pCons = crMarch.MaxChamberBulkPressureConsistencyResidualRelative;
+            if (pCons > 0.006)
+            {
+                massBal = Math.Max(
+                    massBal,
+                    Math.Clamp(pCons * 14.0, 0.0, 0.42));
+            }
         }
         else if (si.MarchPhysicsClosure != null)
         {
@@ -94,6 +102,12 @@ public static class PenaltyBreakdownBuilder
 
         double residVt = Math.Abs(si.FinalTangentialVelocityMps);
         double exSwirl = Math.Clamp(residVt / 180.0, 0.0, 1.0) * 0.28;
+        if (si.Chamber?.SwirlSegmentReport?.Containment is { } ctRm)
+        {
+            exSwirl = Math.Max(
+                exSwirl,
+                Math.Clamp(ctRm.ResidualChamberEndSwirlRatioVtOverVx / 3.8 * 0.32, 0.0, 0.38));
+        }
 
         int capSteps = si.EntrainmentStepsLimitedBySwirlPassageCapacity;
         double govClip = capSteps > 0
@@ -144,10 +158,24 @@ public static class PenaltyBreakdownBuilder
         {
             capDefPen = Math.Clamp(si.Chamber.CapturePressureDeficitWeakness01 * 0.38, 0.0, 0.55);
             spillPen = Math.Clamp((si.Chamber.SwirlSegmentReport?.Spill?.BidirectionalSpillRisk01 ?? 0.0) * 0.30, 0.0, 0.48);
+            if (si.Chamber.SwirlSegmentReport?.Spill is { } spm)
+            {
+                spillPen += Math.Clamp(Math.Max(0.0, spm.InletSpillPressureMarginPa) / 11_000.0 * 0.22, 0.0, 0.28);
+                spillPen += Math.Clamp(Math.Max(0.0, spm.ExitDrivePressureMarginPa) / 11_000.0 * 0.20, 0.0, 0.26);
+            }
+
             containPen = Math.Clamp(
                 (si.Chamber.SwirlSegmentReport?.Containment?.InletContainmentRisk01 ?? 0.0) * 0.28,
                 0.0,
                 0.45);
+            if (si.Chamber.SwirlSegmentReport?.Containment is { } ctDev)
+            {
+                double devDef = ctDev.ChamberDevelopmentLengthRatio < 1.0
+                    ? Math.Clamp(1.0 - ctDev.ChamberDevelopmentLengthRatio, 0.0, 1.0)
+                    : 0.0;
+                containPen += Math.Clamp(devDef * 0.26, 0.0, 0.32);
+                containPen += Math.Clamp(ctDev.FreeAnnulusBlockageRatio * 0.18, 0.0, 0.22);
+            }
         }
 
         return new PhysicsPenaltyBreakdown(

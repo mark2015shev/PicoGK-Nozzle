@@ -44,7 +44,7 @@ internal static class UnifiedPhysicsEvaluationService
         RunConfiguration run)
     {
         SiFlowDiagnostics si = path.SiDiag;
-        FlowTunePhysicsMetrics metrics = FlowTunePhysicsMetrics.FromChamber(si.Chamber, si.FinalAxialVelocityMps);
+        FlowTunePhysicsMetrics metrics = FlowTunePhysicsMetrics.FromChamber(si.Chamber, si.FinalAxialVelocityMps, si);
         int designErr = path.HealthMessages.Count(m => m.StartsWith("DESIGN ERROR", StringComparison.Ordinal));
         double mdotTot = path.PhysicsStages.FinalTotalMassFlowKgS;
         PhysicsPenaltyBreakdown phys = PenaltyBreakdownBuilder.BuildPhysics(
@@ -109,10 +109,13 @@ internal static class UnifiedPhysicsEvaluationService
             EntrainmentRatio = u.Solved.EntrainmentRatio,
             NetThrustN = u.SiDiagnostics.NetThrustN,
             SourceOnlyThrustN = u.Solved.SourceOnlyThrustN,
-            VortexQualityMetric = u.SiDiagnostics.Chamber?.TuningCompositeQuality
+            VortexQualityMetric = u.SiDiagnostics.Chamber?.SwirlChamberAutotuneScore01
                 ?? u.SiDiagnostics.Vortex?.VortexQualityMetric
                 ?? 0.0,
-            PhysicsMetrics = FlowTunePhysicsMetrics.FromChamber(u.SiDiagnostics.Chamber, u.SiDiagnostics.FinalAxialVelocityMps),
+            PhysicsMetrics = FlowTunePhysicsMetrics.FromChamber(
+                u.SiDiagnostics.Chamber,
+                u.SiDiagnostics.FinalAxialVelocityMps,
+                u.SiDiagnostics),
             AmbientAirMassFlowKgS = u.Solved.AmbientAirMassFlowKgPerSec,
             CoreMassFlowKgS = u.Solved.CoreMassFlowKgPerSec,
             HealthCount = u.HealthMessages.Count,

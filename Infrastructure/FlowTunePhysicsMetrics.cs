@@ -6,7 +6,10 @@ namespace PicoGK_Run.Infrastructure;
 /// <summary>Scalar physics metrics for autotune (same SI path as full run).</summary>
 public sealed class FlowTunePhysicsMetrics
 {
-    /// <summary>Chamber autotune scalar (same as <c>TuningCompositeQuality</c> on first-order physics; legacy property name).</summary>
+    /// <summary>Same as <see cref="ChamberFirstOrderPhysics.SwirlChamberAutotuneScore01"/> (preferred name).</summary>
+    public double SwirlChamberAutotuneScore01 { get; init; }
+
+    /// <summary>Legacy alias for <see cref="SwirlChamberAutotuneScore01"/>.</summary>
     public double VortexQualityComposite { get; init; }
     public double RadialPressureUsefulNorm { get; init; }
     public double RecoverableSwirlAtStatorNorm { get; init; }
@@ -20,7 +23,21 @@ public sealed class FlowTunePhysicsMetrics
     public double BidirectionalSpillRisk01 { get; init; }
     public double InletContainmentRisk01 { get; init; }
 
-    public static FlowTunePhysicsMetrics FromChamber(ChamberFirstOrderPhysics? ch, double mixedAxialMps)
+    public double MaxChamberBulkPressureConsistencyResidualRelative { get; init; }
+
+    /// <summary>1 − L/D_dev when L/D &lt; reference (0 = well developed).</summary>
+    public double ChamberDevelopmentDeficit01 { get; init; }
+
+    public double ResidualChamberEndSwirlRatioVtOverVx { get; init; }
+
+    public double InletSpillPressureMarginPa { get; init; }
+
+    public double ExitDrivePressureMarginPa { get; init; }
+
+    public static FlowTunePhysicsMetrics FromChamber(
+        ChamberFirstOrderPhysics? ch,
+        double mixedAxialMps,
+        SiFlowDiagnostics? si = null)
     {
         if (ch == null)
         {
@@ -30,8 +47,13 @@ public sealed class FlowTunePhysicsMetrics
         double machAx = Math.Clamp(Math.Abs(mixedAxialMps) / 340.0, 0.0, 0.95);
         double lowAx = Math.Clamp((0.22 - machAx) / 0.22, 0.0, 1.0);
 
+        double devRatio = ch.SwirlSegmentReport?.Containment?.ChamberDevelopmentLengthRatio ?? 1.0;
+        double devDeficit = devRatio >= 1.0 ? 0.0 : Math.Clamp(1.0 - devRatio, 0.0, 1.0);
+        double pCons = si?.ConservationResiduals?.MaxChamberBulkPressureConsistencyResidualRelative ?? 0.0;
+
         return new FlowTunePhysicsMetrics
         {
+            SwirlChamberAutotuneScore01 = ch.SwirlChamberAutotuneScore01,
             VortexQualityComposite = ch.TuningCompositeQuality,
             RadialPressureUsefulNorm = ch.RadialPressureUsefulNorm,
             RecoverableSwirlAtStatorNorm = ch.RecoverableSwirlFraction01,
@@ -42,7 +64,13 @@ public sealed class FlowTunePhysicsMetrics
             LowAxialMomentum01 = lowAx,
             CapturePressureDeficitWeakness01 = ch.CapturePressureDeficitWeakness01,
             BidirectionalSpillRisk01 = ch.SwirlSegmentReport?.Spill?.BidirectionalSpillRisk01 ?? 0.0,
-            InletContainmentRisk01 = ch.SwirlSegmentReport?.Containment?.InletContainmentRisk01 ?? 0.0
+            InletContainmentRisk01 = ch.SwirlSegmentReport?.Containment?.InletContainmentRisk01 ?? 0.0,
+            MaxChamberBulkPressureConsistencyResidualRelative = pCons,
+            ChamberDevelopmentDeficit01 = devDeficit,
+            ResidualChamberEndSwirlRatioVtOverVx = ch.SwirlSegmentReport?.Containment?.ResidualChamberEndSwirlRatioVtOverVx
+                ?? 0.0,
+            InletSpillPressureMarginPa = ch.SwirlSegmentReport?.Spill?.InletSpillPressureMarginPa ?? 0.0,
+            ExitDrivePressureMarginPa = ch.SwirlSegmentReport?.Spill?.ExitDrivePressureMarginPa ?? 0.0
         };
     }
 }

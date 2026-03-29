@@ -3,7 +3,7 @@ using System;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Finite control-volume discharge split: two escape resistances fed by bulk chamber P and ρ from the SI march.
+/// Consequence model: discharge split from <b>authoritative</b> bulk chamber P and ρ from the SI march — not a second chamber core.
 /// </summary>
 public static class SwirlChamberDualPathDischargeModel
 {
@@ -99,5 +99,25 @@ public static class SwirlChamberDualPathDischargeModel
             VTangentialMps = vTangentialMps,
             DirectionalClassification = cls
         };
+    }
+
+    /// <summary>Alias for <see cref="Compute"/> — documents that inputs are the marched bulk chamber state only.</summary>
+    public static SwirlChamberDualPathDischargeResult FromAuthoritativeChamberBulk(
+        double chamberBulkStaticPressurePa,
+        double chamberBulkDensityKgM3,
+        double mdotPrimaryKgS,
+        double mdotSecondaryKgS,
+        double vAxialContinuityMps,
+        double vTangentialMps,
+        in SwirlChamberDischargePathSpec spec)
+    {
+        return Compute(
+            chamberBulkStaticPressurePa,
+            chamberBulkDensityKgM3,
+            mdotPrimaryKgS,
+            mdotSecondaryKgS,
+            vAxialContinuityMps,
+            vTangentialMps,
+            in spec);
     }
 }

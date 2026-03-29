@@ -6,6 +6,8 @@ namespace PicoGK_Run.Physics;
 /// </summary>
 public static class PhysicsCalibrationHooks
 {
+    /// <summary>Reference L/D for chamber development ratio (L/D_chamber / L/D_ref) in containment metrics.</summary>
+    public static double ChamberDevelopmentReferenceLd { get; set; } = 2.6;
     /// <summary>Scale [Pa]: wall static above inlet-lip / capture reference → inlet spill risk.</summary>
     public static double InletSpillMarginReferencePa { get; set; } = 8200.0;
 

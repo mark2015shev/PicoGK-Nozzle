@@ -8,8 +8,8 @@ namespace PicoGK_Run.Physics;
 /// </summary>
 public static class ChamberSpillDriveMargins
 {
-    /// <param name="inletSpillPressureMarginPa">P_wall,rep − P_capture at inlet (positive ⇒ outward wall loading vs capture reference).</param>
-    /// <param name="exitDrivePressureMarginPa">P_downstream,rep − P_wall,rep (positive ⇒ favorable axial drive).</param>
+    /// <param name="inletSpillPressureMarginPa">P_wall,upstream − P_boundary,inlet (positive ⇒ wall loading vs capture).</param>
+    /// <param name="exitDrivePressureMarginPa">P_wall,downstream − P_boundary,expander (positive ⇒ wall above expander reference ⇒ weak forward drive).</param>
     public static SpillTendencyEstimate FromPressureMargins(
         double inletSpillPressureMarginPa,
         double exitDrivePressureMarginPa)
@@ -25,8 +25,8 @@ public static class ChamberSpillDriveMargins
         // Inlet spill risk rises when wall static exceeds capture reference (linear map, clamped).
         double inletSpillR = Math.Clamp(gIn * Math.Max(0.0, mIn) / refIn, 0.0, 1.0);
 
-        // Downstream drive risk rises when downstream static does not exceed wall (weak forward drive).
-        double downDriveR = Math.Clamp(gEx * Math.Max(0.0, -mEx) / refEx, 0.0, 1.0);
+        // Downstream drive risk rises when wall exceeds expander-entry reference static (blocked / weak forward ΔP).
+        double downDriveR = Math.Clamp(gEx * Math.Max(0.0, mEx) / refEx, 0.0, 1.0);
 
         double spillBi = Math.Clamp(0.5 * inletSpillR + 0.5 * downDriveR, 0.0, 1.0);
 

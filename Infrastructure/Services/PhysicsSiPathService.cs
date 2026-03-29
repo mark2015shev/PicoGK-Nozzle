@@ -392,6 +392,7 @@ internal static class PhysicsSiPathService
                     MeanChamberContinuityResidualRelative = 0.0,
                     MaxChamberAxialMomentumBudgetResidualRelative = 0.0,
                     MaxChamberAngularMomentumFluxClosureResidualRelative = 0.0,
+                    MaxChamberBulkPressureConsistencyResidualRelative = 0.0,
                     ExitControlVolumeMassFluxResidualRelative = exitMassFluxResidual
                 }
                 : new PhysicsResidualSummary
@@ -401,6 +402,7 @@ internal static class PhysicsSiPathService
                     MaxChamberAxialMomentumBudgetResidualRelative = marchRes.MaxChamberAxialMomentumBudgetResidualRelative,
                     MaxChamberAngularMomentumFluxClosureResidualRelative = marchRes
                         .MaxChamberAngularMomentumFluxClosureResidualRelative,
+                    MaxChamberBulkPressureConsistencyResidualRelative = marchRes.MaxChamberBulkPressureConsistencyResidualRelative,
                     ExitControlVolumeMassFluxResidualRelative = exitMassFluxResidual
                 };
 

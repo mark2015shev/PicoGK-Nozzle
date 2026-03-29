@@ -1,6 +1,6 @@
 namespace PicoGK_Run.Physics;
 
-/// <summary>Per-axial-station SI mixed-stream state (first-order 1-D march).</summary>
+/// <summary>Per-axial-station swirl chamber march state (compressible mixed stream, 1-D SI).</summary>
 public sealed class FlowStepState
 {
     public double X { get; init; }
@@ -72,6 +72,9 @@ public sealed class FlowStepState
 
     /// <summary>|ρ A V_ax − ṁ_total| / max(ṁ_total, ε).</summary>
     public double ContinuityResidualRelative { get; init; }
+
+    /// <summary>|P_isentropic(M,|V|) − P_bulk,closure| / max(P_bulk, ε) when isentropic consistency replaces bulk static.</summary>
+    public double ChamberBulkPressureConsistencyResidualRelative { get; init; }
 
     public FlowStepUpdate StepUpdate { get; init; }
     public CompressibleState Compressible { get; init; }

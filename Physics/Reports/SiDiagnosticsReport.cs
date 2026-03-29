@@ -64,6 +64,8 @@ public sealed class SiDiagnosticsReport
             MaxChamberAxialMomentumBudgetResidualRelative = res?.MaxChamberAxialMomentumBudgetResidualRelative ?? double.NaN,
             MaxChamberAngularMomentumFluxClosureResidualRelative = res
                 ?.MaxChamberAngularMomentumFluxClosureResidualRelative ?? double.NaN,
+            MaxChamberBulkPressureConsistencyResidualRelative = res?.MaxChamberBulkPressureConsistencyResidualRelative
+                ?? double.NaN,
             ExitControlVolumeMassFluxResidualRelative = res?.ExitControlVolumeMassFluxResidualRelative ?? double.NaN,
             AnyEntrainmentChoked = si.AnyEntrainmentStepChoked,
             EntrainmentStepsCappedBySwirlPassage = si.EntrainmentStepsLimitedBySwirlPassageCapacity,
@@ -141,7 +143,7 @@ public sealed class SiDiagnosticsReport
             lines.Add($"  final Mach (bulk): {ChamberMarch.FinalMachBulk:F4}");
             lines.Add($"  continuity residual (last): {ChamberMarch.FinalContinuityResidualRelative:F4}");
             lines.Add(
-                $"  conservation residuals — max cont: {ChamberMarch.MaxChamberContinuityResidualRelative:F4}  mean cont: {ChamberMarch.MeanChamberContinuityResidualRelative:F4}  max axial mom: {ChamberMarch.MaxChamberAxialMomentumBudgetResidualRelative:F4}  max Ġθ closure: {ChamberMarch.MaxChamberAngularMomentumFluxClosureResidualRelative:F4}  exit CV ṁ: {ChamberMarch.ExitControlVolumeMassFluxResidualRelative:F4}");
+                $"  conservation residuals — max cont: {ChamberMarch.MaxChamberContinuityResidualRelative:F4}  mean cont: {ChamberMarch.MeanChamberContinuityResidualRelative:F4}  max axial mom: {ChamberMarch.MaxChamberAxialMomentumBudgetResidualRelative:F4}  max Ġθ closure: {ChamberMarch.MaxChamberAngularMomentumFluxClosureResidualRelative:F4}  max P consistency: {ChamberMarch.MaxChamberBulkPressureConsistencyResidualRelative:F4}  exit CV ṁ: {ChamberMarch.ExitControlVolumeMassFluxResidualRelative:F4}");
             lines.Add($"  entrainment choked (any): {ChamberMarch.AnyEntrainmentChoked}");
         }
 
@@ -224,6 +226,7 @@ public sealed class ChamberMarchSummary
     public double MeanChamberContinuityResidualRelative { get; init; }
     public double MaxChamberAxialMomentumBudgetResidualRelative { get; init; }
     public double MaxChamberAngularMomentumFluxClosureResidualRelative { get; init; }
+    public double MaxChamberBulkPressureConsistencyResidualRelative { get; init; }
     public double ExitControlVolumeMassFluxResidualRelative { get; init; }
 
     public bool AnyEntrainmentChoked { get; init; }

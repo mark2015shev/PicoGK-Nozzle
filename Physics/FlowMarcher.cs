@@ -204,6 +204,7 @@ public sealed class FlowMarcher
         double sumContinuityResidualRelative = 0.0;
         double maxAxialMomentumBudgetResidualRelative = 0.0;
         double maxAngularMomentumFluxClosureResidualRelative = 0.0;
+        double maxChamberBulkPressureConsistencyResidualRelative = 0.0;
 
         _ = swirlDecayPerStepFactor;
 
@@ -442,9 +443,14 @@ public sealed class FlowMarcher
             double aSound = _gas.SpeedOfSound(tNew);
             double machFromV = vmagFinal / Math.Max(aSound, 1e-9);
             double pFromMach = p0AfterLoss * CompressibleFlowMath.StaticPressureRatioFromMach(machFromV, g);
+            double pConsistencyStep = 0.0;
             if (double.IsFinite(pFromMach) && pNew > 1.0
                 && Math.Abs(pFromMach - pNew) / pNew > ChamberAerodynamicsConfiguration.IsentropicPressureConsistencyRelativeTolerance)
             {
+                pConsistencyStep = Math.Abs(pFromMach - pNew) / Math.Max(pNew, 1.0);
+                maxChamberBulkPressureConsistencyResidualRelative = Math.Max(
+                    maxChamberBulkPressureConsistencyResidualRelative,
+                    pConsistencyStep);
                 pNew = SiPressureGuards.ClampStaticPressurePa(pFromMach);
                 rhoNew = _gas.Density(pNew, tNew);
                 aSound = _gas.SpeedOfSound(tNew);
@@ -588,7 +594,7 @@ public sealed class FlowMarcher
             SwirlChamberDualPathDischargeResult? dualPath = null;
             if (dischargePathSpec is { } dps)
             {
-                dualPath = SwirlChamberDualPathDischargeModel.Compute(
+                dualPath = SwirlChamberDualPathDischargeModel.FromAuthoritativeChamberBulk(
                     pNew,
                     rhoNew,
                     primaryMdot,
@@ -637,6 +643,7 @@ public sealed class FlowMarcher
                 RadialShapingInvariantsOk = radial.ShapingInvariantsSatisfied,
                 RadialShapingInvariantNote = radial.ShapingInvariantNote,
                 ContinuityResidualRelative = contRes,
+                ChamberBulkPressureConsistencyResidualRelative = pConsistencyStep,
                 StepUpdate = stepUpdate,
                 Compressible = comp,
                 DualPathDischarge = dualPath
@@ -730,6 +737,7 @@ public sealed class FlowMarcher
             MeanChamberContinuityResidualRelative = meanContRes,
             MaxChamberAxialMomentumBudgetResidualRelative = maxAxialMomentumBudgetResidualRelative,
             MaxChamberAngularMomentumFluxClosureResidualRelative = maxAngularMomentumFluxClosureResidualRelative,
+            MaxChamberBulkPressureConsistencyResidualRelative = maxChamberBulkPressureConsistencyResidualRelative,
             ExitControlVolumeMassFluxResidualRelative = double.NaN
         };
 

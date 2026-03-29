@@ -17,8 +17,8 @@ public sealed class SwirlBudgetResult
 }
 
 /// <summary>
-/// Exponential-style decay V_theta,primary ~ V0 * exp(-k_total * x/D) discretized to per-step factor.
-/// k_total = k_wall + k_mixing + k_entrainment + k_instability (first-order).
+/// Per-step decay factor for <b>primary-track</b> V_theta only (used to set march step count / k_total in the SI driver).
+/// Not the authoritative mixed-stream swirl: that is <see cref="FlowMarcher"/> Ġ_θ + bulk V_t. Treat as auxiliary closure, not a parallel chamber solve.
 /// </summary>
 public static class SwirlDecayModel
 {

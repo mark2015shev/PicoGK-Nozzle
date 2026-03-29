@@ -13,8 +13,8 @@ public sealed class EntrainmentModel
     public double Coefficient { get; set; } = 0.07;
 
     /// <summary>
-    /// η_mix = η_0 · f(L/D) · f(Re) for spreading pressure-driven demand along the chamber length.
-    /// Does not use swirl-number multipliers — swirl enters only through the bulk state in ΔP and shear.
+    /// Reduced-order <b>axial transport</b> of pressure-driven entrainment: η_mix = η_0·f(L/D)·f(Re) spreads Δṁ along duct length.
+    /// Authority remains ΔP_capture and V_ent at the capture boundary; this is not a Ce-style entrainment model.
     /// </summary>
     public double LumpedAxialMixingEffectiveness(
         double chamberLdRatio,

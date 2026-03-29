@@ -23,18 +23,19 @@ public sealed class EntrainmentDriveSummary
 }
 
 /// <summary>
-/// Bounded reduced-order radial static pressure structure from rotating flow (see <see cref="RadialVortexPressureModel"/>).
+/// Primary reduced-order radial static pressure field for the swirl chamber (see <see cref="RadialVortexPressureModel"/>).
+/// Drives entrainment, spill/drive margins, and expander handoff — not a decorative add-on.
 /// </summary>
-public sealed class SwirlRadialPressureBalanceState
+public sealed class SwirlRadialPressureState
 {
     public double CoreStaticPressurePa { get; init; }
     public double WallStaticPressurePa { get; init; }
     public double BulkStaticPressurePa { get; init; }
 
-    /// <summary>Representative static at entrainment capture boundary (first march step inlet local) [Pa].</summary>
+    /// <summary>Static at capture boundary for entrainment (radial model at inlet station) [Pa].</summary>
     public double CaptureBoundaryStaticPressurePa { get; init; }
 
-    /// <summary>Bulk static at chamber end / pre-expander [Pa].</summary>
+    /// <summary>Lumped static reference at expander / downstream boundary [Pa].</summary>
     public double DownstreamBoundaryStaticPressurePa { get; init; }
 
     /// <summary>(P_wall − P_core) / (R_wall − R_core) representative [Pa/m].</summary>
@@ -49,13 +50,16 @@ public sealed class SwirlRadialPressureBalanceState
 /// <summary>Bidirectional lumped spill tendency from wall vs inlet-lip and downstream pressures.</summary>
 public sealed class SpillTendencyEstimate
 {
+    /// <summary>P_wall,upstream − P_boundary,inlet [Pa].</summary>
     public double InletSpillPressureMarginPa { get; init; }
+
+    /// <summary>P_wall,downstream − P_boundary,expander [Pa]; large positive ⇒ wall exceeds expander reference (blocked tendency).</summary>
     public double ExitDrivePressureMarginPa { get; init; }
 
     /// <summary>0–1 when inlet wall exceeds capture-boundary pressure (reduced-order spill-out tendency).</summary>
     public double InletSpillRisk01 { get; init; }
 
-    /// <summary>0–1 when downstream drive is weak vs wall (reduced-order back-pressure / escape tendency).</summary>
+    /// <summary>0–1 when wall exceeds expander-entry reference static (weak forward pressure drive to expander).</summary>
     public double DownstreamDriveRisk01 { get; init; }
 
     /// <summary>Combined 0–1 indicator when inlet spill and downstream drive compete.</summary>
@@ -68,11 +72,14 @@ public sealed class SwirlContainmentMetrics
     /// <summary>P_amb − P_core (representative) [Pa]; larger suggests more core suction vs ambient.</summary>
     public double SwirlContainmentMarginPa { get; init; }
 
-    /// <summary>L/D divided by a reference (1.0 = nominal scale).</summary>
+    /// <summary>Chamber L/D divided by reference L/D (development vs nominal length).</summary>
     public double ChamberDevelopmentLengthRatio { get; init; }
 
     /// <summary>A_inj / A_free_annulus [-].</summary>
     public double FreeAnnulusBlockageRatio { get; init; }
+
+    /// <summary>|Vt|/max(|Vx|, floor) at chamber exit (mixed stream).</summary>
+    public double ResidualChamberEndSwirlRatioVtOverVx { get; init; }
 
     /// <summary>0–1 higher when inlet spill margin and containment margin suggest upstream escape risk.</summary>
     public double InletContainmentRisk01 { get; init; }
@@ -103,6 +110,8 @@ public sealed class ChamberExpanderInletHandoffState
     public double WallStaticPressurePa { get; init; }
     public double BulkStaticPressurePa { get; init; }
     public double ResidualSwirlRatioVtOverVx { get; init; }
+
+    /// <summary>Same convention as <see cref="SpillTendencyEstimate.ExitDrivePressureMarginPa"/> (P_wall,ds − P_boundary,expander).</summary>
     public double DownstreamPressureDriveMarginPa { get; init; }
 }
 
@@ -145,13 +154,15 @@ public sealed class ExpanderRecoveryEstimate
 public sealed class SwirlSegmentReducedOrderReport
 {
     public InjectorVelocityState? InjectorVelocity { get; init; }
+    public ChamberInletState? ChamberInlet { get; init; }
     public EntrainmentDriveSummary? Entrainment { get; init; }
-    public SwirlRadialPressureBalanceState? RadialPressureBalance { get; init; }
+    public SwirlRadialPressureState? RadialPressure { get; init; }
     public SpillTendencyEstimate? Spill { get; init; }
     public SwirlContainmentMetrics? Containment { get; init; }
     public SwirlFlowDirectionState? FlowDirection { get; init; }
     public ExpanderRecoveryEstimate? Expander { get; init; }
     public SwirlAngularMomentumState? AngularMomentum { get; init; }
+    public ChamberExitState? ChamberExit { get; init; }
     public ChamberExpanderInletHandoffState? ExpanderInletHandoff { get; init; }
 
     public string FormatDebugBlock()
@@ -165,6 +176,13 @@ public sealed class SwirlSegmentReducedOrderReport
                 $"Injector |V|={v.VelocityMagnitudeMps:F2} m/s  Vx={v.AxialVelocityMps:F2}  Vt={v.TangentialVelocityMps:F2}  Vr={v.RadialVelocityMps:F2}  β={v.FlowAngleDeg:F2}°  Vt/Vx={v.SwirlRatioVtOverVx:F3}");
         }
 
+        if (ChamberInlet != null)
+        {
+            ChamberInletState c = ChamberInlet;
+            sb.AppendLine(
+                $"Chamber inlet (authoritative): ṁ_primary={c.MassFlowPrimaryKgS:F5} kg/s  P={c.StaticPressurePa:F1} Pa  ρ={c.StaticDensityKgM3:F4} kg/m³  Vx={c.AxialVelocityMps:F2}  Vt={c.TangentialVelocityMps:F2}  Vr={c.RadialVelocityMps:F2}  |V|={c.VelocityMagnitudeMps:F2}  β={c.FlowAngleDeg:F2}°");
+        }
+
         if (Entrainment != null)
         {
             EntrainmentDriveSummary e = Entrainment;
@@ -172,11 +190,11 @@ public sealed class SwirlSegmentReducedOrderReport
                 $"Pressure-driven entrainment: mean ΔP_amb−P_cap={e.MeanCapturePressureDeficitPa:F1} Pa  ṁ_ent,total≈{e.TotalEntrainedMassFlowKgS:F5} kg/s  A_cap,geom={e.EffectiveCaptureAreaM2:E4} m²  A_eff,entry≈{e.MeanEffectiveEntrainmentEntryAreaM2:E4} m²");
         }
 
-        if (RadialPressureBalance != null)
+        if (RadialPressure != null)
         {
-            SwirlRadialPressureBalanceState r = RadialPressureBalance;
+            SwirlRadialPressureState r = RadialPressure;
             sb.AppendLine(
-                $"Radial pressure balance: P_core={r.CoreStaticPressurePa:F1}  P_wall={r.WallStaticPressurePa:F1}  P_cap={r.CaptureBoundaryStaticPressurePa:F1}  P_dn={r.DownstreamBoundaryStaticPressurePa:F1} Pa");
+                $"Radial pressure (primary chamber field): P_core={r.CoreStaticPressurePa:F1}  P_wall={r.WallStaticPressurePa:F1}  P_cap={r.CaptureBoundaryStaticPressurePa:F1}  P_dn={r.DownstreamBoundaryStaticPressurePa:F1} Pa");
             sb.AppendLine(
                 $"  dP/dr≈{r.RadialPressureGradientRepresentativePaPerM:F0} Pa/m  r_core≈{r.AssumedCoreRadiusMm:F2} mm  R_wall≈{r.AssumedOuterRadiusMm:F2} mm");
         }
@@ -194,7 +212,7 @@ public sealed class SwirlSegmentReducedOrderReport
         {
             SpillTendencyEstimate s = Spill;
             sb.AppendLine(
-                $"Spill: ΔP_inlet margin={s.InletSpillPressureMarginPa:F1} Pa  ΔP_exit drive={s.ExitDrivePressureMarginPa:F1} Pa");
+                $"Spill/drive margins: ΔP_inlet=P_wall,up−P_cap={s.InletSpillPressureMarginPa:F1} Pa  ΔP_exit=P_wall,ds−P_exp={s.ExitDrivePressureMarginPa:F1} Pa");
             sb.AppendLine(
                 $"  inlet spill risk={s.InletSpillRisk01:F3}  downstream drive risk={s.DownstreamDriveRisk01:F3}  bidirectional={s.BidirectionalSpillRisk01:F3}");
         }
@@ -203,7 +221,7 @@ public sealed class SwirlSegmentReducedOrderReport
         {
             SwirlContainmentMetrics c = Containment;
             sb.AppendLine(
-                $"Containment: ΔP_swirl margin={c.SwirlContainmentMarginPa:F1} Pa  L/D ratio={c.ChamberDevelopmentLengthRatio:F3}  A_inj/A_free={c.FreeAnnulusBlockageRatio:F3}  inlet containment risk={c.InletContainmentRisk01:F3}");
+                $"Containment: ΔP_swirl margin={c.SwirlContainmentMarginPa:F1} Pa  L/D dev ratio={c.ChamberDevelopmentLengthRatio:F3}  A_inj/A_free={c.FreeAnnulusBlockageRatio:F3}  Vt/Vx exit={c.ResidualChamberEndSwirlRatioVtOverVx:F3}  inlet containment risk={c.InletContainmentRisk01:F3}");
         }
 
         if (FlowDirection != null)
@@ -215,13 +233,22 @@ public sealed class SwirlSegmentReducedOrderReport
                 $"  tangential-dominant={f.TangentialDominatesAxial}  downstream axial tendency={f.AxialDownstreamTendency}  inlet reverse-drive={f.InletReverseDriveTendency}  outward wall loading={f.RadialOutwardWallLoading}");
         }
 
+        if (ChamberExit != null)
+        {
+            ChamberExitState x = ChamberExit;
+            sb.AppendLine(
+                $"Chamber exit (expander handoff): ṁ={x.MdotTotalKgS:F5} kg/s  Vx={x.AxialVelocityMps:F2}  Vt={x.TangentialVelocityMps:F2} m/s  P_static={x.StaticPressurePa:F1}  P₀={x.TotalPressurePa:F1}  P_wall={x.WallStaticPressurePa:F1} Pa");
+            sb.AppendLine(
+                $"  Ġ_θ={x.AngularMomentumFluxKgM2PerS2:E4} kg·m²/s²  Vt/Vx={x.ResidualSwirlRatioVtOverVx:F3}  ΔP_inlet margin={x.InletSpillPressureMarginPa:F1}  ΔP_exit margin={x.ExitDrivePressureMarginPa:F1} Pa");
+        }
+
         if (ExpanderInletHandoff != null)
         {
             ChamberExpanderInletHandoffState h = ExpanderInletHandoff;
             sb.AppendLine(
-                $"Expander inlet handoff: ṁ={h.MdotTotalKgS:F5} kg/s  Vx={h.AxialVelocityMps:F2}  Vt={h.TangentialVelocityMps:F2} m/s  P_wall={h.WallStaticPressurePa:F1}  P_bulk={h.BulkStaticPressurePa:F1} Pa");
+                $"Expander inlet (legacy handoff line): ṁ={h.MdotTotalKgS:F5} kg/s  Vx={h.AxialVelocityMps:F2}  Vt={h.TangentialVelocityMps:F2} m/s  P_wall={h.WallStaticPressurePa:F1}  P_bulk={h.BulkStaticPressurePa:F1} Pa");
             sb.AppendLine(
-                $"  residual Vt/Vx={h.ResidualSwirlRatioVtOverVx:F3}  downstream drive margin={h.DownstreamPressureDriveMarginPa:F1} Pa");
+                $"  residual Vt/Vx={h.ResidualSwirlRatioVtOverVx:F3}  exit margin={h.DownstreamPressureDriveMarginPa:F1} Pa");
         }
 
         if (Expander != null)

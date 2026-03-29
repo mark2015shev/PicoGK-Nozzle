@@ -53,7 +53,7 @@ public static class UnifiedOptimizerScore
         double phys = candidate.PhysicsPenalties.Sum;
         double geom = candidate.GeometryPenalties.Sum;
 
-        FlowTunePhysicsMetrics mc = FlowTunePhysicsMetrics.FromChamber(si?.Chamber, si?.FinalAxialVelocityMps ?? 0.0);
+        FlowTunePhysicsMetrics mc = FlowTunePhysicsMetrics.FromChamber(si?.Chamber, si?.FinalAxialVelocityMps ?? 0.0, si);
         double lossPen = Math.Clamp(run.AutotuneWeightLossPenalty, 0, 0.5) * mc.TotalLoss01;
 
         double penaltyTotal = phys + geom + lossPen;

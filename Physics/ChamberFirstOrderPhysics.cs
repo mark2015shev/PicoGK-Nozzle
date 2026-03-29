@@ -18,7 +18,10 @@ public sealed class ChamberFirstOrderPhysics
     /// <summary>One-line engineer-facing readout.</summary>
     public string InterpretationSummary { get; init; } = "";
 
-    /// <summary>0–1 scalar for autotune (combines structure quality + radial usefulness − losses − ejector stress).</summary>
+    /// <summary>0–1 autotune scalar from pressures, margins, entrainment, containment (not a vortex-quality proxy).</summary>
+    public double SwirlChamberAutotuneScore01 { get; init; }
+
+    /// <summary>Same as <see cref="SwirlChamberAutotuneScore01"/> (legacy property name for callers).</summary>
     public double TuningCompositeQuality { get; init; }
 
     public double FracSwirlDissipated { get; init; }
