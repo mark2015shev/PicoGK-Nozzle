@@ -3,9 +3,9 @@ using System;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Reduced-order entrainment: primary driver is ambient−local static pressure deficit at the capture boundary
-/// (Bernoulli-style entry speed) with explicit C_d; axial distribution uses a bounded lumped mixing effectiveness η_mix(L/D, Re) only.
-/// A small shear-based increment remains for numerical robustness when ΔP→0.
+/// Reduced-order entrainment: authoritative driver is pressure-driven capture (see <see cref="PressureDrivenEntrainmentPhysics"/>):
+/// ΔP_capture = max(P_amb − P_capture_boundary, 0), V_ent = C_d√(2ΔP/ρ_amb), Δṁ = η_mix·ρ_amb·A_eff·V_ent·(Δx/L).
+/// Shear augmentation is secondary. Legacy Ce·ρ·V·P remains only on obsolete <see cref="FlowMarcher.Solve"/>.
 /// </summary>
 public sealed class EntrainmentModel
 {

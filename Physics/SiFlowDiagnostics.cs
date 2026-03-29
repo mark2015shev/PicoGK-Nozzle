@@ -22,6 +22,9 @@ public sealed class SiFlowDiagnostics
 
     public MarchClosureResult? MarchPhysicsClosure { get; init; }
 
+    /// <summary>Chamber march + exit CV mass-flux consistency residuals (reduced-order checks).</summary>
+    public PhysicsResidualSummary? ConservationResiduals { get; init; }
+
     public double MinInletLocalStaticPressurePa { get; init; }
     public double MaxInletMach { get; init; }
     public bool AnyEntrainmentStepChoked { get; init; }

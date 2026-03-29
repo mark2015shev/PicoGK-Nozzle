@@ -35,4 +35,7 @@ public sealed class FlowMarchStepResult
 
     /// <summary>Lumped axial mixing effectiveness η_mix used this step (L/D, Re; not a Ce coefficient).</summary>
     public double EntrainmentMixingEffectivenessUsed { get; init; }
+
+    /// <summary>Same as <see cref="FlowStepState.CaptureBoundaryStaticPressureForEntrainmentPa"/> for step CSV export.</summary>
+    public double CaptureBoundaryStaticPressureForEntrainmentPa { get; init; }
 }

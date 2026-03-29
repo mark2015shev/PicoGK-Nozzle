@@ -44,6 +44,11 @@ public sealed class FlowStepState
     /// <summary>min(capture, mixed annulus, bore, free annulus) used for pressure-driven entrainment this step [m²].</summary>
     public double EffectiveEntrainmentEntryAreaM2 { get; init; }
 
+    /// <summary>
+    /// P_capture at step entry from radial pressure balance (core-side static vs bulk before entrainment increment) [Pa].
+    /// </summary>
+    public double CaptureBoundaryStaticPressureForEntrainmentPa { get; init; }
+
     public double AngularMomentumWallLossKgM2PerS2 { get; init; }
     public double AngularMomentumMixingLossKgM2PerS2 { get; init; }
     public double AngularMomentumEntrainmentDilutionLossKgM2PerS2 { get; init; }

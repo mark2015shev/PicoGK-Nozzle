@@ -6,7 +6,7 @@ namespace PicoGK_Run.Physics.SwirlSegment;
 /// <summary>Lumped entrainment estimate for one march context (pressure deficit + area).</summary>
 public sealed class EntrainmentDriveSummary
 {
-    /// <summary>Representative P_amb − P_capture_bulk over the march [Pa].</summary>
+    /// <summary>Representative P_amb − P_capture_boundary (radial model at entrainment step) over the march [Pa].</summary>
     public double MeanCapturePressureDeficitPa { get; init; }
 
     /// <summary>Normalized deficit vs a reference dynamic head (for scoring) [0–1+].</summary>
@@ -136,6 +136,9 @@ public sealed class ExpanderRecoveryEstimate
     public double ExpanderMomentumRedirection01 { get; init; }
     public double ExpanderSeparationRisk01 { get; init; }
     public double ExpanderDeltaPEffectivePa { get; init; }
+
+    /// <summary>Pressure recovery from pressure-force diffuser model (Δp on projected area) [Pa].</summary>
+    public double ExpanderPressureRecoveryPa { get; init; }
 }
 
 /// <summary>Single attach point for injector/swirl-segment reduced-order diagnostics and debug text.</summary>
@@ -225,7 +228,7 @@ public sealed class SwirlSegmentReducedOrderReport
         {
             ExpanderRecoveryEstimate x = Expander;
             sb.AppendLine(
-                $"Expander: F_wall,ax≈{x.ExpanderWallAxialForceN:F2} N  redirection={x.ExpanderMomentumRedirection01:F3}  separation risk={x.ExpanderSeparationRisk01:F3}  ΔP_eff={x.ExpanderDeltaPEffectivePa:F1} Pa");
+                $"Expander: F_wall,ax≈{x.ExpanderWallAxialForceN:F2} N  Δp_recovery={x.ExpanderPressureRecoveryPa:F1} Pa  redirection={x.ExpanderMomentumRedirection01:F3}  separation risk={x.ExpanderSeparationRisk01:F3}  ΔP_eff={x.ExpanderDeltaPEffectivePa:F1} Pa");
         }
 
         return sb.ToString().TrimEnd();

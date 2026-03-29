@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace PicoGK_Run.Physics;
 
 /// <summary>
-/// Post-march audit: dual-station capacity + correlation demand vs what the live governor allowed (not CFD).
+/// Post-march audit: dual-station capacity + pressure-driven entrainment demand vs what the live governor allowed (not CFD).
 /// </summary>
 public sealed class SwirlEntrainmentGovernorSummary
 {
@@ -15,7 +15,7 @@ public sealed class SwirlEntrainmentGovernorSummary
     public string GoverningStationLabel { get; init; } = "";
 
     public double MdotPrimaryKgS { get; init; }
-    /// <summary>Σ per-step correlation demand Δṁ_req [kg/s] over the march (increment sum).</summary>
+    /// <summary>Σ per-step primary pressure-driven entrainment demand Δṁ_req [kg/s] over the march (increment sum).</summary>
     public double MdotSecondaryDemandSumKgS { get; init; }
     public double MdotSecondaryFinalKgS { get; init; }
     public double MdotTotalFinalKgS { get; init; }
@@ -76,7 +76,7 @@ public sealed class SwirlEntrainmentGovernorSummary
             GoverningEffectiveAreaM2 = g.EffectiveSwirlEntranceAreaM2,
             GoverningStationLabel = dual.GoverningStationLabel,
             MdotPrimaryKgS = primaryMdotKgS,
-            MdotSecondaryDemandSumKgS = march.SumCorrelationEntrainmentDemandKgS,
+            MdotSecondaryDemandSumKgS = march.SumPrimaryPressureDrivenEntrainmentDemandKgS,
             MdotSecondaryFinalKgS = mSecFinal,
             MdotTotalFinalKgS = mTotFinal,
             RhoMixGoverningKgM3 = g.RhoMixKgM3,

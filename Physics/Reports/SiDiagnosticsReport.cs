@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PicoGK_Run.Physics;
 
 namespace PicoGK_Run.Physics.Reports;
 
@@ -52,11 +53,18 @@ public sealed class SiDiagnosticsReport
                 CombinedClassification = si.ChamberMarch.SwirlEntranceCapacityStations.CombinedClassification.ToString()
             };
 
+        PhysicsResidualSummary? res = si.ConservationResiduals;
         ChamberMarchSummary? march = new()
         {
             StepCount = si.PhysicsStepStates.Count,
             FinalMachBulk = si.MarchPhysicsClosure?.FinalMachBulk ?? double.NaN,
             FinalContinuityResidualRelative = si.MarchPhysicsClosure?.FinalContinuityResidualRelative ?? double.NaN,
+            MaxChamberContinuityResidualRelative = res?.MaxChamberContinuityResidualRelative ?? double.NaN,
+            MeanChamberContinuityResidualRelative = res?.MeanChamberContinuityResidualRelative ?? double.NaN,
+            MaxChamberAxialMomentumBudgetResidualRelative = res?.MaxChamberAxialMomentumBudgetResidualRelative ?? double.NaN,
+            MaxChamberAngularMomentumFluxClosureResidualRelative = res
+                ?.MaxChamberAngularMomentumFluxClosureResidualRelative ?? double.NaN,
+            ExitControlVolumeMassFluxResidualRelative = res?.ExitControlVolumeMassFluxResidualRelative ?? double.NaN,
             AnyEntrainmentChoked = si.AnyEntrainmentStepChoked,
             EntrainmentStepsCappedBySwirlPassage = si.EntrainmentStepsLimitedBySwirlPassageCapacity,
             EntrainmentGovernorMachMaxUsed = si.ChamberMarch?.EntrainmentGovernor?.EntrainmentGovernorMachLimitUsed ?? double.NaN,
@@ -132,6 +140,8 @@ public sealed class SiDiagnosticsReport
             lines.Add($"  steps: {ChamberMarch.StepCount}");
             lines.Add($"  final Mach (bulk): {ChamberMarch.FinalMachBulk:F4}");
             lines.Add($"  continuity residual (last): {ChamberMarch.FinalContinuityResidualRelative:F4}");
+            lines.Add(
+                $"  conservation residuals — max cont: {ChamberMarch.MaxChamberContinuityResidualRelative:F4}  mean cont: {ChamberMarch.MeanChamberContinuityResidualRelative:F4}  max axial mom: {ChamberMarch.MaxChamberAxialMomentumBudgetResidualRelative:F4}  max Ġθ closure: {ChamberMarch.MaxChamberAngularMomentumFluxClosureResidualRelative:F4}  exit CV ṁ: {ChamberMarch.ExitControlVolumeMassFluxResidualRelative:F4}");
             lines.Add($"  entrainment choked (any): {ChamberMarch.AnyEntrainmentChoked}");
         }
 
@@ -209,6 +219,13 @@ public sealed class ChamberMarchSummary
     public int StepCount { get; init; }
     public double FinalMachBulk { get; init; }
     public double FinalContinuityResidualRelative { get; init; }
+
+    public double MaxChamberContinuityResidualRelative { get; init; }
+    public double MeanChamberContinuityResidualRelative { get; init; }
+    public double MaxChamberAxialMomentumBudgetResidualRelative { get; init; }
+    public double MaxChamberAngularMomentumFluxClosureResidualRelative { get; init; }
+    public double ExitControlVolumeMassFluxResidualRelative { get; init; }
+
     public bool AnyEntrainmentChoked { get; init; }
     public int EntrainmentStepsCappedBySwirlPassage { get; init; }
     public double EntrainmentGovernorMachMaxUsed { get; init; }

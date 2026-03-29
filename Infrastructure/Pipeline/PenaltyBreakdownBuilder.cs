@@ -31,7 +31,41 @@ public static class PenaltyBreakdownBuilder
         }
 
         double massBal = 0.0;
-        if (si.MarchPhysicsClosure != null)
+        if (si.ConservationResiduals is { } crMarch)
+        {
+            double relCont = Math.Max(
+                Math.Abs(si.MarchPhysicsClosure?.FinalContinuityResidualRelative ?? 0.0),
+                crMarch.MaxChamberContinuityResidualRelative);
+            massBal = Math.Clamp(relCont * 2.5, 0.0, 0.85);
+            massBal = Math.Max(
+                massBal,
+                Math.Clamp(
+                    crMarch.MaxChamberAxialMomentumBudgetResidualRelative
+                    * PhysicsCalibrationHooks.AxialMomentumBudgetResidualPenaltyWeight
+                    * 0.22,
+                    0.0,
+                    0.55));
+            massBal = Math.Max(
+                massBal,
+                Math.Clamp(
+                    crMarch.MaxChamberAngularMomentumFluxClosureResidualRelative
+                    * PhysicsCalibrationHooks.AngularMomentumFluxClosurePenaltyWeight
+                    * 0.22,
+                    0.0,
+                    0.55));
+            double thr = PhysicsCalibrationHooks.ChamberContinuityResidualPenaltyThreshold;
+            if (crMarch.MeanChamberContinuityResidualRelative > thr)
+            {
+                massBal = Math.Max(
+                    massBal,
+                    Math.Clamp(
+                        (crMarch.MeanChamberContinuityResidualRelative - thr)
+                        * PhysicsCalibrationHooks.ChamberContinuityResidualPenaltyWeight,
+                        0.0,
+                        0.35));
+            }
+        }
+        else if (si.MarchPhysicsClosure != null)
         {
             double rel = Math.Abs(si.MarchPhysicsClosure.FinalContinuityResidualRelative);
             massBal = Math.Clamp(rel * 2.5, 0.0, 0.85);
@@ -40,6 +74,11 @@ public static class PenaltyBreakdownBuilder
         double momBal = 0.0;
         if (!si.ThrustControlVolumeIsValid)
             momBal += 0.55;
+        if (si.ConservationResiduals is { } crExit
+            && !double.IsNaN(crExit.ExitControlVolumeMassFluxResidualRelative))
+        {
+            momBal += Math.Clamp(crExit.ExitControlVolumeMassFluxResidualRelative * 0.48, 0.0, 0.42);
+        }
         double mdotExit = si.ThrustCvMdotExitKgS;
         if (mdotExit > 1e-9 && finalTotalMassFlowKgS > 1e-9)
         {

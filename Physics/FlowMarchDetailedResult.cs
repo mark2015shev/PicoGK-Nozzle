@@ -15,6 +15,9 @@ public sealed class FlowMarchDetailedResult
 
     public MarchClosureResult? MarchClosure { get; init; }
 
+    /// <summary>Aggregated conservation-style residuals (chamber march + optional exit hook).</summary>
+    public PhysicsResidualSummary? MarchResidualSummary { get; init; }
+
     /// <summary>Tangential velocity at end of mixing march (before stator in composition root).</summary>
     public double FinalTangentialVelocityMps { get; init; }
 
@@ -27,8 +30,8 @@ public sealed class FlowMarchDetailedResult
     /// <summary>Count of march steps where entrainment demand was cut by swirl-passage bulk Mach ceiling.</summary>
     public int EntrainmentStepsLimitedBySwirlPassageCapacity { get; init; }
 
-    /// <summary>Σ Δṁ_req from pressure-driven entrainment model over all steps [kg/s] (before passage governor trim).</summary>
-    public double SumCorrelationEntrainmentDemandKgS { get; init; }
+    /// <summary>Σ Δṁ_req from primary pressure-driven entrainment (capture-boundary ΔP) over all steps [kg/s] (before passage governor trim).</summary>
+    public double SumPrimaryPressureDrivenEntrainmentDemandKgS { get; init; }
 
     /// <summary>Σ (ṁ demand into passage block − ṁ after passage trim) per step [kg/s].</summary>
     public double SumEntrainmentMassTrimmedByPassageGovernorKgS { get; init; }

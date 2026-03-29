@@ -241,8 +241,7 @@ internal static class PhysicsSiPathService
                 Math.Max(lastMarch.DensityKgM3, 1e-6),
                 lastMarch.VelocityMps,
                 detailed.FinalTangentialVelocityMps,
-                activeDesign.StatorVaneAngleDeg,
-                impliedYawDeg);
+                activeDesign.StatorVaneAngleDeg);
     
             // η_stator,eff = η_base · clamp(1 − w_i·K_inc − w_t·K_turn, η_floor, 1); K_inc = tanh(mismatch/ref), K_turn from model.
             double kInc = Math.Tanh(
@@ -295,14 +294,12 @@ internal static class PhysicsSiPathService
                 ChamberPhysicsCoefficients.DiffuserCouplingScaleMin,
                 ChamberPhysicsCoefficients.DiffuserCouplingScaleMax);
     
-            double halfRad = activeDesign.ExpanderHalfAngleDeg * (Math.PI / 180.0);
             double rhoExp = lastMarch.DensityKgM3;
             double vaExp = lastMarch.VelocityMps;
-            double dPExpanderBase = 0.22 * rhoExp * vaExp * vaExp * Math.Sin(Math.Max(halfRad, 0.02));
-            dPExpanderBase = Math.Min(dPExpanderBase, 0.48 * rhoExp * vaExp * vaExp);
-            double dPExpanderEff = dPExpanderBase * diffuserRecoveryMult;
-            double expanderProjectedAreaM2 = ExpanderAxialProjectedAreaM2(activeDesign);
-            double expanderForceN = PressureForceMath.ExpanderOverPressureAxialForce(dPExpanderEff, expanderProjectedAreaM2);
+            double dynExp = 0.5 * rhoExp * vaExp * vaExp;
+            double dPExpanderBase = diffuserCoupling.EstimatedPressureRecoveryCoefficient * dynExp;
+            double dPExpanderEff = diffuserCoupling.ExpanderPressureRecoveryPa;
+            double expanderForceN = diffuserCoupling.ExpanderWallAxialForceFromPressureN;
     
             double pAfterStator = Math.Max(lastMarch.PressurePa + statorOut.RecoveredPressureRisePa, 1.0);
             double vaAfterStatorBase = lastMarch.VelocityMps + statorOut.AxialVelocityGainMps;
@@ -337,7 +334,7 @@ internal static class PhysicsSiPathService
                 vtAfterStator,
                 diffuserRecoveryMult,
                 ChamberPhysicsCoefficients.SwirlLedgerDiffuserBookkeepingK);
-    
+
             var couplingDiag = new SiVortexCouplingDiagnostics
             {
                 InjectorJetVelocityRawMps = injectorJetVelocityRaw,
@@ -380,6 +377,33 @@ internal static class PhysicsSiPathService
             double shortfall = Math.Max(0.0, sumReq - sumAct);
     
             double mdotExit = finalOutlet.TotalMassFlowKgS;
+
+            PhysicsResidualSummary? marchRes = detailed.MarchResidualSummary;
+            double exitMassFluxResidual = mdotExit > 1e-18
+                ? Math.Abs(
+                      mdotExit
+                      - finalOutlet.DensityKgM3 * Math.Max(finalOutlet.AreaM2, 1e-18) * finalOutlet.VelocityMps)
+                  / mdotExit
+                : 0.0;
+            PhysicsResidualSummary conservationResiduals = marchRes == null
+                ? new PhysicsResidualSummary
+                {
+                    MaxChamberContinuityResidualRelative = 0.0,
+                    MeanChamberContinuityResidualRelative = 0.0,
+                    MaxChamberAxialMomentumBudgetResidualRelative = 0.0,
+                    MaxChamberAngularMomentumFluxClosureResidualRelative = 0.0,
+                    ExitControlVolumeMassFluxResidualRelative = exitMassFluxResidual
+                }
+                : new PhysicsResidualSummary
+                {
+                    MaxChamberContinuityResidualRelative = marchRes.MaxChamberContinuityResidualRelative,
+                    MeanChamberContinuityResidualRelative = marchRes.MeanChamberContinuityResidualRelative,
+                    MaxChamberAxialMomentumBudgetResidualRelative = marchRes.MaxChamberAxialMomentumBudgetResidualRelative,
+                    MaxChamberAngularMomentumFluxClosureResidualRelative = marchRes
+                        .MaxChamberAngularMomentumFluxClosureResidualRelative,
+                    ExitControlVolumeMassFluxResidualRelative = exitMassFluxResidual
+                };
+
             ThrustCalculator.ThrustControlVolumeResult cv = ThrustCalculator.ComputeControlVolumeThrustSanitized(
                 mdotExit,
                 finalOutlet.VelocityMps,
@@ -499,6 +523,7 @@ internal static class PhysicsSiPathService
                 MarchSteps = steps,
                 PhysicsStepStates = detailed.StepPhysicsStates,
                 MarchPhysicsClosure = detailed.MarchClosure,
+                ConservationResiduals = conservationResiduals,
                 MinInletLocalStaticPressurePa = minInletP,
                 MaxInletMach = maxInletMach,
                 AnyEntrainmentStepChoked = anyChoked,
@@ -851,12 +876,4 @@ internal static class PhysicsSiPathService
             return lines;
         }
 
-        private static double ExpanderAxialProjectedAreaM2(NozzleDesignInputs d)
-        {
-            double rCh = d.SwirlChamberDiameterMm * 0.5e-3;
-            double rEx = d.ExitDiameterMm * 0.5e-3;
-            double halfRad = d.ExpanderHalfAngleDeg * (Math.PI / 180.0);
-            double ring = Math.PI * Math.Max(rEx * rEx - rCh * rCh, 0.0);
-            return Math.Max(ring * Math.Sin(Math.Max(halfRad, 0.03)), 1e-9);
-        }
 }

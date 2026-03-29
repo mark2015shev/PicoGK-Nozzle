@@ -113,16 +113,11 @@ public static class ChamberPhysicsPipeline
             swirlCorr,
             detailed.FinalTangentialVelocityMps);
 
-        double impliedYawDeg = Math.Atan2(
-            Math.Abs(detailed.FinalTangentialVelocityMps),
-            Math.Max(Math.Abs(lastMarch.VelocityMps), 1e-6)) * (180.0 / Math.PI);
-
         var stLoss = StatorLossModel.Compute(
             rho,
             lastMarch.VelocityMps,
             detailed.FinalTangentialVelocityMps,
-            design.StatorVaneAngleDeg,
-            impliedYawDeg);
+            design.StatorVaneAngleDeg);
 
         var ej = EjectorRegimeModel.Compute(
             steps,
@@ -166,11 +161,18 @@ public static class ChamberPhysicsPipeline
         double pAmb = Math.Max(source.AmbientPressurePa, 1.0);
         double rhoAmb = Math.Max(new GasProperties().Density(pAmb, source.AmbientTemperatureK), 0.2);
         double meanCaptureDeficitPa = 0.0;
-        if (steps.Count > 0)
+        if (detailed.StepPhysicsStates.Count > 0)
+        {
+            double acc = 0.0;
+            foreach (FlowStepState ph in detailed.StepPhysicsStates)
+                acc += Math.Max(0.0, pAmb - ph.CaptureBoundaryStaticPressureForEntrainmentPa);
+            meanCaptureDeficitPa = acc / detailed.StepPhysicsStates.Count;
+        }
+        else if (steps.Count > 0)
         {
             double acc = 0.0;
             foreach (FlowMarchStepResult st in steps)
-                acc += Math.Max(0.0, pAmb - st.InletLocalPressurePa);
+                acc += Math.Max(0.0, pAmb - st.CaptureBoundaryStaticPressureForEntrainmentPa);
             meanCaptureDeficitPa = acc / steps.Count;
         }
 
@@ -179,7 +181,10 @@ public static class ChamberPhysicsPipeline
         double captureWeakness01 = Math.Clamp(1.0 - deficitNorm01 / 1.15, 0.0, 1.0);
 
         FlowStepState? lastPh = detailed.StepPhysicsStates.Count > 0 ? detailed.StepPhysicsStates[^1] : null;
-        double pCap = steps.Count > 0 ? steps[0].InletLocalPressurePa : minInletStaticPa;
+        FlowStepState? firstPh = detailed.StepPhysicsStates.Count > 0 ? detailed.StepPhysicsStates[0] : null;
+        double pCap = firstPh != null
+            ? firstPh.CaptureBoundaryStaticPressureForEntrainmentPa
+            : (steps.Count > 0 ? steps[0].CaptureBoundaryStaticPressureForEntrainmentPa : minInletStaticPa);
         double pWallRep = lastPh?.WallPressurePa ?? lastMarch.PressurePa;
         double pCoreRep = lastPh?.CorePressurePa ?? lastMarch.PressurePa;
         double pBulkRep = lastPh?.PStaticPa ?? lastMarch.PressurePa;
@@ -189,9 +194,12 @@ public static class ChamberPhysicsPipeline
         double pDownLumped = lastMarch.PressurePa + 0.22 * Math.Max(0.0, expanderDeltaPEffectivePa);
         double inletSpillMarginPa = pWallRep - pCap;
         double exitDriveMarginPa = pDownLumped - pWallRep;
-        double inletSpillR = Math.Clamp(0.55 * Math.Tanh(Math.Max(inletSpillMarginPa, 0.0) / 8200.0), 0.0, 1.0);
-        double downDriveR = Math.Clamp(0.55 * Math.Tanh(Math.Max(-exitDriveMarginPa, 0.0) / 9500.0), 0.0, 1.0);
-        double spillBi = Math.Clamp(0.5 * inletSpillR + 0.5 * downDriveR, 0.0, 1.0);
+        SpillTendencyEstimate spillFromMargins = ChamberSpillDriveMargins.FromPressureMargins(
+            inletSpillMarginPa,
+            exitDriveMarginPa);
+        double inletSpillR = spillFromMargins.InletSpillRisk01;
+        double downDriveR = spillFromMargins.DownstreamDriveRisk01;
+        double spillBi = spillFromMargins.BidirectionalSpillRisk01;
 
         double aInjMm2 = Math.Max(design.TotalInjectorAreaMm2, 1e-9);
         double aFreeMm2 = aFreeChamberMm2 > 1e-6 ? aFreeChamberMm2 : aInjMm2 * 4.0;
@@ -232,14 +240,7 @@ public static class ChamberPhysicsPipeline
         bool inletRev = inletSpillMarginPa > 1200.0 && exitDriveMarginPa < 800.0;
         bool radLoad = pWallRep > pCoreRep + 200.0;
 
-        var spillEst = new SpillTendencyEstimate
-        {
-            InletSpillPressureMarginPa = inletSpillMarginPa,
-            ExitDrivePressureMarginPa = exitDriveMarginPa,
-            InletSpillRisk01 = inletSpillR,
-            DownstreamDriveRisk01 = downDriveR,
-            BidirectionalSpillRisk01 = spillBi
-        };
+        var spillEst = spillFromMargins;
 
         var containmentEst = new SwirlContainmentMetrics
         {
@@ -285,9 +286,10 @@ public static class ChamberPhysicsPipeline
         var expEst = new ExpanderRecoveryEstimate
         {
             ExpanderWallAxialForceN = expanderWallAxialForceN,
-            ExpanderMomentumRedirection01 = Math.Clamp(diffuser.EffectivePressureRecoveryEfficiency, 0.0, 1.0),
+            ExpanderMomentumRedirection01 = Math.Clamp(diffuser.MomentumRedirection01, 0.0, 1.0),
             ExpanderSeparationRisk01 = diffuser.SeparationRiskScore,
-            ExpanderDeltaPEffectivePa = expanderDeltaPEffectivePa
+            ExpanderDeltaPEffectivePa = expanderDeltaPEffectivePa,
+            ExpanderPressureRecoveryPa = diffuser.ExpanderPressureRecoveryPa
         };
 
         double meanAeffEntry = 0.0;

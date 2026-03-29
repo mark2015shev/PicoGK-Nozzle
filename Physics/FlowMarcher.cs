@@ -144,11 +144,12 @@ public sealed class FlowMarcher
                 StepPhysicsStates = Array.Empty<FlowStepState>(),
                 MarchInvariantWarnings = Array.Empty<string>(),
                 MarchClosure = null,
+                MarchResidualSummary = null,
                 FinalTangentialVelocityMps = primaryTangentialVelocityMps,
                 FinalAxialVelocityMps = inletState.VelocityMps,
                 FinalPrimaryTangentialVelocityMps = primaryTangentialVelocityMps,
                 EntrainmentStepsLimitedBySwirlPassageCapacity = 0,
-                SumCorrelationEntrainmentDemandKgS = 0.0,
+                SumPrimaryPressureDrivenEntrainmentDemandKgS = 0.0,
                 SumEntrainmentMassTrimmedByPassageGovernorKgS = 0.0,
                 EntrainmentGovernorMachMaxUsed =
                     (swirlPassageMachLimitsForEntrainmentCap ?? SwirlEntranceCapacityLimits.Default).EntrainmentGovernorMachMax,
@@ -196,8 +197,13 @@ public sealed class FlowMarcher
 
         SwirlEntranceCapacityLimits passageLim = swirlPassageMachLimitsForEntrainmentCap ?? SwirlEntranceCapacityLimits.Default;
         int entrainmentPassageCapSteps = 0;
-        double sumCorrelationEntrainmentDemandKgS = 0.0;
+        double sumPrimaryPressureDrivenEntrainmentDemandKgS = 0.0;
         double sumEntrainmentTrimmedByGovernorKgS = 0.0;
+
+        double maxContinuityResidualRelative = 0.0;
+        double sumContinuityResidualRelative = 0.0;
+        double maxAxialMomentumBudgetResidualRelative = 0.0;
+        double maxAngularMomentumFluxClosureResidualRelative = 0.0;
 
         _ = swirlDecayPerStepFactor;
 
@@ -236,10 +242,29 @@ public sealed class FlowMarcher
 
             double aEffEntry = EffectiveEntrainmentEntryAreaM2(aCap, area, chamberFullBoreAreaM2, freeAnnulusAreaM2);
 
-            double dmPress = EntrainmentModel.ComputeCapturePressureDrivenMassIncrement(
+            double rhoPreStep = Math.Max(current.DensityKgM3, 1e-6);
+            double qSwirlPreStep = 0.5 * rhoPreStep * vtOldBulk * vtOldBulk;
+            double capRadialPreStep = Math.Min(
+                ChamberPhysicsCoefficients.RadialPressureCapAbsoluteMaxPa,
+                Math.Max(
+                    ChamberPhysicsCoefficients.RadialPressureCapPa,
+                    ChamberAerodynamicsConfiguration.RadialIntegralCapTimesSwirlDynamicPressure * qSwirlPreStep));
+            var radialPreEntrainment = RadialVortexPressureModel.ComputeShapingRelativeToBulk(
+                pOld,
+                Math.Max(p0Carried, pOld),
+                rhoPreStep,
+                Math.Abs(vtOldBulk),
+                rWallGeom,
+                ChamberPhysicsCoefficients.RadialCoreRadiusFractionOfWall,
+                capRadialPreStep,
+                _ambient.PressurePa);
+            double pCaptureBoundaryForEntrainmentPa = SiPressureGuards.ClampStaticPressurePa(
+                Math.Max(pOld - radialPreEntrainment.CorePressureDropPa, _ambient.PressurePa * 0.5));
+
+            double dmPress = PressureDrivenEntrainmentPhysics.MassIncrementForStep(
                 pAmbEnt,
                 rhoAmbEnt,
-                pOld,
+                pCaptureBoundaryForEntrainmentPa,
                 aEffEntry,
                 ChamberPhysicsCoefficients.CaptureEntrainmentDischargeCoefficient,
                 dx,
@@ -255,9 +280,12 @@ public sealed class FlowMarcher
                     dx)
                 * ChamberPhysicsCoefficients.EntrainmentShearAugmentationFraction;
             double dmRequested = dmPress + dmShear;
-            sumCorrelationEntrainmentDemandKgS += dmRequested;
+            sumPrimaryPressureDrivenEntrainmentDemandKgS += dmRequested;
 
-            double pMixClamped = Math.Clamp(pOld, 1.0, _ambient.PressurePa * 0.99999);
+            double pMixClamped = Math.Clamp(
+                pCaptureBoundaryForEntrainmentPa,
+                1.0,
+                _ambient.PressurePa * 0.99999);
             double mdotChokedCeiling = _gas.ChokedMassFlux(_ambient.PressurePa, _ambient.TemperatureK) * aCap;
             double mdotPressureLimited = CompressibleFlowMath.MassFlowFromStagnationToStaticPressure(
                 _gas,
@@ -515,6 +543,22 @@ public sealed class FlowMarcher
                 ? CompressibleState.FromAuthoritativeBulkStagnation(_gas, p0AfterLoss, t0FromH, vaFinal, vtMixed)
                 : CompressibleState.FromMixedStatic(_gas, pNew, tNew, vaFinal, vtMixed);
             double contRes = Math.Abs(rhoNew * area * vaFinal - mNew) / Math.Max(mNew, 1e-18);
+            maxContinuityResidualRelative = Math.Max(maxContinuityResidualRelative, contRes);
+            sumContinuityResidualRelative += contRes;
+
+            double axialMomMixApprox = mOld * va + dmActual * intake.EntrainmentVelocityMps;
+            double axialMomNew = mNew * vaFinal;
+            double axMomRes = Math.Abs(axialMomNew - axialMomMixApprox)
+                / Math.Max(Math.Abs(axialMomMixApprox), 1e-9);
+            maxAxialMomentumBudgetResidualRelative = Math.Max(maxAxialMomentumBudgetResidualRelative, axMomRes);
+
+            double gMag = Math.Abs(angularMomentumFluxKgM2PerS2);
+            double angFluxClosure = gMag > 1e-20
+                ? Math.Abs(angularMomentumFluxKgM2PerS2 - mNew * rRef * vtMixed) / gMag
+                : 0.0;
+            maxAngularMomentumFluxClosureResidualRelative = Math.Max(
+                maxAngularMomentumFluxClosureResidualRelative,
+                angFluxClosure);
 
             h0Carried = h0Mix;
             p0Carried = comp.TotalPressurePa;
@@ -580,6 +624,7 @@ public sealed class FlowMarcher
                 ChamberSwirlBulkRatio = chamberBulk,
                 EntrainmentSwirlCorrelation = sFluxDiagnostic,
                 EffectiveEntrainmentEntryAreaM2 = aEffEntry,
+                CaptureBoundaryStaticPressureForEntrainmentPa = pCaptureBoundaryForEntrainmentPa,
                 AngularMomentumWallLossKgM2PerS2 = wallLossAngMom,
                 AngularMomentumMixingLossKgM2PerS2 = mixingLossAngMom,
                 AngularMomentumEntrainmentDilutionLossKgM2PerS2 = dilutionLossAngMom,
@@ -642,7 +687,8 @@ public sealed class FlowMarcher
                 PressureForceN = dFN,
                 DuctEffectiveAreaM2 = area,
                 CaptureAreaM2 = aCap,
-                EntrainmentMixingEffectivenessUsed = etaMixStep
+                EntrainmentMixingEffectivenessUsed = etaMixStep,
+                CaptureBoundaryStaticPressureForEntrainmentPa = pCaptureBoundaryForEntrainmentPa
             });
 
             states.Add(next);
@@ -676,6 +722,17 @@ public sealed class FlowMarcher
 
         SwirlChamberDualPathDischargeResult? finalSplit = physicsSteps.Count > 0 ? physicsSteps[^1].DualPathDischarge : null;
 
+        int nStepsPhys = physicsSteps.Count;
+        double meanContRes = nStepsPhys > 0 ? sumContinuityResidualRelative / nStepsPhys : 0.0;
+        var marchResiduals = new PhysicsResidualSummary
+        {
+            MaxChamberContinuityResidualRelative = maxContinuityResidualRelative,
+            MeanChamberContinuityResidualRelative = meanContRes,
+            MaxChamberAxialMomentumBudgetResidualRelative = maxAxialMomentumBudgetResidualRelative,
+            MaxChamberAngularMomentumFluxClosureResidualRelative = maxAngularMomentumFluxClosureResidualRelative,
+            ExitControlVolumeMassFluxResidualRelative = double.NaN
+        };
+
         return new FlowMarchDetailedResult
         {
             FlowStates = states,
@@ -683,6 +740,7 @@ public sealed class FlowMarcher
             StepPhysicsStates = physicsSteps,
             MarchInvariantWarnings = invariantSink ?? (IReadOnlyList<string>)Array.Empty<string>(),
             MarchClosure = closure,
+            MarchResidualSummary = marchResiduals,
             FinalTangentialVelocityMps = finalVtMixed,
             FinalAxialVelocityMps = current.VelocityMps,
             FinalPrimaryTangentialVelocityMps = SwirlMath.BulkTangentialVelocityFromAngularMomentumFlux(
@@ -690,7 +748,7 @@ public sealed class FlowMarcher
                 primaryMdot,
                 rRef),
             EntrainmentStepsLimitedBySwirlPassageCapacity = entrainmentPassageCapSteps,
-            SumCorrelationEntrainmentDemandKgS = sumCorrelationEntrainmentDemandKgS,
+            SumPrimaryPressureDrivenEntrainmentDemandKgS = sumPrimaryPressureDrivenEntrainmentDemandKgS,
             SumEntrainmentMassTrimmedByPassageGovernorKgS = sumEntrainmentTrimmedByGovernorKgS,
             EntrainmentGovernorMachMaxUsed = passageLim.EntrainmentGovernorMachMax,
             AppliedDischargePathSpec = dischargePathSpec,
