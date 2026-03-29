@@ -38,6 +38,7 @@ public static class NozzleGeometryGenomeMapper
             SwirlChamberDiameterMm = genome.SwirlChamberDiameterMm,
             SwirlChamberLengthMm = genome.SwirlChamberLengthMm,
             InjectorAxialPositionRatio = genome.InjectorAxialPositionRatio,
+            InjectorUpstreamGuardLengthMm = injectorTemplate.InjectorUpstreamGuardLengthMm,
             TotalInjectorAreaMm2 = injectorTemplate.TotalInjectorAreaMm2,
             InjectorCount = injectorTemplate.InjectorCount,
             InjectorWidthMm = injectorTemplate.InjectorWidthMm,

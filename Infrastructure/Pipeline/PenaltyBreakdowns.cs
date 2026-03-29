@@ -55,19 +55,23 @@ public sealed record PhysicsPenaltyBreakdown(
 public sealed record GeometryPenaltyBreakdown(
     double ContinuityIssuePenalty,
     int ContinuityIssueCount,
-    double DownstreamDiameterMismatchPenalty)
+    double DownstreamDiameterMismatchPenalty,
+    double ChamberUpstreamOvershootPenalty)
 {
-    public double Sum => ContinuityIssuePenalty + DownstreamDiameterMismatchPenalty;
+    public double Sum =>
+        ContinuityIssuePenalty + DownstreamDiameterMismatchPenalty + ChamberUpstreamOvershootPenalty;
 
     public string TopSource
     {
         get
         {
-            if (ContinuityIssuePenalty >= DownstreamDiameterMismatchPenalty && ContinuityIssueCount > 0)
-                return "GeometryContinuity";
-            if (DownstreamDiameterMismatchPenalty > 1e-6)
-                return nameof(DownstreamDiameterMismatchPenalty);
-            return ContinuityIssueCount > 0 ? "GeometryContinuity" : "none";
+            var triple = new (string Name, double Value)[]
+            {
+                ("GeometryContinuity", ContinuityIssuePenalty),
+                (nameof(DownstreamDiameterMismatchPenalty), DownstreamDiameterMismatchPenalty),
+                (nameof(ChamberUpstreamOvershootPenalty), ChamberUpstreamOvershootPenalty)
+            };
+            return triple.OrderByDescending(t => t.Value).First().Name;
         }
     }
 }

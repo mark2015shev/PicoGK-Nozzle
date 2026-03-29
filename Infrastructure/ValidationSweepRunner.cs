@@ -509,6 +509,7 @@ public static class ValidationSweepRunner
             SwirlChamberDiameterMm = swirlChamberDiameterMm ?? b.SwirlChamberDiameterMm,
             SwirlChamberLengthMm = swirlChamberLengthMm ?? b.SwirlChamberLengthMm,
             InjectorAxialPositionRatio = b.InjectorAxialPositionRatio,
+            InjectorUpstreamGuardLengthMm = b.InjectorUpstreamGuardLengthMm,
             TotalInjectorAreaMm2 = b.TotalInjectorAreaMm2,
             InjectorCount = b.InjectorCount,
             InjectorWidthMm = b.InjectorWidthMm,

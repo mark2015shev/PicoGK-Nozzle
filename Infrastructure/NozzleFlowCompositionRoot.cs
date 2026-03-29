@@ -87,6 +87,10 @@ public static class NozzleFlowCompositionRoot
             chamberSizing = SwirlChamberSizingModel.ForUserTemplate(seedDesign, source, run);
         }
 
+        double injClamped = SwirlChamberPlacement.ClampInjectorAxialRatio(activeDesign.InjectorAxialPositionRatio, run);
+        if (Math.Abs(activeDesign.InjectorAxialPositionRatio - injClamped) > 1e-12)
+            activeDesign = activeDesign.WithInjectorAxialPositionRatio(injClamped);
+
         return new PreparedNozzleDesignHandoff(seedDesign, activeDesign, chamberSizing);
     }
 
@@ -133,7 +137,7 @@ public static class NozzleFlowCompositionRoot
             designErr,
             mdotTot);
         DownstreamGeometryTargets downstream = DownstreamGeometryResolver.Resolve(path.DrivenDesign, run);
-        GeometryPenaltyBreakdown geom = PenaltyBreakdownBuilder.BuildGeometry(continuity, downstream, run);
+        GeometryPenaltyBreakdown geom = PenaltyBreakdownBuilder.BuildGeometry(continuity, downstream, run, path.DrivenDesign);
         ConstraintViolationBreakdown cv = PenaltyBreakdownBuilder.BuildConstraints(
             si,
             continuity,
@@ -141,7 +145,8 @@ public static class NozzleFlowCompositionRoot
             path.HealthMessages,
             mdotTot,
             downstream,
-            run);
+            run,
+            path.DrivenDesign);
         bool hard = designErr > 0 || cv.Reject;
         string? hr = null;
         if (hard)

@@ -51,8 +51,8 @@ public static class NozzleGeometryAssemblyAuditBuilder
             "Swirl chamber",
             nameof(NozzleGeometryResult.SwirlChamber),
             nameof(SwirlChamberBuilder),
-            nameof(SwirlChamberBuilder.Build),
-            "Constant-area cylindrical annulus.",
+            nameof(SwirlChamberBuilder.BuildSwirlChamberAssembly),
+            "Constant-area cylindrical annulus (main L = SwirlChamberLengthMm; optional upstream guard union).",
             p.XSwirlStart,
             p.XAfterSwirl,
             p.XAfterSwirl - p.XSwirlStart,
@@ -63,7 +63,7 @@ public static class NozzleGeometryAssemblyAuditBuilder
             null,
             w,
             "ConstantArea",
-            "AddBeam roundCap false; start X = inlet end − overlap.",
+            "SwirlChamberPlacement: physical chamber length; injector ratio does not resize span.",
             new[]
             {
                 new ProfileMeridianPoint(p.XSwirlStart, ch, ch + w, "start"),

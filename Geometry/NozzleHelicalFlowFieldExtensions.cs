@@ -11,7 +11,7 @@ public static class NozzleHelicalFlowFieldExtensions
 {
     /// <summary>
     /// Builds a unit-direction helical field on the swirl-chamber voxel set: tangential in Y–Z decaying along +X, axial +X increasing.
-    /// Axial span matches enforced chamber length (including Rule-of-6 when <paramref name="run"/> requests it).
+    /// Axial span matches physical <see cref="NozzleDesignInputs.SwirlChamberLengthMm"/> (same as voxel main chamber).
     /// </summary>
     public static VectorField BuildSwirlChamberHelicalFlowField(
         this NozzleGeometryResult geometry,
@@ -19,9 +19,8 @@ public static class NozzleHelicalFlowFieldExtensions
         float xSwirlStartMm,
         RunConfiguration? run = null)
     {
-        double lenMm = design.SwirlChamberLengthMm;
-        if (run?.EnforceEjectorMixingRuleOfSix == true)
-            lenMm = System.Math.Max(lenMm, VortexEntrainmentPhysics.MixingLengthMinimumMmRuleOfSix(design));
+        _ = run;
+        double lenMm = System.Math.Max(design.SwirlChamberLengthMm, 1.0);
         float x1 = xSwirlStartMm + (float)lenMm;
         float rRef = 0.5f * (float)design.SwirlChamberDiameterMm;
         return VortexEntrainmentPhysics.BuildHelicalFlowVectorFieldFromVoxelSdf(

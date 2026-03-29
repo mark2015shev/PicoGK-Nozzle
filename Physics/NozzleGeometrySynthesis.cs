@@ -156,6 +156,7 @@ public static class NozzleGeometrySynthesis
             SwirlChamberDiameterMm = dChamberMm,
             SwirlChamberLengthMm = lChamberMm,
             InjectorAxialPositionRatio = template.InjectorAxialPositionRatio,
+            InjectorUpstreamGuardLengthMm = template.InjectorUpstreamGuardLengthMm,
             TotalInjectorAreaMm2 = totalInjArea,
             InjectorCount = template.InjectorCount,
             InjectorWidthMm = Math.Max(2.0, slotW),

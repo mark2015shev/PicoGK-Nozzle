@@ -7,6 +7,16 @@ public sealed class NozzleGeometryDebugReport
     public double TotalBuiltLengthMm { get; init; }
     public double NominalChamberInletPlaneXMm { get; init; }
     public double SwirlVoxelStartXMm { get; init; }
+    public double SwirlChamberEndXMm { get; init; }
+    public double SwirlChamberPhysicalLengthRequestedMm { get; init; }
+    public double SwirlChamberPhysicalLengthBuiltMm { get; init; }
+    public double InjectorUpstreamGuardLengthMm { get; init; }
+    public double RequestedInjectorAxialRatio { get; init; }
+    public double ClampedInjectorAxialRatio { get; init; }
+    public double InjectorDistanceFromChamberUpstreamFaceMm { get; init; }
+    public double InjectorDistanceFromChamberDownstreamFaceMm { get; init; }
+    public double ChamberUpstreamOvershootMm { get; init; }
+    public string SwirlChamberPlacementStatusLabel { get; init; } = "PASS";
     public double InjectorReferencePlaneXMm { get; init; }
     public double ImpliedExpanderExitDiameterMm { get; init; }
     public double RequestedExitDiameterMm { get; init; }

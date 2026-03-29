@@ -5,10 +5,10 @@ namespace PicoGK_Run.Geometry;
 
 /// <summary>
 /// Injector reference ring / station. Delegates to <see cref="InjectorReferenceMarkersBuilder"/>.
-/// Axial position follows <see cref="NozzleDesignInputs.InjectorAxialPositionRatio"/> along the swirl segment (see <see cref="InjectorReferenceMarkersBuilder"/>).
+/// Axial station from <see cref="SwirlChamberPlacement"/> (clamped ratio, physical chamber length).
 /// </summary>
 public static class InjectorRingBuilder
 {
-    public static Voxels Build(NozzleDesignInputs d, float swirlSegmentStartX, RunConfiguration? run = null) =>
-        InjectorReferenceMarkersBuilder.Build(d, swirlSegmentStartX, run);
+    public static Voxels Build(NozzleDesignInputs d, in SwirlChamberPlacement p) =>
+        InjectorReferenceMarkersBuilder.Build(d, p);
 }

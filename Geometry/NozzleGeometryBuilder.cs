@@ -29,15 +29,15 @@ public sealed class NozzleGeometryBuilder
             inlet = InletBuilder.Build(design, x, out xAfterInlet);
 
         GeometryAssemblyPath assembly = GeometryAssemblyPath.Compute(design, run);
-        float xSwirlStart = (float)assembly.XSwirlStart;
+        SwirlChamberPlacement swirlPl = assembly.SwirlPlacement;
         float xAfterSwirl;
         Voxels swirl;
         using (PipelineProfiler.Stage("geometry.segment.swirlChamber"))
-            swirl = SwirlChamberBuilder.Build(design, xSwirlStart, out xAfterSwirl, run);
+            swirl = SwirlChamberBuilder.BuildSwirlChamberAssembly(design, swirlPl, out xAfterSwirl);
 
         Voxels injectorMarkers;
         using (PipelineProfiler.Stage("geometry.segment.injectorMarkers"))
-            injectorMarkers = InjectorRingBuilder.Build(design, xSwirlStart, run);
+            injectorMarkers = InjectorRingBuilder.Build(design, swirlPl);
 
         float xExpStart = xAfterSwirl - overlap;
         float xAfterExpander;

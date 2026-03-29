@@ -93,6 +93,18 @@ public sealed class RunConfiguration
     /// </summary>
     public double SwirlChamberLengthDownstreamAnchorMm { get; init; }
 
+    /// <summary>Clamp lower bound for injector axial ratio in geometry + SI (exclusive of 0).</summary>
+    public double InjectorAxialPositionMin { get; init; } = 0.15;
+
+    /// <summary>Clamp upper bound for injector axial ratio in geometry + SI (exclusive of 1).</summary>
+    public double InjectorAxialPositionMax { get; init; } = 0.85;
+
+    /// <summary>Overshoot of main chamber start upstream of the inlet junction beyond which placement is Warn.</summary>
+    public double SwirlChamberUpstreamOvershootWarnMm { get; init; } = 0.05;
+
+    /// <summary>Overshoot [mm] beyond which autotune/unified evaluation hard-rejects (constraint).</summary>
+    public double SwirlChamberUpstreamOvershootHardRejectMm { get; init; } = 2.0;
+
     /// <summary>Hard cap on swirl chamber axial length after each trial’s length scale [mm]. Keeps the green segment short.</summary>
     public double AutotuneSwirlChamberLengthMaxMm { get; init; } = 100.0;
 
@@ -305,6 +317,10 @@ public sealed class RunConfiguration
         AutotuneRandomSeed = AutotuneRandomSeed,
         AutotuneUseSynthesisBaseline = AutotuneUseSynthesisBaseline,
         SwirlChamberLengthDownstreamAnchorMm = SwirlChamberLengthDownstreamAnchorMm,
+        InjectorAxialPositionMin = InjectorAxialPositionMin,
+        InjectorAxialPositionMax = InjectorAxialPositionMax,
+        SwirlChamberUpstreamOvershootWarnMm = SwirlChamberUpstreamOvershootWarnMm,
+        SwirlChamberUpstreamOvershootHardRejectMm = SwirlChamberUpstreamOvershootHardRejectMm,
         AutotuneSwirlChamberLengthMaxMm = AutotuneSwirlChamberLengthMaxMm,
         AutotuneSwirlChamberLengthScaleMin = AutotuneSwirlChamberLengthScaleMin,
         AutotuneSwirlChamberLengthScaleMax = AutotuneSwirlChamberLengthScaleMax,

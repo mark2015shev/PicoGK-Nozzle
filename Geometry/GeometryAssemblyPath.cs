@@ -39,8 +39,14 @@ public sealed class GeometryAssemblyPath
 
     public bool UsesPostStatorExitTaper { get; init; }
 
-    /// <summary>Swirl segment length used for stations (matches <see cref="SwirlChamberBuilder.EffectiveLengthMm"/>).</summary>
+    /// <summary>Physical main chamber length (same as <see cref="SwirlChamberPlacement.PhysicalChamberLengthBuiltMm"/>).</summary>
+    public double SwirlChamberPhysicalLengthMm { get; init; }
+
+    /// <summary>Alias for <see cref="SwirlChamberPhysicalLengthMm"/> (legacy name).</summary>
     public double SwirlChamberEffectiveLengthMm { get; init; }
+
+    /// <summary>Shared swirl + injector stations for voxels, SI handoff, and audits.</summary>
+    public SwirlChamberPlacement SwirlPlacement { get; init; } = null!;
 
     public static GeometryAssemblyPath Compute(NozzleDesignInputs d, RunConfiguration? run = null)
     {
@@ -49,7 +55,6 @@ public sealed class GeometryAssemblyPath
         double wall = Math.Max(d.WallThicknessMm, 0.0);
         double inletD = Math.Max(d.InletDiameterMm, 1.0);
         double chamberD = Math.Max(d.SwirlChamberDiameterMm, 1.0);
-        double chamberLen = SwirlChamberBuilder.EffectiveLengthMm(d, run);
         double refD = Math.Max(inletD, chamberD);
         double lipLen = Math.Max(4.0, 0.08 * refD);
         double flareLen = Math.Max(14.0, 0.30 * refD);
@@ -62,23 +67,11 @@ public sealed class GeometryAssemblyPath
         double xFlareEnd = xLipEnd + flareLen;
         double xAfterInlet = xFlareEnd;
 
-        double baseSwirl = xAfterInlet - overlap;
-        double anchorLen = run?.SwirlChamberLengthDownstreamAnchorMm ?? 0.0;
-        double xSwirlStart;
-        double xAfterSwirl;
-        if (anchorLen > 0.0)
-        {
-            xAfterSwirl = baseSwirl + anchorLen;
-            xSwirlStart = xAfterSwirl - chamberLen;
-        }
-        else
-        {
-            xSwirlStart = baseSwirl;
-            xAfterSwirl = baseSwirl + chamberLen;
-        }
-
-        double ratio = Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
-        double xInjectorPlane = xSwirlStart + ratio * chamberLen;
+        SwirlChamberPlacement swirl = SwirlChamberPlacement.Compute(d, xAfterInlet, run);
+        double xSwirlStart = swirl.MainChamberStartXMm;
+        double xAfterSwirl = swirl.MainChamberEndXMm;
+        double chamberLen = swirl.PhysicalChamberLengthBuiltMm;
+        double xInjectorPlane = swirl.InjectorPlaneXMm;
 
         double xExpStart = xAfterSwirl - overlap;
         double expLen = t.EffectiveExpanderLengthMm;
@@ -124,7 +117,9 @@ public sealed class GeometryAssemblyPath
             ExitInnerRadiusEndMm = rExit1,
             ExitSectionLengthMm = exitLen,
             UsesPostStatorExitTaper = t.UsesPostStatorExitTaper,
-            SwirlChamberEffectiveLengthMm = chamberLen
+            SwirlChamberPhysicalLengthMm = chamberLen,
+            SwirlChamberEffectiveLengthMm = chamberLen,
+            SwirlPlacement = swirl
         };
     }
 }

@@ -11,16 +11,11 @@ namespace PicoGK_Run.Geometry;
 /// </summary>
 public static class InjectorReferenceMarkersBuilder
 {
-    /// <summary>
-    /// Axial station: <paramref name="swirlSegmentStartX"/> + ratio × effective chamber length (0 = upstream, 1 = downstream / expander).
-    /// Length matches <see cref="SwirlChamberBuilder.EffectiveLengthMm"/> when <paramref name="run"/> is provided.
-    /// </summary>
-    public static Voxels Build(NozzleDesignInputs d, float swirlSegmentStartX, RunConfiguration? run = null)
+    /// <summary>Uses <see cref="SwirlChamberPlacement.ClampedInjectorAxialRatio"/> and <see cref="SwirlChamberPlacement.InjectorPlaneXMm"/>.</summary>
+    public static Voxels Build(NozzleDesignInputs d, in SwirlChamberPlacement p)
     {
         int n = Math.Max(1, d.InjectorCount);
-        float ratio = (float)Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
-        float len = (float)SwirlChamberBuilder.EffectiveLengthMm(d, run);
-        float x = swirlSegmentStartX + ratio * len;
+        float x = (float)p.InjectorPlaneXMm;
         float chamberR = 0.5f * (float)d.SwirlChamberDiameterMm;
         float wallThicknessMm = (float)d.WallThicknessMm;
         float outerR = chamberR + wallThicknessMm;

@@ -59,6 +59,7 @@ public static class NozzleDesignAutotune
         public readonly double ExpAngle;
         public readonly double ExpLength;
         public readonly double StatorAngle;
+        public readonly double AxialPositionScale;
         public readonly double SynthesisTargetEr;
         public readonly double InjectorYawDeg;
         public readonly double InjectorPitchDeg;
@@ -71,6 +72,7 @@ public static class NozzleDesignAutotune
             double expAngle,
             double expLength,
             double statorAngle,
+            double axialPositionScale,
             double synthesisTargetEr,
             double injectorYawDeg,
             double injectorPitchDeg)
@@ -82,6 +84,7 @@ public static class NozzleDesignAutotune
             ExpAngle = expAngle;
             ExpLength = expLength;
             StatorAngle = statorAngle;
+            AxialPositionScale = axialPositionScale;
             SynthesisTargetEr = synthesisTargetEr;
             InjectorYawDeg = injectorYawDeg;
             InjectorPitchDeg = injectorPitchDeg;
@@ -602,6 +605,7 @@ public static class NozzleDesignAutotune
             expAngle: u(0.74, 1.26),
             expLength: u(0.62, 1.48),
             statorAngle: u(0.78, 1.22),
+            axialPositionScale: u(0.70, 1.32),
             synthesisTargetEr: varyEr ? u(0.22, 0.62) : NozzleGeometrySynthesis.DefaultTargetEntrainmentRatio,
             injectorYawDeg: yaw,
             injectorPitchDeg: pitch);
@@ -645,6 +649,7 @@ public static class NozzleDesignAutotune
             expAngle: um(b.ExpanderAngleSpread),
             expLength: um(b.ExpanderLengthSpread),
             statorAngle: um(b.StatorAngleSpread),
+            axialPositionScale: um(b.InjectorAxialSpread),
             synthesisTargetEr: er,
             injectorYawDeg: yaw,
             injectorPitchDeg: pitch);
@@ -663,7 +668,10 @@ public static class NozzleDesignAutotune
         double ang = Math.Clamp(b.ExpanderHalfAngleDeg * k.ExpAngle, 3.5, 14.0);
         double lEx = Math.Clamp(b.ExpanderLengthMm * k.ExpLength, 25.0, 240.0);
         double st = Math.Clamp(b.StatorVaneAngleDeg * k.StatorAngle, 14.0, 58.0);
-        const double ax = 1.0;
+        double ax = Math.Clamp(
+            b.InjectorAxialPositionRatio * k.AxialPositionScale,
+            run.InjectorAxialPositionMin,
+            run.InjectorAxialPositionMax);
         double yaw = run.LockInjectorYawTo90Degrees
             ? 90.0
             : Math.Clamp(k.InjectorYawDeg, 45.0, 80.0);
@@ -675,6 +683,7 @@ public static class NozzleDesignAutotune
             SwirlChamberDiameterMm = dCh,
             SwirlChamberLengthMm = lCh,
             InjectorAxialPositionRatio = ax,
+            InjectorUpstreamGuardLengthMm = b.InjectorUpstreamGuardLengthMm,
             TotalInjectorAreaMm2 = b.TotalInjectorAreaMm2,
             InjectorCount = b.InjectorCount,
             InjectorWidthMm = b.InjectorWidthMm,
@@ -700,6 +709,7 @@ public static class NozzleDesignAutotune
         SwirlChamberDiameterMm = d.SwirlChamberDiameterMm,
         SwirlChamberLengthMm = d.SwirlChamberLengthMm,
         InjectorAxialPositionRatio = d.InjectorAxialPositionRatio,
+        InjectorUpstreamGuardLengthMm = d.InjectorUpstreamGuardLengthMm,
         TotalInjectorAreaMm2 = d.TotalInjectorAreaMm2,
         InjectorCount = d.InjectorCount,
         InjectorWidthMm = d.InjectorWidthMm,

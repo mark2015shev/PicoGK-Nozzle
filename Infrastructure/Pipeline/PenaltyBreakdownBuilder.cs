@@ -108,7 +108,8 @@ public static class PenaltyBreakdownBuilder
     public static GeometryPenaltyBreakdown BuildGeometry(
         GeometryContinuityReport? report,
         DownstreamGeometryTargets? downstream = null,
-        RunConfiguration? run = null)
+        RunConfiguration? run = null,
+        NozzleDesignInputs? designForSwirlPlacement = null)
     {
         double contPen = 0.0;
         int n = 0;
@@ -140,7 +141,14 @@ public static class PenaltyBreakdownBuilder
             }
         }
 
-        return new GeometryPenaltyBreakdown(contPen, n, dMis);
+        double overPen = 0.0;
+        if (designForSwirlPlacement != null)
+        {
+            GeometryAssemblyPath path = GeometryAssemblyPath.Compute(designForSwirlPlacement, run);
+            overPen = SwirlChamberPlacement.ComputeUpstreamOvershootPenalty(path.SwirlPlacement.ChamberUpstreamOvershootMm);
+        }
+
+        return new GeometryPenaltyBreakdown(contPen, n, dMis, overPen);
     }
 
     public static ConstraintViolationBreakdown BuildConstraints(
@@ -150,7 +158,8 @@ public static class PenaltyBreakdownBuilder
         IReadOnlyList<string> healthMessages,
         double finalTotalMassFlowKgS = 0.0,
         DownstreamGeometryTargets? downstream = null,
-        RunConfiguration? run = null)
+        RunConfiguration? run = null,
+        NozzleDesignInputs? designForSwirlPlacement = null)
     {
         var reasons = new List<string>();
         if (hasDesignError)
@@ -170,6 +179,14 @@ public static class PenaltyBreakdownBuilder
 
         if (downstream?.ConeCannotReachDeclaredExit == true && (run?.HardRejectInfeasibleDownstreamCone ?? true))
             reasons.Add("DOWNSTREAM_CONE_INFEASIBLE");
+
+        if (designForSwirlPlacement != null && run != null)
+        {
+            GeometryAssemblyPath path = GeometryAssemblyPath.Compute(designForSwirlPlacement, run);
+            double hard = run.SwirlChamberUpstreamOvershootHardRejectMm;
+            if (path.SwirlPlacement.ChamberUpstreamOvershootMm > hard)
+                reasons.Add("CHAMBER_UPSTREAM_OVERSHOOT");
+        }
 
         return reasons.Count > 0
             ? new ConstraintViolationBreakdown(true, reasons)

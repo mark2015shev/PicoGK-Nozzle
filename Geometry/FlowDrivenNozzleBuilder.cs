@@ -42,6 +42,7 @@ public static class FlowDrivenNozzleBuilder
             SwirlChamberDiameterMm = Math.Max(template.SwirlChamberDiameterMm, 1.0),
             SwirlChamberLengthMm = chamberLenMm,
             InjectorAxialPositionRatio = template.InjectorAxialPositionRatio,
+            InjectorUpstreamGuardLengthMm = template.InjectorUpstreamGuardLengthMm,
             TotalInjectorAreaMm2 = template.TotalInjectorAreaMm2,
             InjectorCount = template.InjectorCount,
             InjectorWidthMm = template.InjectorWidthMm,

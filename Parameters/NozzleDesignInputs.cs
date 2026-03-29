@@ -10,10 +10,16 @@ public sealed class NozzleDesignInputs
     public double SwirlChamberLengthMm { get; init; }
 
     /// <summary>
-    /// 0 = upstream end of swirl chamber (just after inlet), 1 = downstream end (just before expander).
-    /// Positions reference injector <b>markers</b> / intended station along the chamber axis.
+    /// Requested fraction along the <b>physical</b> main chamber [0–1]; geometry clamps to
+    /// <see cref="RunConfiguration.InjectorAxialPositionMin"/>/<see cref="RunConfiguration.InjectorAxialPositionMax"/> for build + SI.
     /// </summary>
     public double InjectorAxialPositionRatio { get; init; }
+
+    /// <summary>
+    /// Optional separate cylindrical segment upstream of the main chamber (same bore), default 0.
+    /// Does not change <see cref="SwirlChamberLengthMm"/>; unioned as additional voxel volume only.
+    /// </summary>
+    public double InjectorUpstreamGuardLengthMm { get; init; }
 
     public double TotalInjectorAreaMm2 { get; init; }
     public int InjectorCount { get; init; }
@@ -38,4 +44,30 @@ public sealed class NozzleDesignInputs
     public double StatorBladeChordMm { get; init; }
 
     public double WallThicknessMm { get; init; }
+
+    /// <summary>Same design with a new <see cref="InjectorAxialPositionRatio"/> (e.g. after run clamp for SI + CAD alignment).</summary>
+    public NozzleDesignInputs WithInjectorAxialPositionRatio(double ratio) => new()
+    {
+        InletDiameterMm = InletDiameterMm,
+        SwirlChamberDiameterMm = SwirlChamberDiameterMm,
+        SwirlChamberLengthMm = SwirlChamberLengthMm,
+        InjectorAxialPositionRatio = ratio,
+        InjectorUpstreamGuardLengthMm = InjectorUpstreamGuardLengthMm,
+        TotalInjectorAreaMm2 = TotalInjectorAreaMm2,
+        InjectorCount = InjectorCount,
+        InjectorWidthMm = InjectorWidthMm,
+        InjectorHeightMm = InjectorHeightMm,
+        InjectorYawAngleDeg = InjectorYawAngleDeg,
+        InjectorPitchAngleDeg = InjectorPitchAngleDeg,
+        InjectorRollAngleDeg = InjectorRollAngleDeg,
+        ExpanderLengthMm = ExpanderLengthMm,
+        ExpanderHalfAngleDeg = ExpanderHalfAngleDeg,
+        ExitDiameterMm = ExitDiameterMm,
+        StatorVaneAngleDeg = StatorVaneAngleDeg,
+        StatorVaneCount = StatorVaneCount,
+        StatorHubDiameterMm = StatorHubDiameterMm,
+        StatorAxialLengthMm = StatorAxialLengthMm,
+        StatorBladeChordMm = StatorBladeChordMm,
+        WallThicknessMm = WallThicknessMm
+    };
 }

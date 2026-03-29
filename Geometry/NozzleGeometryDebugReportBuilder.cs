@@ -27,7 +27,8 @@ public static class NozzleGeometryDebugReportBuilder
 
         double wall = path.WallMm;
         double chamberD = Math.Max(d.SwirlChamberDiameterMm, 1.0);
-        double chamberLen = path.SwirlChamberEffectiveLengthMm;
+        SwirlChamberPlacement sp = path.SwirlPlacement;
+        double chamberLen = sp.PhysicalChamberLengthBuiltMm;
         double chamberInnerR = path.ChamberInnerRadiusMm;
         double entranceInnerR = path.EntranceInnerRadiusMm;
 
@@ -59,13 +60,18 @@ public static class NozzleGeometryDebugReportBuilder
             flareHalfAngleDeg,
             "Inner wall contracts toward swirl chamber ID; equivalent |ΔR|/L encoded as HalfAngle_deg when monotonic."));
 
-        // --- Swirl chamber voxel ---
+        // --- Swirl chamber voxel (main segment; guard unioned in builder when InjectorUpstreamGuardLengthMm > 0) ---
         double xSwirlStart = path.XSwirlStart;
         double xAfterSwirl = path.XAfterSwirl;
         double anchorMm = run?.SwirlChamberLengthDownstreamAnchorMm ?? 0.0;
-        string swirlAssemblyNote = anchorMm > 0.0
-            ? $"Downstream face fixed at inlet end − overlap + {anchorMm:F2} mm; axial length changes move the upstream face toward the inlet (L_eff={chamberLen:F2} mm)."
-            : $"Upstream face at inlet end − assembly overlap ({overlap:F2} mm); segment length L_eff={chamberLen:F2} mm.";
+        string swirlAssemblyNote =
+            $"Physical L_req=L_built={d.SwirlChamberLengthMm:F3} mm (main bore). Junction X={sp.InletChamberJunctionXMm:F3} mm. "
+            + (anchorMm > 0.0
+                ? $"Downstream face at junction+anchor ({anchorMm:F2} mm)."
+                : "Downstream face = upstream + physical L.")
+            + (sp.UsesExplicitUpstreamRetentionSection
+                ? $" Optional upstream guard {sp.UpstreamRetentionLengthMm:F2} mm (separate segment)."
+                : "");
         segments.Add(MkSeg(
             "Swirl chamber",
             xSwirlStart, xAfterSwirl,
@@ -74,7 +80,6 @@ public static class NozzleGeometryDebugReportBuilder
             null,
             swirlAssemblyNote));
 
-        double ratio = Math.Clamp(d.InjectorAxialPositionRatio, 0.0, 1.0);
         double xInjectorPlane = path.XInjectorPlane;
         segments.Add(MkSeg(
             "Injector ring reference position (outer wall station)",
@@ -90,10 +95,14 @@ public static class NozzleGeometryDebugReportBuilder
             chamberInnerR, chamberInnerR,
             wall,
             null,
-            $"X = swirl segment start (x={path.XSwirlStart:F3} mm) + ratio×L_eff = {ratio:F4}×{chamberLen:F2} mm."));
+            $"InjectorX = chamberStart + clamp(ratio)×L_phys: {sp.RequestedInjectorAxialRatio:F4} → {sp.ClampedInjectorAxialRatio:F4}, L={chamberLen:F3} mm."));
 
-        if (Math.Abs(xInjectorPlane - xSwirlStart) < overlap + 0.01 || Math.Abs(xInjectorPlane - xAfterSwirl) < overlap + 0.01)
-            warnings.Add("Injector reference plane lies near a swirl overlap boundary — viewer overlap can visually shift markers vs chamber bore.");
+        if (sp.PlacementHealth == SwirlChamberPlacementHealth.Warn)
+            warnings.Add(
+                $"SWIRL PLACEMENT WARN: chamber upstream overshoot {sp.ChamberUpstreamOvershootMm:F3} mm (warn threshold {run?.SwirlChamberUpstreamOvershootWarnMm ?? 0.05:F2} mm).");
+        if (sp.PlacementHealth == SwirlChamberPlacementHealth.Fail)
+            warnings.Add(
+                $"SWIRL PLACEMENT FAIL: overshoot {sp.ChamberUpstreamOvershootMm:F3} mm exceeds hard reject {run?.SwirlChamberUpstreamOvershootHardRejectMm ?? 2.0:F2} mm.");
 
         // --- Expander ---
         double xExpStart = path.XExpanderStart;
@@ -288,12 +297,30 @@ public static class NozzleGeometryDebugReportBuilder
 
         string modeLabel = path.UsesPostStatorExitTaper ? "Mode B: post-stator taper" : "Mode A: constant-area recovery exit";
 
+        string placeLabel = sp.PlacementHealth switch
+        {
+            SwirlChamberPlacementHealth.Pass => "PASS",
+            SwirlChamberPlacementHealth.Warn => "WARN",
+            SwirlChamberPlacementHealth.Fail => "FAIL",
+            _ => "—"
+        };
+
         return new NozzleGeometryDebugReport
         {
             AssemblyOverlapMm = overlap,
             TotalBuiltLengthMm = xAfterExit,
             NominalChamberInletPlaneXMm = xAfterInlet,
             SwirlVoxelStartXMm = xSwirlStart,
+            SwirlChamberEndXMm = xAfterSwirl,
+            SwirlChamberPhysicalLengthRequestedMm = sp.PhysicalChamberLengthRequestedMm,
+            SwirlChamberPhysicalLengthBuiltMm = sp.PhysicalChamberLengthBuiltMm,
+            InjectorUpstreamGuardLengthMm = sp.UpstreamRetentionLengthMm,
+            RequestedInjectorAxialRatio = sp.RequestedInjectorAxialRatio,
+            ClampedInjectorAxialRatio = sp.ClampedInjectorAxialRatio,
+            InjectorDistanceFromChamberUpstreamFaceMm = sp.InjectorDistanceFromChamberUpstreamFaceMm,
+            InjectorDistanceFromChamberDownstreamFaceMm = sp.InjectorDistanceFromChamberDownstreamFaceMm,
+            ChamberUpstreamOvershootMm = sp.ChamberUpstreamOvershootMm,
+            SwirlChamberPlacementStatusLabel = placeLabel,
             InjectorReferencePlaneXMm = xInjectorPlane,
             ImpliedExpanderExitDiameterMm = impliedExitD,
             RequestedExitDiameterMm = d.ExitDiameterMm,
@@ -424,7 +451,17 @@ public static class NozzleGeometryDebugReportBuilder
         log("╚══════════════════════════════════════════════════════════════════════════════╝");
         log($"AssemblyOverlapMm: {F(r.AssemblyOverlapMm)}  |  Total built length (last X) [mm]: {F(r.TotalBuiltLengthMm)}");
         log($"Nominal chamber inlet plane X [mm]: {F(r.NominalChamberInletPlaneXMm)}  |  Swirl voxel start X [mm]: {F(r.SwirlVoxelStartXMm)}");
-        log($"Injector reference plane X [mm]: {F(r.InjectorReferencePlaneXMm)}");
+        log("");
+        log("── Swirl chamber placement (authoritative physical L, injector inside span) ──");
+        log($"  Physical L requested [mm]: {F(r.SwirlChamberPhysicalLengthRequestedMm)}  |  built main segment L [mm]: {F(r.SwirlChamberPhysicalLengthBuiltMm)}");
+        log($"  Chamber start X [mm]: {F(r.SwirlVoxelStartXMm)}  |  chamber end X [mm]: {F(r.SwirlChamberEndXMm)}");
+        log($"  Upstream guard L [mm]: {F(r.InjectorUpstreamGuardLengthMm)}  (separate segment if > 0)");
+        log($"  Injector ratio requested → clamped: {F(r.RequestedInjectorAxialRatio, "F4")} → {F(r.ClampedInjectorAxialRatio, "F4")}  (run min/max)");
+        log($"  Injector plane X [mm]: {F(r.InjectorReferencePlaneXMm)}");
+        log($"  Injector Δ from chamber upstream / downstream face [mm]: {F(r.InjectorDistanceFromChamberUpstreamFaceMm)} / {F(r.InjectorDistanceFromChamberDownstreamFaceMm)}");
+        log($"  Chamber upstream overshoot past inlet junction [mm]: {F(r.ChamberUpstreamOvershootMm)}");
+        log($"  Placement status: {r.SwirlChamberPlacementStatusLabel}");
+        log("");
         log($"Implied expander exit Ø [mm]: {F(r.ImpliedExpanderExitDiameterMm, "F2")}  |  Requested ExitDiameterMm: {F(r.RequestedExitDiameterMm, "F2")}");
         log("");
         log("── Downstream diameter audit (single recovery annulus) ──");

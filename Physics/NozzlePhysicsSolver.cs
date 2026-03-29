@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using PicoGK_Run.Core;
+using PicoGK_Run.Geometry;
 using PicoGK_Run.Parameters;
 
 namespace PicoGK_Run.Physics;
@@ -90,7 +91,7 @@ public sealed class NozzlePhysicsSolver
         double injectorSwirlNumber = SwirlMath.InjectorSwirlNumber(vTan, vAx);
 
         double chamberLd = design.SwirlChamberLengthMm / Math.Max(design.SwirlChamberDiameterMm, 1e-9);
-        double rAx = Math.Clamp(design.InjectorAxialPositionRatio, 0.0, 1.0);
+        double rAx = SwirlChamberPlacement.ClampInjectorAxialRatio(design.InjectorAxialPositionRatio, input.Run);
 
         // HEURISTIC — NOT CFD: decay of injector directive swirl (used after mixing for expander + stator paths)
         double chamberSwirlRaw = injectorSwirlNumber * Math.Exp(-0.55 * Math.Clamp(chamberLd, 0.0, 4.0));

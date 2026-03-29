@@ -42,8 +42,8 @@ public static class K320Baseline
         SwirlChamberDiameterMm = 82.0,
         // Longer chamber for vortex development before expander (hand template; autotune may still vary when enabled).
         SwirlChamberLengthMm = 80.0,
-        // Downstream (expander-side) reference ring; autotune varies chamber length upstream only when anchor is set.
-        InjectorAxialPositionRatio = 1.0,
+        InjectorAxialPositionRatio = 0.72,
+        InjectorUpstreamGuardLengthMm = 0.0,
         TotalInjectorAreaMm2 = DefaultSourceAreaMm2,
         InjectorCount = 16,
         InjectorWidthMm = 10.0,
@@ -77,6 +77,7 @@ public static class K320Baseline
             SwirlChamberDiameterMm = swirlChamberDiameterMm,
             SwirlChamberLengthMm = b.SwirlChamberLengthMm,
             InjectorAxialPositionRatio = b.InjectorAxialPositionRatio,
+            InjectorUpstreamGuardLengthMm = b.InjectorUpstreamGuardLengthMm,
             TotalInjectorAreaMm2 = b.TotalInjectorAreaMm2,
             InjectorCount = b.InjectorCount,
             InjectorWidthMm = b.InjectorWidthMm,

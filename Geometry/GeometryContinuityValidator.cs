@@ -34,6 +34,14 @@ public static class GeometryContinuityValidator
         if (p.XAfterSwirl <= p.XSwirlStart + 1e-6)
             add("GEOM: swirl chamber has zero or negative axial extent.");
 
+        SwirlChamberPlacement sp = p.SwirlPlacement;
+        if (sp.PlacementHealth == SwirlChamberPlacementHealth.Fail)
+        {
+            double hard = run?.SwirlChamberUpstreamOvershootHardRejectMm ?? 2.0;
+            add(
+                $"GEOM SWIRL: upstream overshoot {sp.ChamberUpstreamOvershootMm:F3} mm exceeds hard reject {hard:F2} mm (inlet junction vs main chamber start).");
+        }
+
         if (p.XExpanderStart < p.XSwirlStart - 0.01)
             add("GEOM: expander starts upstream of swirl chamber start (ordering).");
         if (p.XStatorStart < p.XExpanderStart - 0.01)

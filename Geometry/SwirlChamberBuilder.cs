@@ -1,25 +1,15 @@
-using System;
 using System.Numerics;
 using PicoGK;
 using PicoGK_Run.Parameters;
-using PicoGK_Run.Physics;
 
 namespace PicoGK_Run.Geometry;
 
 public static class SwirlChamberBuilder
 {
-    /// <summary>Axial swirl segment length [mm] used for voxels and <see cref="GeometryAssemblyPath"/> (includes rule-of-six floor when enabled).</summary>
-    public static double EffectiveLengthMm(NozzleDesignInputs d, RunConfiguration? run = null)
+    /// <summary>Constant-bore annulus segment along +X; <paramref name="axialLengthMm"/> is exact physical length.</summary>
+    public static Voxels BuildCylindricalAnnulusMm(NozzleDesignInputs d, float xStart, float axialLengthMm, out float xEnd)
     {
-        double lenMm = Math.Max(d.SwirlChamberLengthMm, 1.0);
-        if (run?.EnforceEjectorMixingRuleOfSix == true)
-            lenMm = Math.Max(lenMm, VortexEntrainmentPhysics.MixingLengthMinimumMmRuleOfSix(d));
-        return lenMm;
-    }
-
-    public static Voxels Build(NozzleDesignInputs d, float xStart, out float xEnd, RunConfiguration? run = null)
-    {
-        float length = (float)EffectiveLengthMm(d, run);
+        float length = axialLengthMm;
         float rInner = 0.5f * (float)d.SwirlChamberDiameterMm;
         float wallThicknessMm = (float)d.WallThicknessMm;
         float rOuter = rInner + wallThicknessMm;
@@ -39,5 +29,25 @@ public static class SwirlChamberBuilder
         xEnd = xStart + length;
         return outer;
     }
-}
 
+    /// <summary>Main chamber plus optional upstream retention (same bore), unioned for viewer group “Swirl chamber”.</summary>
+    public static Voxels BuildSwirlChamberAssembly(
+        NozzleDesignInputs d,
+        in SwirlChamberPlacement p,
+        out float xAfterMainChamberEnd)
+    {
+        float x0 = (float)p.MainChamberStartXMm;
+        float L = (float)p.PhysicalChamberLengthBuiltMm;
+        Voxels main = BuildCylindricalAnnulusMm(d, x0, L, out xAfterMainChamberEnd);
+
+        if (p.UpstreamRetentionLengthMm > 1e-6)
+        {
+            float xr = (float)p.UpstreamRetentionStartXMm;
+            float g = (float)p.UpstreamRetentionLengthMm;
+            Voxels guard = BuildCylindricalAnnulusMm(d, xr, g, out _);
+            main.BoolAdd(guard);
+        }
+
+        return main;
+    }
+}
